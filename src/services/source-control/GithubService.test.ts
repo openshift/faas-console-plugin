@@ -22,27 +22,118 @@ describe('GithubService', () => {
           defaultBranch: 'main',
         },
       ]);
-
-      function setupGithubSearchReposResponse() {
-        server.use(
-          http.get(GH_SEARCH_REPOS, ({ request }) => {
-            const url = new URL(request.url);
-            expect(url.searchParams.get('q')).toBe('topic:serverless-function user:twoGiants');
-            return HttpResponse.json({
-              total_count: 1,
-              items: [
-                {
-                  owner: { login: 'twoGiants' },
-                  name: 'my-func',
-                  html_url: 'https://github.com/twoGiants/my-func',
-                  default_branch: 'main',
-                },
-              ],
-            });
-          }),
-        );
-      }
     });
+
+    it('lists 2 function repos while second was cached', async () => {
+      // GIVEN: we start with one existing repo
+      setupGithubSearchReposResponse();
+      const expectedRepo1 = {
+        owner: 'twoGiants',
+        name: 'my-func',
+        url: 'https://github.com/twoGiants/my-func',
+        defaultBranch: 'main',
+      };
+
+      // WHEN
+      const svc = new GithubService(() => 'pat');
+      let repos: RepoMetadata[] = await svc.listFunctionRepos();
+
+      // THEN
+      expect(repos).toEqual([expectedRepo1]);
+
+      // GIVEN: a second repo is created but not yet available for search because of
+      // eventual consistency
+      const expectedRepo2 = {
+        owner: 'twoGiants',
+        name: 'my-func-2',
+        url: 'https://github.com/twoGiants/my-func-2',
+        defaultBranch: 'test',
+      };
+      const files: FileEntry[] = [
+        { path: 'func.yaml', mode: '100644', content: `name: ${expectedRepo2.name}`, type: 'blob' },
+      ];
+      setupCreateRepoHandlers({ repoName: expectedRepo2.name });
+
+      // WHEN
+      await svc.createRepo(expectedRepo2, files, 'create second repo');
+      repos = await svc.listFunctionRepos();
+
+      // THEN: we still get 2 repos, because the second was cached
+      expect(repos).toEqual([expectedRepo1, expectedRepo2]);
+    });
+
+    it('lists 2 function repos while second successfully searched after creation i.e. not used from cache ', async () => {
+      // GIVEN: we start with one existing repo
+      setupGithubSearchReposResponse();
+      const expectedRepo1 = {
+        owner: 'twoGiants',
+        name: 'my-func',
+        url: 'https://github.com/twoGiants/my-func',
+        defaultBranch: 'main',
+      };
+
+      // WHEN
+      const svc = new GithubService(() => 'pat');
+      let repos: RepoMetadata[] = await svc.listFunctionRepos();
+
+      // THEN
+      expect(repos).toEqual([expectedRepo1]);
+
+      // GIVEN: a second repo is created and instantly available for search
+      const expectedRepo2 = {
+        owner: 'twoGiants',
+        name: 'my-func-2',
+        url: 'https://github.com/twoGiants/my-func-2',
+        defaultBranch: 'test',
+      };
+      const files: FileEntry[] = [
+        { path: 'func.yaml', mode: '100644', content: `name: ${expectedRepo2.name}`, type: 'blob' },
+      ];
+      setupCreateRepoHandlers({ repoName: expectedRepo2.name });
+      setupGithubSearchReposResponse({ secondItem: expectedRepo2 });
+
+      // WHEN
+      await svc.createRepo(expectedRepo2, files, 'create second repo');
+      repos = await svc.listFunctionRepos();
+
+      // THEN: we get 2 repos, deduplication of cache was successful
+      expect(repos).toEqual([expectedRepo1, expectedRepo2]);
+    });
+
+    function setupGithubSearchReposResponse({
+      secondItem,
+    }: {
+      secondItem?: RepoMetadata;
+    } = {}) {
+      server.use(
+        http.get(GH_SEARCH_REPOS, ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get('q')).toBe('topic:serverless-function user:twoGiants');
+
+          const items = [
+            {
+              owner: { login: 'twoGiants' },
+              name: 'my-func',
+              html_url: 'https://github.com/twoGiants/my-func',
+              default_branch: 'main',
+            },
+          ];
+
+          if (secondItem)
+            items.push({
+              owner: { login: secondItem.owner },
+              name: secondItem.name,
+              html_url: secondItem.url,
+              default_branch: secondItem.defaultBranch,
+            });
+
+          return HttpResponse.json({
+            total_count: items.length,
+            items,
+          });
+        }),
+      );
+    }
   });
 
   describe('fetchFileContent', () => {
@@ -108,7 +199,7 @@ describe('GithubService', () => {
     ];
 
     it('throws when repo already exists', async () => {
-      setupCreateRepoHandlers();
+      setupCreateRepoHandlers({ repoMissing: false });
 
       const svc = new GithubService(() => 'pat');
 
@@ -118,7 +209,7 @@ describe('GithubService', () => {
     });
 
     it('creates repo, sets topic, pushes files, does not rename branch when main', async () => {
-      const result = setupCreateRepoHandlers({ repoMissing: true });
+      const result = setupCreateRepoHandlers();
 
       const svc = new GithubService(() => 'pat');
       await svc.createRepo(repoInfo, files, 'Initial commit');
@@ -131,7 +222,7 @@ describe('GithubService', () => {
 
     it('renames branch when defaultBranch is not main', async () => {
       const customBranchRepo = { ...repoInfo, defaultBranch: 'develop' };
-      const result = setupCreateRepoHandlers({ repoMissing: true });
+      const result = setupCreateRepoHandlers();
 
       const svc = new GithubService(() => 'pat');
       await svc.createRepo(customBranchRepo, files, 'Initial commit');
@@ -141,78 +232,12 @@ describe('GithubService', () => {
     });
 
     it('throws when the API fails', async () => {
-      setupCreateRepoHandlers({ repoMissing: true, treeError: true });
+      setupCreateRepoHandlers({ treeError: true });
 
       const svc = new GithubService(() => 'pat');
 
       await expect(svc.createRepo(repoInfo, files, 'Fail')).rejects.toThrow();
     });
-
-    function setupCreateRepoHandlers({
-      treeError = false,
-      repoMissing = false,
-    }: { treeError?: boolean; repoMissing?: boolean } = {}) {
-      let _refUpdated = false;
-      let _repoCreated = false;
-      let _topicsSet: string[] = [];
-      let _branchRenamed = false;
-      let _renamedTo = '';
-
-      server.use(
-        http.get(`${GITHUB_API}/repos/twoGiants/my-func`, () =>
-          repoMissing
-            ? HttpResponse.json({ message: 'Not Found' }, { status: 404 })
-            : HttpResponse.json({ name: 'my-func' }),
-        ),
-        http.post(`${GITHUB_API}/user/repos`, () => {
-          _repoCreated = true;
-          return HttpResponse.json({ name: 'my-func' });
-        }),
-        http.post(
-          `${GITHUB_API}/repos/twoGiants/my-func/branches/main/rename`,
-          async ({ request }) => {
-            const body = (await request.json()) as { new_name: string };
-            _branchRenamed = true;
-            _renamedTo = body.new_name;
-            return HttpResponse.json({ name: body.new_name });
-          },
-        ),
-        http.put(`${GITHUB_API}/repos/twoGiants/my-func/topics`, async ({ request }) => {
-          const body = (await request.json()) as { names: string[] };
-          _topicsSet = body.names;
-          return HttpResponse.json({ names: body.names });
-        }),
-        http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
-          HttpResponse.json({ sha: 'blob-sha' }),
-        ),
-        http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/ref/:ref+`, () =>
-          HttpResponse.json({ object: { sha: 'head-sha' } }),
-        ),
-        http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/commits/:sha`, () =>
-          HttpResponse.json({ tree: { sha: 'base-tree-sha' } }),
-        ),
-        http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/trees`, () =>
-          treeError
-            ? HttpResponse.json({ message: 'Validation Failed' }, { status: 422 })
-            : HttpResponse.json({ sha: 'tree-sha' }),
-        ),
-        http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/commits`, () =>
-          HttpResponse.json({ sha: 'commit-sha' }),
-        ),
-        http.patch(`${GITHUB_API}/repos/twoGiants/my-func/git/refs/:ref+`, () => {
-          _refUpdated = true;
-          return HttpResponse.json({});
-        }),
-      );
-
-      return {
-        refUpdated: () => _refUpdated,
-        repoCreated: () => _repoCreated,
-        topicsSet: () => _topicsSet,
-        branchRenamed: () => _branchRenamed,
-        renamedTo: () => _renamedTo,
-      };
-    }
   });
 
   describe('updateRepo', () => {
@@ -462,3 +487,74 @@ describe('GithubService', () => {
     });
   });
 });
+
+function setupCreateRepoHandlers({
+  treeError = false,
+  repoMissing = true,
+  repoName = 'my-func',
+}: {
+  treeError?: boolean;
+  repoMissing?: boolean;
+  repoName?: string;
+} = {}) {
+  let _refUpdated = false;
+  let _repoCreated = false;
+  let _topicsSet: string[] = [];
+  let _branchRenamed = false;
+  let _renamedTo = '';
+
+  server.use(
+    http.get(`${GITHUB_API}/repos/twoGiants/${repoName}`, () =>
+      repoMissing
+        ? HttpResponse.json({ message: 'Not Found' }, { status: 404 })
+        : HttpResponse.json({ name: `${repoName}` }),
+    ),
+    http.post(`${GITHUB_API}/user/repos`, () => {
+      _repoCreated = true;
+      return HttpResponse.json({ name: `${repoName}` });
+    }),
+    http.post(
+      `${GITHUB_API}/repos/twoGiants/${repoName}/branches/main/rename`,
+      async ({ request }) => {
+        const body = (await request.json()) as { new_name: string };
+        _branchRenamed = true;
+        _renamedTo = body.new_name;
+        return HttpResponse.json({ name: body.new_name });
+      },
+    ),
+    http.put(`${GITHUB_API}/repos/twoGiants/${repoName}/topics`, async ({ request }) => {
+      const body = (await request.json()) as { names: string[] };
+      _topicsSet = body.names;
+      return HttpResponse.json({ names: body.names });
+    }),
+    http.post(`${GITHUB_API}/repos/twoGiants/${repoName}/git/blobs`, () =>
+      HttpResponse.json({ sha: 'blob-sha' }),
+    ),
+    http.get(`${GITHUB_API}/repos/twoGiants/${repoName}/git/ref/:ref+`, () =>
+      HttpResponse.json({ object: { sha: 'head-sha' } }),
+    ),
+    http.get(`${GITHUB_API}/repos/twoGiants/${repoName}/git/commits/:sha`, () =>
+      HttpResponse.json({ tree: { sha: 'base-tree-sha' } }),
+    ),
+    http.post(`${GITHUB_API}/repos/twoGiants/${repoName}/git/trees`, () =>
+      treeError
+        ? HttpResponse.json({ message: 'Validation Failed' }, { status: 422 })
+        : HttpResponse.json({ sha: 'tree-sha' }),
+    ),
+    http.post(`${GITHUB_API}/repos/twoGiants/${repoName}/git/commits`, () =>
+      HttpResponse.json({ sha: 'commit-sha' }),
+    ),
+    http.patch(`${GITHUB_API}/repos/twoGiants/${repoName}/git/refs/:ref+`, () => {
+      _refUpdated = true;
+      return HttpResponse.json({});
+    }),
+  );
+
+  return {
+    refUpdated: () => _refUpdated,
+    repoCreated: () => _repoCreated,
+    topicsSet: () => _topicsSet,
+    branchRenamed: () => _branchRenamed,
+    renamedTo: () => _renamedTo,
+  };
+}

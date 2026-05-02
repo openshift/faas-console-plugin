@@ -7,6 +7,7 @@ export class GithubService implements SourceControlService {
   private cachedOctokit: Octokit | null = null;
   private cachedToken: string = '';
   private lastCommitSha = new Map<string, string>();
+  private cachedFunctionRepos: RepoMetadata[] = [];
 
   constructor(getToken: () => string) {
     this.getToken = getToken;
@@ -34,12 +35,16 @@ export class GithubService implements SourceControlService {
       q: `topic:serverless-function user:${user.login}`,
     });
 
-    return data.items.map((item) => ({
+    const fetchedFunctionRepos = data.items.map((item) => ({
       owner: item.owner?.login ?? '',
       name: item.name,
       url: item.html_url,
       defaultBranch: item.default_branch,
     }));
+    const fetchedNames = new Set(fetchedFunctionRepos.map((r) => r.name));
+    const unfetched = this.cachedFunctionRepos.filter((r) => !fetchedNames.has(r.name));
+    this.cachedFunctionRepos = [...fetchedFunctionRepos, ...unfetched];
+    return this.cachedFunctionRepos;
   }
 
   async createRepo(repo: RepoMetadata, files: FileEntry[], message: string): Promise<void> {
@@ -116,6 +121,13 @@ export class GithubService implements SourceControlService {
       repo: repoName,
       ref: `heads/${defaultBranch}`,
       sha: commit.sha,
+    });
+
+    this.cachedFunctionRepos.push({
+      owner,
+      name: repoName,
+      url: `https://github.com/${owner}/${repoName}`,
+      defaultBranch,
     });
   }
 
