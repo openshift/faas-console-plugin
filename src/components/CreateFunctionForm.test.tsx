@@ -68,6 +68,20 @@ describe('CreateFunctionForm', () => {
     expect(registryInput).toBeDisabled();
   });
 
+  it('updates registry to include namespace when namespace is typed', async () => {
+    const user = userEvent.setup();
+
+    renderWithContext(
+      <CreateFunctionForm onSubmit={onSubmit} onCancel={onCancel} isSubmitting={false} />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'my-ns');
+
+    expect(screen.getByRole('textbox', { name: /Registry/ })).toHaveValue(
+      'image-registry.openshift-image-registry.svc:5000/my-ns',
+    );
+  });
+
   it('renders Create and Cancel buttons', () => {
     renderWithContext(
       <CreateFunctionForm onSubmit={onSubmit} onCancel={onCancel} isSubmitting={false} />,
@@ -124,7 +138,7 @@ describe('CreateFunctionForm', () => {
       branch: 'main',
       name: 'my-func',
       runtime: 'node',
-      registry: 'image-registry.openshift-image-registry.svc:5000/',
+      registry: 'image-registry.openshift-image-registry.svc:5000/default',
       namespace: 'default',
     });
   });

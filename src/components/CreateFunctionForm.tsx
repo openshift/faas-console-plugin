@@ -133,7 +133,13 @@ function useCreateFunctionForm() {
   });
 
   const setField = (key: keyof CreateFunctionFormData, value: string) => {
-    setFields((prev) => ({ ...prev, [key]: value }));
+    setFields((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'namespace') {
+        next.registry = OCP_INTERNAL_REGISTRY + value;
+      }
+      return next;
+    });
   };
 
   const isValid = Boolean(

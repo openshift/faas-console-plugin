@@ -108,7 +108,7 @@ describe('FunctionCreatePage', () => {
       expect(mockGenerateFunction).toHaveBeenCalledWith({
         name: 'my-func',
         runtime: 'node',
-        registry: 'image-registry.openshift-image-registry.svc:5000/',
+        registry: 'image-registry.openshift-image-registry.svc:5000/default',
         namespace: 'default',
         branch: 'main',
       });
