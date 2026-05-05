@@ -28,3 +28,8 @@ export interface RepoMetadata {
 export interface ForgeUser {
   name: string;
 }
+
+export interface RepoSecret {
+  name: string;
+  value: string;
+}

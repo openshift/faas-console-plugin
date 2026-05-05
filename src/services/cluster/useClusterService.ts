@@ -3,11 +3,15 @@ import {
   useK8sWatchResource,
   useActiveNamespace,
 } from '@openshift-console/dynamic-plugin-sdk';
+import { OcpClusterService } from './OcpClusterService';
 
-export interface ClusterService {
+const instance = new OcpClusterService();
+
+interface ClusterService {
   deployments: K8sResourceKind[];
   loaded: boolean;
   error: unknown;
+  generateKubeconfig: (namespace: string) => Promise<string>;
 }
 
 const ALL_NAMESPACES = '#ALL_NS#';
@@ -28,5 +32,10 @@ export function useClusterService(): ClusterService {
 
   const deployments = loaded ? (data ?? []) : [];
 
-  return { deployments, loaded, error };
+  return {
+    deployments,
+    loaded,
+    error,
+    generateKubeconfig: instance.generateKubeconfig.bind(instance),
+  };
 }

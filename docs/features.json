@@ -163,9 +163,9 @@
     "steps": [
       "Add createSecret method to SourceControlService interface",
       "Encrypt secret value with repo public key using tweetnacl or libsodium.js",
-      "Wire into create flow: after repo creation and file push, set KUBECONFIG secret on the repo",
+      "Wire into create flow: set KUBECONFIG secret before push so the workflow has credentials from the first run",
       "GH Actions workflow can authenticate to the cluster and run func deploy"
     ],
-    "passes": false
+    "passes": true
   }
 ]

@@ -12,7 +12,7 @@ Check out the **[Github page](https://twogiants.github.io/func-console/)** for a
 
 - [oc](https://console.redhat.com/openshift/downloads) CLI
 - An [OpenShift 4.19 cluster](https://console.redhat.com/openshift/create)
-- Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
+- Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content*, *secret* and *workflow* write permissions in all repositories
 
 ### Quick install
 

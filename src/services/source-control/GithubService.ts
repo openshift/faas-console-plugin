@@ -1,25 +1,25 @@
 import { Octokit } from '@octokit/rest';
-import { FileEntry, ForgeUser, RepoMetadata } from '../types';
+import { FileEntry, ForgeUser, RepoMetadata, RepoSecret } from '../types';
 import { SourceControlService } from './SourceControlService';
 
 export class GithubService implements SourceControlService {
-  private getToken: () => string;
-  private cachedOctokit: Octokit | null = null;
-  private cachedToken: string = '';
-  private lastCommitSha = new Map<string, string>();
-  private cachedFunctionRepos: RepoMetadata[] = [];
+  #getToken: () => string;
+  #cachedOctokit: Octokit | null = null;
+  #cachedToken: string = '';
+  #lastCommitSha = new Map<string, string>();
+  #cachedFunctionRepos: RepoMetadata[] = [];
 
   constructor(getToken: () => string) {
-    this.getToken = getToken;
+    this.#getToken = getToken;
   }
 
-  private get octokit(): Octokit {
-    const token = this.getToken();
-    if (token !== this.cachedToken) {
-      this.cachedToken = token;
-      this.cachedOctokit = new Octokit({ auth: token });
+  get #octokit(): Octokit {
+    const token = this.#getToken();
+    if (token !== this.#cachedToken) {
+      this.#cachedToken = token;
+      this.#cachedOctokit = new Octokit({ auth: token });
     }
-    return this.cachedOctokit!;
+    return this.#cachedOctokit!;
   }
 
   async fetchUserInfo(pat: string): Promise<ForgeUser> {
@@ -29,9 +29,9 @@ export class GithubService implements SourceControlService {
   }
 
   async listFunctionRepos(): Promise<RepoMetadata[]> {
-    const { data: user } = await this.octokit.users.getAuthenticated();
+    const { data: user } = await this.#octokit.users.getAuthenticated();
 
-    const { data } = await this.octokit.search.repos({
+    const { data } = await this.#octokit.search.repos({
       q: `topic:serverless-function user:${user.login}`,
     });
 
@@ -42,31 +42,38 @@ export class GithubService implements SourceControlService {
       defaultBranch: item.default_branch,
     }));
     const fetchedNames = new Set(fetchedFunctionRepos.map((r) => r.name));
-    const unfetched = this.cachedFunctionRepos.filter((r) => !fetchedNames.has(r.name));
-    this.cachedFunctionRepos = [...fetchedFunctionRepos, ...unfetched];
-    return this.cachedFunctionRepos;
+    const unfetched = this.#cachedFunctionRepos.filter((r) => !fetchedNames.has(r.name));
+    this.#cachedFunctionRepos = [...fetchedFunctionRepos, ...unfetched];
+    return this.#cachedFunctionRepos;
   }
 
-  async createRepo(repo: RepoMetadata, files: FileEntry[], message: string): Promise<void> {
+  async createRepoWithSecret(
+    repo: RepoMetadata,
+    files: FileEntry[],
+    message: string,
+    secret: RepoSecret,
+  ): Promise<void> {
     const { owner, name: repoName, defaultBranch } = repo;
 
     if (await this.#doesRepoExist(owner, repoName))
-      throw new Error(`repository '${repoName}' exists, please chose a different name`);
+      throw new Error(`repository '${repoName}' exists, please choose a different name`);
 
-    await this.octokit.repos.createForAuthenticatedUser({
+    await this.#octokit.repos.createForAuthenticatedUser({
       name: repoName,
       auto_init: true,
     });
 
+    await this.#createSecret(repo, secret.name, secret.value);
+
     if (defaultBranch !== 'main')
-      await this.octokit.repos.renameBranch({
+      await this.#octokit.repos.renameBranch({
         owner,
         repo: repoName,
         branch: 'main',
         new_name: defaultBranch,
       });
 
-    await this.octokit.repos.replaceAllTopics({
+    await this.#octokit.repos.replaceAllTopics({
       owner,
       repo: repoName,
       names: ['serverless-function'],
@@ -74,7 +81,7 @@ export class GithubService implements SourceControlService {
 
     const treeEntries = await Promise.all(
       files.map(async (file) => {
-        const { data: blob } = await this.octokit.git.createBlob({
+        const { data: blob } = await this.#octokit.git.createBlob({
           owner,
           repo: repoName,
           content: file.content,
@@ -89,26 +96,26 @@ export class GithubService implements SourceControlService {
       }),
     );
 
-    const { data: ref } = await this.octokit.git.getRef({
+    const { data: ref } = await this.#octokit.git.getRef({
       owner,
       repo: repoName,
       ref: `heads/${defaultBranch}`,
     });
 
-    const { data: parentCommit } = await this.octokit.git.getCommit({
+    const { data: parentCommit } = await this.#octokit.git.getCommit({
       owner,
       repo: repoName,
       commit_sha: ref.object.sha,
     });
 
-    const { data: tree } = await this.octokit.git.createTree({
+    const { data: tree } = await this.#octokit.git.createTree({
       owner,
       repo: repoName,
       tree: treeEntries,
       base_tree: parentCommit.tree.sha,
     });
 
-    const { data: commit } = await this.octokit.git.createCommit({
+    const { data: commit } = await this.#octokit.git.createCommit({
       owner,
       repo: repoName,
       message,
@@ -116,14 +123,14 @@ export class GithubService implements SourceControlService {
       parents: [parentCommit.sha],
     });
 
-    await this.octokit.git.updateRef({
+    await this.#octokit.git.updateRef({
       owner,
       repo: repoName,
       ref: `heads/${defaultBranch}`,
       sha: commit.sha,
     });
 
-    this.cachedFunctionRepos.push({
+    this.#cachedFunctionRepos.push({
       owner,
       name: repoName,
       url: `https://github.com/${owner}/${repoName}`,
@@ -133,7 +140,7 @@ export class GithubService implements SourceControlService {
 
   async #doesRepoExist(owner: string, repoName: string): Promise<boolean> {
     try {
-      await this.octokit.repos.get({ owner, repo: repoName });
+      await this.#octokit.repos.get({ owner, repo: repoName });
       return true;
     } catch (err) {
       const is404 =
@@ -149,7 +156,7 @@ export class GithubService implements SourceControlService {
 
     const treeEntries = await Promise.all(
       files.map(async (file) => {
-        const { data: blob } = await this.octokit.git.createBlob({
+        const { data: blob } = await this.#octokit.git.createBlob({
           owner,
           repo: repoName,
           content: file.content,
@@ -169,9 +176,9 @@ export class GithubService implements SourceControlService {
     // locally cached commit SHA from the previous push when available.
     // Fall back to getRef only on first push or if the cache is stale
     // (someone else pushed, causing a "not a fast forward" error).
-    let parentCommitSha = this.lastCommitSha.get(refKey);
+    let parentCommitSha = this.#lastCommitSha.get(refKey);
     if (!parentCommitSha) {
-      const { data: ref } = await this.octokit.git.getRef({
+      const { data: ref } = await this.#octokit.git.getRef({
         owner,
         repo: repoName,
         ref: `heads/${branch}`,
@@ -179,20 +186,20 @@ export class GithubService implements SourceControlService {
       parentCommitSha = ref.object.sha;
     }
 
-    const { data: parentCommit } = await this.octokit.git.getCommit({
+    const { data: parentCommit } = await this.#octokit.git.getCommit({
       owner,
       repo: repoName,
       commit_sha: parentCommitSha,
     });
 
-    const { data: tree } = await this.octokit.git.createTree({
+    const { data: tree } = await this.#octokit.git.createTree({
       owner,
       repo: repoName,
       tree: treeEntries,
       base_tree: parentCommit.tree.sha,
     });
 
-    const { data: commit } = await this.octokit.git.createCommit({
+    const { data: commit } = await this.#octokit.git.createCommit({
       owner,
       repo: repoName,
       message,
@@ -201,24 +208,24 @@ export class GithubService implements SourceControlService {
     });
 
     try {
-      await this.octokit.git.updateRef({
+      await this.#octokit.git.updateRef({
         owner,
         repo: repoName,
         ref: `heads/${branch}`,
         sha: commit.sha,
       });
-      this.lastCommitSha.set(refKey, commit.sha);
+      this.#lastCommitSha.set(refKey, commit.sha);
     } catch (err) {
       // If cache was stale (someone else pushed). Clear and let next
       // attempt use getRef for the fresh SHA.
       const isStaleRef = err instanceof Error && err.message.includes('fast forward');
-      if (isStaleRef) this.lastCommitSha.delete(refKey);
+      if (isStaleRef) this.#lastCommitSha.delete(refKey);
       throw err;
     }
   }
 
   async fetch(repo: RepoMetadata): Promise<FileEntry[]> {
-    const { data: repoContent } = await this.octokit.git.getTree({
+    const { data: repoContent } = await this.#octokit.git.getTree({
       owner: repo.owner,
       repo: repo.name,
       tree_sha: repo.defaultBranch,
@@ -229,7 +236,7 @@ export class GithubService implements SourceControlService {
 
     const files = await Promise.all(
       filesAsBlobs.map(async (fileAsBlob) => {
-        const { data: file } = await this.octokit.git.getBlob({
+        const { data: file } = await this.#octokit.git.getBlob({
           owner: repo.owner,
           repo: repo.name,
           file_sha: fileAsBlob.sha!,
@@ -246,8 +253,44 @@ export class GithubService implements SourceControlService {
     return files;
   }
 
+  async #createSecret(repo: RepoMetadata, name: string, value: string): Promise<void> {
+    const { owner, name: repoName } = repo;
+
+    const {
+      data: { key_id, key },
+    } = await this.#octokit.actions.getRepoPublicKey({ owner, repo: repoName });
+
+    const encrypted_value = await this.#encryptForGithub(value, key);
+
+    await this.#octokit.actions.createOrUpdateRepoSecret({
+      owner,
+      repo: repoName,
+      secret_name: name,
+      encrypted_value,
+      key_id,
+    });
+  }
+
+  async #encryptForGithub(value: string, publicKeyBase64: string): Promise<string> {
+    const mod = await import('libsodium-wrappers');
+    // The default export is the mutable sodium object where crypto functions
+    // are populated after ready. The ES module namespace is immutable and
+    // only exposes static utility exports.
+    type SodiumFull = typeof mod & {
+      crypto_box_seal(message: Uint8Array, publicKey: Uint8Array): Uint8Array;
+    };
+    const sodium = ((mod as unknown as { default?: SodiumFull }).default ?? mod) as SodiumFull;
+    await sodium.ready;
+    if (typeof sodium.crypto_box_seal !== 'function') {
+      throw new Error('libsodium crypto_box_seal not available');
+    }
+    const publicKey = sodium.from_base64(publicKeyBase64, sodium.base64_variants.ORIGINAL);
+    const encrypted = sodium.crypto_box_seal(sodium.from_string(value), publicKey);
+    return sodium.to_base64(encrypted, sodium.base64_variants.ORIGINAL);
+  }
+
   async fetchFileContent(repo: RepoMetadata, path: string): Promise<string> {
-    const { data } = await this.octokit.repos.getContent({
+    const { data } = await this.#octokit.repos.getContent({
       owner: repo.owner,
       repo: repo.name,
       path,

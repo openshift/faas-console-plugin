@@ -37,6 +37,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^12.1.5",
     "@testing-library/user-event": "^14.6.1",
+    "@types/libsodium-wrappers": "^0.8.2",
     "@types/node": "^22.0.0",
     "@types/react": "^17.0.37",
     "@types/react-router-dom": "^5.3.3",
@@ -99,6 +100,7 @@
   "packageManager": "yarn@4.13.0",
   "dependencies": {
     "@octokit/rest": "^22.0.1",
-    "@patternfly/react-code-editor": "^6.4.3"
+    "@patternfly/react-code-editor": "^6.4.3",
+    "libsodium-wrappers": "^0.8.4"
   }
 }
