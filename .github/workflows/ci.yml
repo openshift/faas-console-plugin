@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  IMAGE: ghcr.io/twogiants/console-functions-plugin
+  IMAGE: ghcr.io/${{ github.repository_owner }}/console-functions-plugin
 
 jobs:
   # --------
@@ -116,9 +116,9 @@ jobs:
           cache-from: type=gha
           annotations: |
             index:org.opencontainers.image.description=Serverless Functions Console Plugin for OpenShift
-            index:org.opencontainers.image.source=https://github.com/twoGiants/func-console
-            index:org.opencontainers.image.vendor=https://github.com/twoGiants/func-console
-            index:org.opencontainers.image.url=https://github.com/twoGiants/func-console/pkgs/container/console-functions-plugin
+            index:org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            index:org.opencontainers.image.vendor=https://github.com/${{ github.repository }}
+            index:org.opencontainers.image.url=https://github.com/${{ github.repository }}/pkgs/container/console-functions-plugin
 
       # Attestation is required for OCP.
       - name: Attest Build Provenance
