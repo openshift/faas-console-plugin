@@ -12,7 +12,7 @@ RUN yarn install --immutable
 COPY --exclude=node_modules --exclude=backend . .
 RUN  yarn build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.24 AS go-build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26 AS go-build
 ARG TARGETOS
 ARG TARGETARCH
 

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -14,10 +16,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 
-	"github.com/ory/viper"
-	"knative.dev/func/cmd/ci"
+	cigithub "knative.dev/func/pkg/ci/github"
 	"knative.dev/func/pkg/functions"
 )
 
@@ -106,9 +106,6 @@ var validBranch = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?
 // validNamespace restricts namespaces to valid Kubernetes names.
 var validNamespace = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 
-// ciMu serializes access to viper globals used by ci.NewCIConfig.
-var ciMu sync.Mutex
-
 type fileEntry struct {
 	Path    string `json:"path"`
 	Mode    string `json:"mode"`
@@ -170,7 +167,7 @@ func handleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := generateCIWorkflow(root, cfg.Branch, cfg.Registry); err != nil {
+	if err := generateCIWorkflow(root, cfg.Runtime, cfg.Branch, cfg.Registry); err != nil {
 		jsonError(w, "failed to generate CI workflow: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -223,35 +220,18 @@ func handleFuncCreate(w http.ResponseWriter, r *http.Request) {
 
 const ocpInternalRegistry = "image-registry.openshift-image-registry.svc:5000/"
 
-func generateCIWorkflow(root, branch, registry string) error {
-	ciMu.Lock()
-	defer ciMu.Unlock()
+func generateCIWorkflow(root, runtime, branch, registry string) error {
+	gen := cigithub.NewWorkflowGenerator(
+		cigithub.WithWorkflowConfig(cigithub.WorkflowConfig{
+			Branch:        branch,
+			RegistryLogin: !strings.HasPrefix(registry, ocpInternalRegistry),
+			TestStep:      cigithub.DefaultTestStep,
+		}),
+		cigithub.WithMessageWriter(io.Discard),
+	)
 
-	useRegistryLogin := !strings.HasPrefix(registry, ocpInternalRegistry)
-
-	viper.Set(ci.PlatformFlag, ci.DefaultPlatform)
-	viper.Set(ci.PathFlag, root)
-	viper.Set(ci.BranchFlag, branch)
-	viper.Set(ci.WorkflowNameFlag, ci.DefaultWorkflowName)
-	viper.Set(ci.KubeconfigSecretNameFlag, ci.DefaultKubeconfigSecretName)
-	viper.Set(ci.RegistryLoginUrlVariableNameFlag, ci.DefaultRegistryLoginUrlVariableName)
-	viper.Set(ci.RegistryUserVariableNameFlag, ci.DefaultRegistryUserVariableName)
-	viper.Set(ci.RegistryPassSecretNameFlag, ci.DefaultRegistryPassSecretName)
-	viper.Set(ci.RegistryUrlVariableNameFlag, ci.DefaultRegistryUrlVariableName)
-	viper.Set(ci.UseRegistryLoginFlag, useRegistryLogin)
-	viper.Set(ci.WorkflowDispatchFlag, ci.DefaultWorkflowDispatch)
-	viper.Set(ci.UseRemoteBuildFlag, ci.DefaultUseRemoteBuild)
-	viper.Set(ci.UseSelfHostedRunnerFlag, ci.DefaultUseSelfHostedRunner)
-
-	// Branch is already set via viper, so currentBranch won't be called.
-	noop := func(string) (string, error) { return "", nil }
-	workDir := func() (string, error) { return root, nil }
-
-	cfg, err := ci.NewCIConfig(noop, workDir)
-	if err != nil {
-		return err
-	}
-
-	workflow := ci.NewGitHubWorkflow(cfg)
-	return workflow.Export(cfg.FnGitHubWorkflowFilepath(root), ci.DefaultWorkflowWriter)
+	return gen.Generate(context.Background(), functions.Function{
+		Root:    root,
+		Runtime: runtime,
+	})
 }
