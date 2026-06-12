@@ -180,5 +180,16 @@
       "All tests pass, no broken imports"
     ],
     "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "Landing page: copy buttons handle clipboard failures gracefully (non-HTTPS, permission denied)",
+    "steps": [
+      "Pre-check navigator.clipboard availability before calling writeText",
+      "Catch writeText rejections (e.g. permission denied, iframe sandbox)",
+      "Error state shows X icon with 'Copy failed' label on hover, auto-clears after 1.5s",
+      "Both copy buttons (install command and YAML) have error handling"
+    ],
+    "passes": true
   }
 ]

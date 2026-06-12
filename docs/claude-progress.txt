@@ -2,6 +2,17 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-06-12 | Session: Fix clipboard copy error handling
+Worked on: Add error state for copy-to-clipboard buttons on landing page
+Completed:
+- Added error handling for navigator.clipboard API unavailability (e.g. non-HTTPS contexts)
+- Added .catch() handler for clipboard.writeText promise rejection
+- Added error state styling (.copy-error class) with red color, X icon, and "Copy failed" hover label
+- Applied error handling to both install command and YAML copy buttons
+Left off: Branch pr/fix-catch ready for review.
+Blockers: None
+
+---
 ## 2026-05-21 | Session: Page co-location restructure (continued)
 Worked on: Follow-up fixes from review, test cleanup, docs
 Completed:

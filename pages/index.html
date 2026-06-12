@@ -149,6 +149,9 @@
         position: absolute;
         top: 0.6rem;
         right: 0.6rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
         background: transparent;
         border: none;
         color: #484f58;
@@ -160,10 +163,16 @@
       }
       .copy-btn:hover { color: #8b949e; background: rgba(255, 255, 255, 0.06); }
       .copy-btn.copied { color: var(--accent); }
+      .copy-btn.copy-error { color: #f85149; }
       .copy-icon { width: 16px; height: 16px; }
       .check-icon { width: 16px; height: 16px; display: none; }
+      .error-icon { width: 16px; height: 16px; display: none; }
+      .error-label { display: none; font-family: 'JetBrains Mono', monospace; font-size: 0.65rem; }
       .copy-btn.copied .copy-icon { display: none; }
       .copy-btn.copied .check-icon { display: inline; }
+      .copy-btn.copy-error .copy-icon { display: none; }
+      .copy-btn.copy-error .error-icon { display: inline; }
+      .copy-btn.copy-error:hover .error-label { display: inline; }
       .fade-in { animation: fadeIn 0.6s ease both; }
       .fade-in-delay-1 { animation-delay: 0.1s; }
       .fade-in-delay-2 { animation-delay: 0.2s; }
@@ -188,6 +197,8 @@
           <button class="copy-btn" data-target="install-cmd" data-strip="$ ">
             <svg class="copy-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
             <svg class="check-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+            <svg class="error-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+            <span class="error-label">Copy failed</span>
           </button>
           <pre><code id="install-cmd"><span class="prompt">$</span> oc new-project console-functions-plugin
 <span class="prompt">$</span> oc apply -f https://functions-dev.github.io/ocp-console-plugin/plugin.yaml</code></pre>
@@ -209,6 +220,8 @@
           <button class="copy-btn" data-target="yaml-content">
             <svg class="copy-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
             <svg class="check-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+            <svg class="error-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+            <span class="error-label">Copy failed</span>
           </button>
           <div class="yaml-scroll">
             <pre><code id="yaml-content">Loading...</code></pre>
@@ -227,9 +240,18 @@
           if (strip) {
             text = text.split('\n').map(l => l.startsWith(strip) ? l.slice(strip.length) : l).join('\n');
           }
+          // Clipboard API requires a secure context (HTTPS). On plain HTTP, navigator.clipboard might be undefined.
+          if (typeof navigator.clipboard === 'undefined') {
+            btn.classList.add('copy-error');
+            setTimeout(() => { btn.classList.remove('copy-error'); }, 1500);
+            return;
+          }
           navigator.clipboard.writeText(text).then(() => {
             btn.classList.add('copied');
             setTimeout(() => { btn.classList.remove('copied'); }, 1500);
+          }).catch(() => {
+            btn.classList.add('copy-error');
+            setTimeout(() => { btn.classList.remove('copy-error'); }, 1500);
           });
         });
       });
