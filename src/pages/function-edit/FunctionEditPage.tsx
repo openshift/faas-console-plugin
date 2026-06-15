@@ -15,7 +15,7 @@ import { FileEntry, RepoMetadata } from '../../common/services/types';
 import {
   getLanguageFromPath,
   handlerMap,
-  parseNamespaceAndRuntime,
+  parseFuncYaml,
 } from '../../common/utils/utils';
 
 // --- page component ---
@@ -203,7 +203,7 @@ function determineHandler(loadedFiles: FileEntry[]): string {
   const funcYaml = loadedFiles.find((f) => f.path === 'func.yaml');
   if (!funcYaml) return '';
 
-  const { runtime } = parseNamespaceAndRuntime(funcYaml.content);
+  const { runtime } = parseFuncYaml(funcYaml.content);
 
   const handlerPath = handlerMap[runtime];
   if (loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;

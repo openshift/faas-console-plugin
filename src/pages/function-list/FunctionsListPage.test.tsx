@@ -520,6 +520,56 @@ describe('FunctionsListPage', () => {
     });
   });
 
+  it('skips repo when fetchFileContent throws (deleted repo)', async () => {
+    renderAuthenticated();
+    mockUseSourceControl.mockReturnValue({
+      listFunctionRepos: vi
+        .fn()
+        .mockResolvedValue([repoFixture('good-func'), repoFixture('deleted-repo')]),
+      fetchFileContent: vi.fn().mockImplementation((repo: { name: string }) => {
+        if (repo.name === 'deleted-repo') return Promise.reject(new Error('Not Found'));
+        return Promise.resolve(`name: ${repo.name}\nruntime: go\nnamespace: demo\n`);
+      }),
+    });
+    mockUseClusterService.mockReturnValue(clusterData());
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    const names = await screen.findAllByTestId('fn-name');
+    expect(names).toHaveLength(1);
+    expect(names[0]).toHaveTextContent('good-func');
+  });
+
+  it('uses func.yaml name instead of repo name for cluster matching', async () => {
+    renderAuthenticated();
+    mockUseSourceControl.mockReturnValue({
+      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-repo')]),
+      fetchFileContent: vi
+        .fn()
+        .mockResolvedValue('name: my-function\nruntime: node\nnamespace: demo\n'),
+    });
+    mockUseClusterService.mockReturnValue(
+      clusterData({
+        knativeServices: [ksvcFixture('my-function', 'True')],
+        deployments: [deploymentFixture('my-function', 1, 1)],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('fn-name')).toHaveTextContent('my-function');
+    expect(screen.getByTestId('fn-status')).toHaveTextContent('Running');
+    expect(mockUseClusterService).toHaveBeenLastCalledWith(['my-function']);
+  });
+
   it('removes a deleted repo from the list after refresh', async () => {
     renderAuthenticated();
     const mockListRepos = vi

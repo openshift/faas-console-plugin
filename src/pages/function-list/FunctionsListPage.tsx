@@ -28,7 +28,7 @@ import {
 import { useClusterService } from '../../common/services/cluster/useClusterService';
 import { SourceControlService } from '../../common/services/source-control/SourceControlService';
 import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
-import { errorMessage, parseNamespaceAndRuntime } from '../../common/utils/utils';
+import { errorMessage, parseFuncYaml } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
   return (
@@ -219,19 +219,23 @@ function useFunctionListPage(): {
 
 async function loadFunctionTableItems(svc: SourceControlService): Promise<FunctionTableItem[]> {
   const repos = await svc.listFunctionRepos();
-  const items = await Promise.all(
+  const results = await Promise.all(
     repos.map(async (repo) => {
-      const funcYaml = await svc.fetchFileContent(repo, 'func.yaml');
-      const { namespace, runtime } = parseNamespaceAndRuntime(funcYaml);
-      return newItem(repo.name, namespace, runtime);
+      try {
+        const funcYaml = await svc.fetchFileContent(repo, 'func.yaml');
+        const { name, namespace, runtime } = parseFuncYaml(funcYaml);
+        return newItem(name || repo.name, namespace, runtime);
+      } catch {
+        return null;
+      }
     }),
   );
-  return items;
+  return results.filter((item): item is FunctionTableItem => item !== null);
 }
 
-function newItem(repoName: string, namespace: string, runtime: string): FunctionTableItem {
+function newItem(name: string, namespace: string, runtime: string): FunctionTableItem {
   return {
-    name: repoName,
+    name,
     namespace,
     runtime,
     status: 'NotDeployed' as const,
