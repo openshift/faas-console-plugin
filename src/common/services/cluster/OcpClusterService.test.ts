@@ -36,17 +36,15 @@ function setupK8sHandlers(namespace: string) {
     http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts`, () =>
       HttpResponse.json({}),
     ),
-    http.post(
-      `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`,
-      () => HttpResponse.json({}),
+    http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`, () =>
+      HttpResponse.json({}),
     ),
     http.post(
       `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,
       () => HttpResponse.json({}),
     ),
-    http.post(
-      `${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts/func-github/token`,
-      () => HttpResponse.json({ status: { token: 'sa-token-value' } }),
+    http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts/func-github/token`, () =>
+      HttpResponse.json({ status: { token: 'sa-token-value' } }),
     ),
   );
 }
@@ -84,9 +82,8 @@ describe('OcpClusterService', () => {
       http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts`, () =>
         HttpResponse.json(conflict, { status: 409 }),
       ),
-      http.post(
-        `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`,
-        () => HttpResponse.json(conflict, { status: 409 }),
+      http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`, () =>
+        HttpResponse.json(conflict, { status: 409 }),
       ),
       http.post(
         `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,
