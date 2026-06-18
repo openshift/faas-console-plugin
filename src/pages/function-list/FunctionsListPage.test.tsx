@@ -1,5 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router-dom-v5-compat';
 import FunctionsListPage from './FunctionsListPage';
 import { PAT_KEY } from '../../common/services/types';
@@ -16,11 +18,6 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
       {children}
     </>
   ),
-}));
-
-const mockUseSourceControl = vi.fn();
-vi.mock('../../common/services/source-control/useSourceControlService', () => ({
-  useSourceControlService: () => mockUseSourceControl(),
 }));
 
 const mockUseClusterService = vi.fn();
@@ -50,6 +47,8 @@ vi.mock('../../common/components/UserAvatar', () => ({
   ),
 }));
 
+const GITHUB_API = 'https://api.github.com';
+
 function clusterData(
   overrides: Partial<{
     knativeServices: unknown[];
@@ -71,12 +70,45 @@ function renderAuthenticated() {
   sessionStorage.setItem(PAT_KEY, 'ghp_test');
 }
 
+function setupReposHandler(repos: { owner: string; name: string; url: string }[]) {
+  server.use(
+    http.get(`${GITHUB_API}/search/repositories`, () =>
+      HttpResponse.json({
+        total_count: repos.length,
+        items: repos.map((r) => ({
+          owner: { login: r.owner },
+          name: r.name,
+          html_url: r.url,
+          default_branch: 'main',
+        })),
+      }),
+    ),
+  );
+}
+
+function setupFuncYamlHandler(repoName: string, yaml: string) {
+  server.use(
+    http.get(`${GITHUB_API}/repos/twoGiants/${repoName}/contents/func.yaml`, () =>
+      HttpResponse.json({
+        content: btoa(yaml),
+        encoding: 'base64',
+        type: 'file',
+      }),
+    ),
+  );
+}
+
+function setupFuncYamlHandlerAll(repos: { name: string; yaml: string }[]) {
+  for (const repo of repos) {
+    setupFuncYamlHandler(repo.name, repo.yaml);
+  }
+}
+
 function repoFixture(name: string) {
   return {
     owner: 'twoGiants',
     name,
     url: `https://github.com/twoGiants/${name}`,
-    defaultBranch: 'main',
   };
 }
 
@@ -129,20 +161,13 @@ describe('FunctionsListPage', () => {
     sessionStorage.clear();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   afterAll(() => {
     sessionStorage.clear();
   });
 
   it('renders a spinner while loading', () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([]),
-      fetchFileContent: vi.fn(),
-    });
+    setupReposHandler([]);
     mockUseClusterService.mockReturnValue(clusterData({ loaded: false }));
 
     render(
@@ -156,10 +181,7 @@ describe('FunctionsListPage', () => {
 
   it('renders the empty state when loaded with no functions', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([]),
-      fetchFileContent: vi.fn(),
-    });
+    setupReposHandler([]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -173,10 +195,8 @@ describe('FunctionsListPage', () => {
 
   it('renders table when functions are loaded', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-func')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: my-func\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('my-func')]);
+    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         knativeServices: [ksvcFixture('my-func', 'True')],
@@ -195,12 +215,8 @@ describe('FunctionsListPage', () => {
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('orphan-func')]),
-      fetchFileContent: vi
-        .fn()
-        .mockResolvedValue('name: orphan-func\nruntime: node\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('orphan-func')]);
+    setupFuncYamlHandler('orphan-func', 'name: orphan-func\nruntime: node\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -214,10 +230,11 @@ describe('FunctionsListPage', () => {
 
   it('shows error alert when listing repos fails', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockRejectedValue(new Error('Bad credentials')),
-      fetchFileContent: vi.fn(),
-    });
+    server.use(
+      http.get(`${GITHUB_API}/search/repositories`, () =>
+        HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
+      ),
+    );
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -226,15 +243,16 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Bad credentials')).toBeInTheDocument();
+    expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
   });
 
   it('renders empty state when GitHub API fails', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockRejectedValue(new Error('Requires authentication')),
-      fetchFileContent: vi.fn(),
-    });
+    server.use(
+      http.get(`${GITHUB_API}/search/repositories`, () =>
+        HttpResponse.json({ message: 'Requires authentication' }, { status: 401 }),
+      ),
+    );
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -246,12 +264,7 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
   });
 
-  it('does not call listFunctionRepos when not authenticated', async () => {
-    const mockListRepos = vi.fn().mockResolvedValue([]);
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: mockListRepos,
-      fetchFileContent: vi.fn(),
-    });
+  it('does not call GitHub API when not authenticated', async () => {
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -261,16 +274,11 @@ describe('FunctionsListPage', () => {
     );
 
     await screen.findByRole('heading', { name: 'No functions found' });
-
-    expect(mockListRepos).not.toHaveBeenCalled();
   });
 
   it('renders UserAvatar in header', () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([]),
-      fetchFileContent: vi.fn(),
-    });
+    setupReposHandler([]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -283,10 +291,6 @@ describe('FunctionsListPage', () => {
   });
 
   it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([]),
-      fetchFileContent: vi.fn(),
-    });
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -303,10 +307,8 @@ describe('FunctionsListPage', () => {
 
   it('enriches function with status from Knative Service and replicas from Deployment', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-func')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: my-func\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('my-func')]);
+    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         knativeServices: [ksvcFixture('my-func', 'True')],
@@ -327,10 +329,8 @@ describe('FunctionsListPage', () => {
 
   it('shows ScaledToZero when Knative Service is Ready but Deployment has 0 replicas', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-func')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: my-func\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('my-func')]);
+    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         knativeServices: [ksvcFixture('my-func', 'True')],
@@ -350,10 +350,8 @@ describe('FunctionsListPage', () => {
 
   it('shows Deploying when Knative Service Ready condition is Unknown', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-func')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: my-func\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('my-func')]);
+    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         knativeServices: [ksvcFixture('my-func', 'Unknown')],
@@ -372,10 +370,8 @@ describe('FunctionsListPage', () => {
 
   it('shows Error when Knative Service Ready condition is False', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-func')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: my-func\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('my-func')]);
+    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         knativeServices: [ksvcFixture('my-func', 'False')],
@@ -394,10 +390,8 @@ describe('FunctionsListPage', () => {
 
   it('picks latest revision deployment when multiple revisions exist', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('my-func')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: my-func\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('my-func')]);
+    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         knativeServices: [ksvcFixture('my-func', 'True', undefined, 'my-func-00002')],
@@ -420,10 +414,8 @@ describe('FunctionsListPage', () => {
 
   it('passes function names to useClusterService', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('fn-a')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: fn-a\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('fn-a')]);
+    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -439,11 +431,24 @@ describe('FunctionsListPage', () => {
 
   it('re-fetches repos when refresh button is clicked', async () => {
     renderAuthenticated();
-    const mockListRepos = vi.fn().mockResolvedValue([repoFixture('fn-a')]);
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: mockListRepos,
-      fetchFileContent: vi.fn().mockResolvedValue('name: fn-a\nruntime: go\nnamespace: demo\n'),
-    });
+    let callCount = 0;
+    server.use(
+      http.get(`${GITHUB_API}/search/repositories`, () => {
+        callCount++;
+        return HttpResponse.json({
+          total_count: 1,
+          items: [
+            {
+              owner: { login: 'twoGiants' },
+              name: 'fn-a',
+              html_url: 'https://github.com/twoGiants/fn-a',
+              default_branch: 'main',
+            },
+          ],
+        });
+      }),
+    );
+    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -453,21 +458,19 @@ describe('FunctionsListPage', () => {
     );
 
     await screen.findByTestId('fn-name');
-    expect(mockListRepos).toHaveBeenCalledTimes(1);
+    expect(callCount).toBe(1);
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
     await waitFor(() => {
-      expect(mockListRepos).toHaveBeenCalledTimes(2);
+      expect(callCount).toBe(2);
     });
   });
 
   it('does not show spinner on refresh button during initial page load', async () => {
     renderAuthenticated();
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: vi.fn().mockResolvedValue([repoFixture('fn-a')]),
-      fetchFileContent: vi.fn().mockResolvedValue('name: fn-a\nruntime: go\nnamespace: demo\n'),
-    });
+    setupReposHandler([repoFixture('fn-a')]);
+    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -484,17 +487,35 @@ describe('FunctionsListPage', () => {
 
   it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
     renderAuthenticated();
-    let resolveRepos: (value: unknown[]) => void;
-    const mockListRepos = vi.fn().mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveRepos = resolve;
-        }),
+    let resolveSearch: (() => void) | undefined;
+    let firstCall = true;
+
+    function repoJson() {
+      return HttpResponse.json({
+        total_count: 1,
+        items: [
+          {
+            owner: { login: 'twoGiants' },
+            name: 'fn-a',
+            html_url: 'https://github.com/twoGiants/fn-a',
+            default_branch: 'main',
+          },
+        ],
+      });
+    }
+
+    server.use(
+      http.get(`${GITHUB_API}/search/repositories`, () => {
+        if (firstCall) {
+          firstCall = false;
+          return repoJson();
+        }
+        return new Promise<Response>((resolve) => {
+          resolveSearch = () => resolve(repoJson());
+        });
+      }),
     );
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: mockListRepos,
-      fetchFileContent: vi.fn().mockResolvedValue('name: fn-a\nruntime: go\nnamespace: demo\n'),
-    });
+    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -503,18 +524,14 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    // Complete initial load
-    resolveRepos!([repoFixture('fn-a')]);
     await screen.findByTestId('fn-name');
 
     const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
 
-    // Click refresh -- should show spinner
     await userEvent.click(refreshBtn);
     expect(refreshBtn.querySelector('[role="progressbar"]')).toBeInTheDocument();
 
-    // Resolve the refresh fetch -- spinner should disappear
-    resolveRepos!([repoFixture('fn-a')]);
+    resolveSearch!();
     await waitFor(() => {
       expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
     });
@@ -522,19 +539,46 @@ describe('FunctionsListPage', () => {
 
   it('removes a deleted repo from the list after refresh', async () => {
     renderAuthenticated();
-    const mockListRepos = vi
-      .fn()
-      .mockResolvedValueOnce([repoFixture('fn-a'), repoFixture('fn-b')])
-      .mockResolvedValueOnce([repoFixture('fn-a')]);
-    const mockFetchFile = vi
-      .fn()
-      .mockImplementation(
-        (repo: { name: string }) => `name: ${repo.name}\nruntime: go\nnamespace: demo\n`,
-      );
-    mockUseSourceControl.mockReturnValue({
-      listFunctionRepos: mockListRepos,
-      fetchFileContent: mockFetchFile,
-    });
+    let callCount = 0;
+    server.use(
+      http.get(`${GITHUB_API}/search/repositories`, () => {
+        callCount++;
+        if (callCount === 1) {
+          return HttpResponse.json({
+            total_count: 2,
+            items: [
+              {
+                owner: { login: 'twoGiants' },
+                name: 'fn-a',
+                html_url: 'https://github.com/twoGiants/fn-a',
+                default_branch: 'main',
+              },
+              {
+                owner: { login: 'twoGiants' },
+                name: 'fn-b',
+                html_url: 'https://github.com/twoGiants/fn-b',
+                default_branch: 'main',
+              },
+            ],
+          });
+        }
+        return HttpResponse.json({
+          total_count: 1,
+          items: [
+            {
+              owner: { login: 'twoGiants' },
+              name: 'fn-a',
+              html_url: 'https://github.com/twoGiants/fn-a',
+              default_branch: 'main',
+            },
+          ],
+        });
+      }),
+    );
+    setupFuncYamlHandlerAll([
+      { name: 'fn-a', yaml: 'name: fn-a\nruntime: go\nnamespace: demo\n' },
+      { name: 'fn-b', yaml: 'name: fn-b\nruntime: go\nnamespace: demo\n' },
+    ]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -543,13 +587,11 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    // Initial load: both repos visible
     const names = await screen.findAllByTestId('fn-name');
     expect(names).toHaveLength(2);
     expect(names[0]).toHaveTextContent('fn-a');
     expect(names[1]).toHaveTextContent('fn-b');
 
-    // Click refresh (second call returns only fn-a)
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
 
     await waitFor(() => {

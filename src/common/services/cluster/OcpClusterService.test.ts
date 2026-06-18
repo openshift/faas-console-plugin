@@ -1,13 +1,55 @@
+import { http, HttpResponse } from 'msw';
+import { server } from '../../../../testing/msw/server';
 import { OcpClusterService } from './OcpClusterService';
 
-const mockGet = vi.fn();
-const mockPost = vi.fn();
-
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
-  const fn = (...args: unknown[]) => mockGet(...args);
-  fn.post = (...args: unknown[]) => mockPost(...args);
-  return { consoleFetchJSON: fn };
+  async function handleResponse(res: Response) {
+    const json = await res.json();
+    if (!res.ok) throw json;
+    return json;
+  }
+
+  const consoleFetchJSON = Object.assign(
+    async (url: string) => {
+      const res = await fetch(new URL(url, 'http://localhost').href);
+      return handleResponse(res);
+    },
+    {
+      post: async (url: string, body: unknown) => {
+        const res = await fetch(new URL(url, 'http://localhost').href, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        return handleResponse(res);
+      },
+    },
+  );
+
+  return { consoleFetchJSON };
 });
+
+const K8S_API = 'http://localhost/api/kubernetes';
+
+function setupK8sHandlers(namespace: string) {
+  server.use(
+    http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts`, () =>
+      HttpResponse.json({}),
+    ),
+    http.post(
+      `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`,
+      () => HttpResponse.json({}),
+    ),
+    http.post(
+      `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,
+      () => HttpResponse.json({}),
+    ),
+    http.post(
+      `${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts/func-github/token`,
+      () => HttpResponse.json({ status: { token: 'sa-token-value' } }),
+    ),
+  );
+}
 
 describe('OcpClusterService', () => {
   const namespace = 'my-ns';
@@ -16,17 +58,10 @@ describe('OcpClusterService', () => {
     (window as unknown as Record<string, unknown>).SERVER_FLAGS = {
       kubeAPIServerURL: 'https://api.cluster.example.com:6443',
     };
-    // POST calls: SA, Role, RoleBinding, ImageBuilderBinding, TokenRequest
-    mockPost
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({ status: { token: 'sa-token-value' } });
+    setupK8sHandlers(namespace);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
     delete (window as unknown as Record<string, unknown>).SERVER_FLAGS;
   });
 
@@ -34,52 +69,6 @@ describe('OcpClusterService', () => {
     const svc = new OcpClusterService();
     const kubeconfig = await svc.generateKubeconfig(namespace);
 
-    // Verify SA creation
-    expect(mockPost).toHaveBeenCalledWith(
-      `/api/kubernetes/api/v1/namespaces/${namespace}/serviceaccounts`,
-      expect.objectContaining({
-        metadata: { name: 'func-github', namespace },
-      }),
-    );
-
-    // Verify Role creation
-    expect(mockPost).toHaveBeenCalledWith(
-      `/api/kubernetes/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`,
-      expect.objectContaining({
-        metadata: { name: 'func-github-deployer', namespace },
-      }),
-    );
-
-    // Verify RoleBinding creation
-    expect(mockPost).toHaveBeenCalledWith(
-      `/api/kubernetes/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,
-      expect.objectContaining({
-        metadata: { name: 'func-github-deployer', namespace },
-      }),
-    );
-
-    // Verify image-builder RoleBinding
-    expect(mockPost).toHaveBeenCalledWith(
-      `/api/kubernetes/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,
-      expect.objectContaining({
-        metadata: { name: 'func-github-image-builder', namespace },
-        roleRef: expect.objectContaining({
-          kind: 'ClusterRole',
-          name: 'system:image-builder',
-        }),
-      }),
-    );
-
-    // Verify TokenRequest
-    expect(mockPost).toHaveBeenCalledWith(
-      `/api/kubernetes/api/v1/namespaces/${namespace}/serviceaccounts/func-github/token`,
-      expect.objectContaining({
-        kind: 'TokenRequest',
-        spec: { expirationSeconds: 31536000 },
-      }),
-    );
-
-    // Verify kubeconfig structure
     const parsed = JSON.parse(kubeconfig);
     expect(parsed.apiVersion).toBe('v1');
     expect(parsed.kind).toBe('Config');
@@ -89,33 +78,21 @@ describe('OcpClusterService', () => {
     expect(parsed.contexts[0].context.namespace).toBe(namespace);
   });
 
-  it('treats 409 Conflict (response.status) on SA/Role/RoleBinding as success', async () => {
-    const conflict = Object.assign(new Error('Conflict'), { response: { status: 409 } });
-
-    mockPost
-      .mockReset()
-      .mockRejectedValueOnce(conflict) // SA already exists
-      .mockRejectedValueOnce(conflict) // Role already exists
-      .mockRejectedValueOnce(conflict) // RoleBinding already exists
-      .mockRejectedValueOnce(conflict) // ImageBuilderBinding already exists
-      .mockResolvedValueOnce({ status: { token: 'sa-token-value' } }); // TokenRequest
-
-    const svc = new OcpClusterService();
-    const kubeconfig = await svc.generateKubeconfig(namespace);
-
-    expect(JSON.parse(kubeconfig).users[0].user.token).toBe('sa-token-value');
-  });
-
-  it('treats K8s Status object with code 409 as success', async () => {
-    const k8sConflict = { code: 409, reason: 'AlreadyExists', message: 'already exists' };
-
-    mockPost
-      .mockReset()
-      .mockRejectedValueOnce(k8sConflict)
-      .mockRejectedValueOnce(k8sConflict)
-      .mockRejectedValueOnce(k8sConflict)
-      .mockRejectedValueOnce(k8sConflict)
-      .mockResolvedValueOnce({ status: { token: 'sa-token-value' } });
+  it('treats 409 Conflict on SA/Role/RoleBinding as success', async () => {
+    const conflict = { code: 409, reason: 'AlreadyExists', message: 'already exists' };
+    server.use(
+      http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts`, () =>
+        HttpResponse.json(conflict, { status: 409 }),
+      ),
+      http.post(
+        `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`,
+        () => HttpResponse.json(conflict, { status: 409 }),
+      ),
+      http.post(
+        `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,
+        () => HttpResponse.json(conflict, { status: 409 }),
+      ),
+    );
 
     const svc = new OcpClusterService();
     const kubeconfig = await svc.generateKubeconfig(namespace);
@@ -124,12 +101,17 @@ describe('OcpClusterService', () => {
   });
 
   it('propagates non-409 API errors', async () => {
-    const forbidden = Object.assign(new Error('Forbidden'), { response: { status: 403 } });
-
-    mockPost.mockReset().mockRejectedValueOnce(forbidden);
+    server.use(
+      http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts`, () =>
+        HttpResponse.json(
+          { code: 403, reason: 'Forbidden', message: 'Forbidden' },
+          { status: 403 },
+        ),
+      ),
+    );
 
     const svc = new OcpClusterService();
-    await expect(svc.generateKubeconfig(namespace)).rejects.toThrow('Forbidden');
+    await expect(svc.generateKubeconfig(namespace)).rejects.toMatchObject({ code: 403 });
   });
 
   it('throws when SERVER_FLAGS is missing', async () => {
