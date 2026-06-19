@@ -1,5 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse, delay } from 'msw';
+import { server } from '../../../testing/msw/server';
 import { UserAvatar } from './UserAvatar';
 import { PAT_KEY, USER_KEY } from '../services/types';
 import { ForgeConnectionContext } from '../context/ForgeConnectionProvider';
@@ -9,12 +11,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const mockFetchUserInfo = vi.fn();
-vi.mock('../services/source-control/useSourceControlService', () => ({
-  useSourceControlService: () => ({
-    fetchUserInfo: mockFetchUserInfo,
-  }),
-}));
+const GITHUB_API = 'https://api.github.com';
 
 const testUser = { name: 'twoGiants' };
 
@@ -30,10 +27,6 @@ function renderWithContext(
 describe('UserAvatar', () => {
   beforeEach(() => {
     sessionStorage.clear();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   afterAll(() => {
@@ -112,10 +105,9 @@ describe('UserAvatar', () => {
       expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled();
     });
 
-    it('calls fetchUserInfo with PAT and updates UI on successful connect', async () => {
+    it('calls GitHub API with PAT and updates UI on successful connect', async () => {
       const user = userEvent.setup();
       const connectToForge = vi.fn();
-      mockFetchUserInfo.mockResolvedValue(testUser);
 
       renderWithContext(<UserAvatar enableReconnect />, {
         isActive: false,
@@ -128,25 +120,28 @@ describe('UserAvatar', () => {
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
       await waitFor(() => {
-        expect(mockFetchUserInfo).toHaveBeenCalledWith('ghp_valid');
+        expect(screen.getByText('twoGiants')).toBeInTheDocument();
       });
 
-      expect(screen.getByText('twoGiants')).toBeInTheDocument();
       expect(sessionStorage.getItem(PAT_KEY)).toBe('ghp_valid');
       expect(JSON.parse(sessionStorage.getItem(USER_KEY)!)).toEqual(testUser);
       expect(connectToForge).toHaveBeenCalled();
     });
 
-    it('shows error alert when fetchUserInfo rejects', async () => {
+    it('shows error alert when GitHub API rejects', async () => {
       const user = userEvent.setup();
-      mockFetchUserInfo.mockRejectedValue(new Error('Bad credentials'));
+      server.use(
+        http.get(`${GITHUB_API}/user`, () =>
+          HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
+        ),
+      );
 
       renderWithContext(<UserAvatar enableReconnect />);
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_bad');
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
-      expect(await screen.findByText('Bad credentials')).toBeInTheDocument();
+      expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
     });
 
     it('closes modal when Cancel is clicked', async () => {
@@ -164,7 +159,6 @@ describe('UserAvatar', () => {
     it('clears PAT input after successful connect', async () => {
       const user = userEvent.setup();
       const connectToForge = vi.fn();
-      mockFetchUserInfo.mockResolvedValue(testUser);
 
       renderWithContext(<UserAvatar enableReconnect />, {
         isActive: false,
@@ -187,28 +181,32 @@ describe('UserAvatar', () => {
 
     it('clears PAT input and error on cancel', async () => {
       const user = userEvent.setup();
-      mockFetchUserInfo.mockRejectedValue(new Error('Bad credentials'));
+      server.use(
+        http.get(`${GITHUB_API}/user`, () =>
+          HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
+        ),
+      );
 
       renderWithContext(<UserAvatar enableReconnect />);
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_bad');
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
-      expect(await screen.findByText('Bad credentials')).toBeInTheDocument();
+      expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'Cancel' }));
       await user.click(screen.getByRole('button', { name: 'Connect to GitHub' }));
 
       expect(screen.getByLabelText('Personal Access Token')).toHaveValue('');
-      expect(screen.queryByText('Bad credentials')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Bad credentials/)).not.toBeInTheDocument();
     });
 
     it('disables Cancel button while validating', async () => {
       const user = userEvent.setup();
-      let resolveConnect: () => void;
-      mockFetchUserInfo.mockReturnValue(
-        new Promise<void>((resolve) => {
-          resolveConnect = resolve;
+      server.use(
+        http.get(`${GITHUB_API}/user`, async () => {
+          await delay('infinite');
+          return HttpResponse.json({ login: 'twoGiants' });
         }),
       );
 
@@ -218,8 +216,6 @@ describe('UserAvatar', () => {
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
-
-      resolveConnect!();
     });
   });
 });

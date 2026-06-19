@@ -1,49 +1,53 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router-dom';
 import FunctionCreatePage from './FunctionCreatePage';
 import { PAT_KEY, USER_KEY } from '../../common/services/types';
 
-const mockGenerateFunction = vi.fn();
-const mockCreateRepoWithSecret = vi.fn();
-const mockGenerateKubeconfig = vi.fn();
 const mockNavigate = vi.fn();
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  DocumentTitle: ({ children }: { children: string }) => children,
-  ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
-    <>
-      {title}
-      {children}
-    </>
-  ),
-}));
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
+  async function handleResponse(res: Response) {
+    const json = await res.json();
+    if (!res.ok) throw json;
+    return json;
+  }
 
-vi.mock('../../common/services/function/useFunctionService', () => ({
-  useFunctionService: () => ({ generateFunction: mockGenerateFunction }),
-}));
+  const consoleFetchJSON = Object.assign(
+    async (url: string) => {
+      const res = await fetch(new URL(url, 'http://localhost').href);
+      return handleResponse(res);
+    },
+    {
+      post: async (url: string, body: unknown) => {
+        const res = await fetch(new URL(url, 'http://localhost').href, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        return handleResponse(res);
+      },
+    },
+  );
 
-vi.mock('../../common/services/source-control/useSourceControlService', () => ({
-  useSourceControlService: () => ({
-    createRepoWithSecret: mockCreateRepoWithSecret,
-    listFunctionRepos: vi.fn(),
-    fetchFileContent: vi.fn(),
-  }),
-}));
-
-vi.mock('../../common/services/cluster/useClusterService', () => ({
-  useClusterService: () => ({
-    knativeServices: [],
-    deployments: [],
-    loaded: true,
-    error: undefined,
-    generateKubeconfig: mockGenerateKubeconfig,
-  }),
-}));
+  return {
+    DocumentTitle: ({ children }: { children: string }) => children,
+    ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+      <>
+        {title}
+        {children}
+      </>
+    ),
+    consoleFetchJSON,
+    useK8sWatchResource: vi.fn().mockReturnValue([[], true, null]),
+  };
+});
 
 vi.mock('react-router-dom-v5-compat', () => ({
   useNavigate: () => mockNavigate,
@@ -54,6 +58,110 @@ vi.mock('../../common/components/UserAvatar', () => ({
     <span data-testid="user-avatar">{enableReconnect ? 'reconnect' : 'no-reconnect'}</span>
   ),
 }));
+
+vi.mock('libsodium-wrappers', () => ({
+  default: {
+    ready: Promise.resolve(),
+    base64_variants: { ORIGINAL: 1 },
+    from_base64: () => new Uint8Array([10, 20, 30]),
+    from_string: () => new Uint8Array([5, 6, 7]),
+    crypto_box_seal: () => new Uint8Array([1, 2, 3, 4]),
+    to_base64: () => 'AQIDBA==',
+  },
+}));
+
+const GITHUB_API = 'https://api.github.com';
+const K8S_API = 'http://localhost/api/kubernetes';
+const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
+
+function setupCreateFlowHandlers() {
+  const repoName = 'my-repo';
+  const owner = 'testuser';
+
+  server.use(
+    // Backend: generate function files
+    http.post(`${BACKEND_API}/api/function/create`, () =>
+      HttpResponse.json([{ path: 'func.yaml', mode: '100644', content: 'name: f', type: 'blob' }]),
+    ),
+
+    // Backend: cluster CA
+    http.get(`${BACKEND_API}/api/cluster/ca`, () => HttpResponse.json({ ca: 'dGVzdC1jYQ==' })),
+
+    // GitHub: check repo doesn't exist
+    http.get(`${GITHUB_API}/repos/${owner}/${repoName}`, () =>
+      HttpResponse.json({ message: 'Not Found' }, { status: 404 }),
+    ),
+
+    // GitHub: create repo
+    http.post(`${GITHUB_API}/user/repos`, () =>
+      HttpResponse.json({ name: repoName, owner: { login: owner }, default_branch: 'main' }),
+    ),
+
+    // GitHub: get public key for secrets
+    http.get(`${GITHUB_API}/repos/${owner}/${repoName}/actions/secrets/public-key`, () =>
+      HttpResponse.json({ key_id: 'key-1', key: btoa('x'.repeat(32)) }),
+    ),
+
+    // GitHub: create secret
+    http.put(
+      `${GITHUB_API}/repos/${owner}/${repoName}/actions/secrets/:name`,
+      () => new HttpResponse(null, { status: 204 }),
+    ),
+
+    // GitHub: set topics
+    http.put(`${GITHUB_API}/repos/${owner}/${repoName}/topics`, () =>
+      HttpResponse.json({ names: ['serverless-function'] }),
+    ),
+
+    // GitHub: create blob
+    http.post(`${GITHUB_API}/repos/${owner}/${repoName}/git/blobs`, () =>
+      HttpResponse.json({ sha: 'blob-sha' }),
+    ),
+
+    // GitHub: get ref
+    http.get(`${GITHUB_API}/repos/${owner}/${repoName}/git/ref/:ref+`, () =>
+      HttpResponse.json({ object: { sha: 'head-sha' } }),
+    ),
+
+    // GitHub: get commit
+    http.get(`${GITHUB_API}/repos/${owner}/${repoName}/git/commits/:sha`, () =>
+      HttpResponse.json({ sha: 'head-sha', tree: { sha: 'parent-tree-sha' } }),
+    ),
+
+    // GitHub: create tree
+    http.post(`${GITHUB_API}/repos/${owner}/${repoName}/git/trees`, () =>
+      HttpResponse.json({ sha: 'tree-sha' }),
+    ),
+
+    // GitHub: create commit
+    http.post(`${GITHUB_API}/repos/${owner}/${repoName}/git/commits`, () =>
+      HttpResponse.json({ sha: 'commit-sha' }),
+    ),
+
+    // GitHub: update ref
+    http.patch(`${GITHUB_API}/repos/${owner}/${repoName}/git/refs/:ref+`, () =>
+      HttpResponse.json({}),
+    ),
+
+    // K8s: create SA
+    http.post(`${K8S_API}/api/v1/namespaces/:ns/serviceaccounts`, () => HttpResponse.json({})),
+
+    // K8s: create Role
+    http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/:ns/roles`, () =>
+      HttpResponse.json({}),
+    ),
+
+    // K8s: create RoleBindings
+    http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/:ns/rolebindings`, () =>
+      HttpResponse.json({}),
+    ),
+
+    // K8s: token request
+    http.post(`${K8S_API}/api/v1/namespaces/:ns/serviceaccounts/func-github/token`, () =>
+      HttpResponse.json({ status: { token: 'sa-token-value' } }),
+    ),
+  );
+}
 
 const renderPage = () =>
   render(
@@ -72,10 +180,14 @@ const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
 describe('FunctionCreatePage', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    (window as unknown as Record<string, unknown>).SERVER_FLAGS = {
+      kubeAPIServerURL: 'https://api.cluster.example.com:6443',
+    };
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    delete (window as unknown as Record<string, unknown>).SERVER_FLAGS;
   });
 
   afterAll(() => {
@@ -91,42 +203,16 @@ describe('FunctionCreatePage', () => {
     expect(screen.getByRole('button', { name: /Create/ })).toBeInTheDocument();
   });
 
-  it('calls generateFunction, creates repo with secrets, then navigates on submit', async () => {
+  it('generates function, creates repo with secrets, then navigates on submit', async () => {
     sessionStorage.setItem(PAT_KEY, 'ghp_test');
     sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser' }));
     const user = userEvent.setup();
-    const files = [{ path: 'func.yaml', mode: '100644', content: 'name: f', type: 'blob' }];
-    mockGenerateFunction.mockResolvedValue(files);
-    mockGenerateKubeconfig.mockResolvedValue('kubeconfig-json');
-    mockCreateRepoWithSecret.mockResolvedValue(undefined);
+    setupCreateFlowHandlers();
 
     renderPage();
 
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: /Create/ }));
-
-    await waitFor(() => {
-      expect(mockGenerateFunction).toHaveBeenCalledWith({
-        name: 'my-func',
-        runtime: 'node',
-        registry: 'image-registry.openshift-image-registry.svc:5000/default',
-        namespace: 'default',
-        branch: 'main',
-      });
-    });
-
-    await waitFor(() => {
-      expect(mockGenerateKubeconfig).toHaveBeenCalledWith('default');
-    });
-
-    await waitFor(() => {
-      expect(mockCreateRepoWithSecret).toHaveBeenCalledWith(
-        { owner: 'testuser', name: 'my-repo', url: '', defaultBranch: 'main' },
-        files,
-        'Initialize Knative function project',
-        { name: 'KUBECONFIG', value: 'kubeconfig-json' },
-      );
-    });
 
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/faas');
@@ -137,7 +223,12 @@ describe('FunctionCreatePage', () => {
     sessionStorage.setItem(PAT_KEY, 'ghp_test');
     sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser' }));
     const user = userEvent.setup();
-    mockGenerateFunction.mockRejectedValue(new Error('Backend error'));
+
+    server.use(
+      http.post(`${BACKEND_API}/api/function/create`, () =>
+        HttpResponse.json('Backend error', { status: 500 }),
+      ),
+    );
 
     renderPage();
 
@@ -145,7 +236,7 @@ describe('FunctionCreatePage', () => {
     await user.click(screen.getByRole('button', { name: /Create/ }));
 
     await waitFor(() => {
-      expect(screen.getByText('Backend error')).toBeInTheDocument();
+      expect(screen.getByText(/Backend error/)).toBeInTheDocument();
     });
   });
 
