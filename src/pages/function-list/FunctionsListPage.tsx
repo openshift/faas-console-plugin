@@ -225,14 +225,15 @@ async function loadFunctionTableItems(svc: SourceControlService): Promise<Functi
         const funcYaml = await svc.fetchFileContent(repo, 'func.yaml');
         const { name, namespace, runtime } = parseFuncYaml(funcYaml);
         return newItem(name || repo.name, repo.name, namespace, runtime);
-      } catch {
-        const item = newItem(repo.name, repo.name, '<UNKNOWN>', '<UNKNOWN>');
+      } catch (err) {
+        console.error(`Failed to load func.yaml for ${repo.name}:`, err);
+        const item = newItem(repo.name, repo.name, '', '');
         item.status = 'Error';
         return item;
       }
     }),
   );
-  return results.filter((item): item is FunctionTableItem => item !== null);
+  return results;
 }
 
 function newItem(

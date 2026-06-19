@@ -2,13 +2,13 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
-## 2026-06-19 | Session: Error handling in list page
-Worked on: Improve error handling for failed func.yaml fetches
+## 2026-06-19 | Session: SRVOCF-840 PR review fixes
+Worked on: Address PR review comments on error handling catch block
 Completed:
-- Changed catch block in loadFunctionTableItems to return an error item instead of silently dropping the repo (was returning null, now returns item with status 'Error')
-- Removed unused error parameter from catch block
-- Updated test: 'skips repo' renamed to 'shows error item', now expects both items in the table (good repo + error repo) instead of only the good one
-Left off: Both changes committed on SRVOCF-840 branch.
+- Replaced '<UNKNOWN>' with empty strings for namespace/runtime (TextOrDash renders em dashes automatically)
+- Added console.error logging in catch block for developer debugging
+- Removed redundant null filter since catch always returns an item now
+Left off: Changes committed on SRVOCF-840 branch.
 Blockers: None
 
 ---
