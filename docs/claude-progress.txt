@@ -8,6 +8,32 @@ Completed:
 - Changed catch block in loadFunctionTableItems to return an error item instead of silently dropping the repo (was returning null, now returns item with status 'Error')
 - Removed unused error parameter from catch block
 Left off: Change is staged and ready for commit on SRVOCF-840 branch.
+## 2026-06-16 | Session: PR #36 - GitHub Pages local dev + clipboard fix (SRVOCF-843)
+Worked on: Local GitHub Pages dev support, clipboard copy error handling, PR review feedback
+Completed:
+- Added error handling for clipboard copy buttons: .catch() on writeText, error state styling (.copy-error class with red color, X icon, "Copy failed" label)
+- GitHub Pages local dev: build_pages in init.sh, README simplification, CRC host mapping, .gitignore updates
+- Extracted PLUGIN_NAME local variable in build_pages() to replace hardcoded strings
+- Moved helm prerequisite check from check_prerequisites() into build_pages() (only needed there)
+- Added features.json entry for SRVOCF-843, set "passes": true
+- All 14 suites, 126 tests passing, webpack builds clean
+Left off: Changes ready to commit and push for merge.
+Blockers: None
+
+## 2026-06-10 | Session: Kubeconfig CA cert via backend TLS probe
+Worked on: Replace insecure-skip-tls-verify in generated kubeconfigs with proper CA handling
+Completed:
+- New backend endpoint GET /api/cluster/ca with two-probe TLS logic: system roots first (public CA detection), then SA CA bundle (private CA embedding)
+- clusterCAHandler struct with injectable SystemTLS for testability
+- Frontend OcpClusterService updated: #fetchClusterCA, #buildKubeconfig with ca parameter, removed insecure-skip-tls-verify
+- 8 Go tests covering all handler paths (missing param, non-HTTPS, missing file, public CA, private CA, bundle mismatch, empty file, malformed file)
+- Frontend tests updated for CA-present and CA-null cases
+- --kube-root-ca-path CLI flag for local dev, init.sh extracts CA via oc get cm kube-root-ca.crt
+- Investigated Option B (Kubernetes API for server URL and ConfigMap) but rejected due to RBAC requirements
+- Confirmed OCP dynamic plugin proxy does not pass cluster metadata to backends
+- Dockerfile: copy RHEL CA bundle from go-toolset build stage into ubi9-micro (confirmed ubi9-micro has zero CA infrastructure, no /etc/pki/ or /etc/ssl/ at all)
+- All CI green: 8 Go tests, 14 TS suites / 127 tests, build clean
+Left off: Branch kubeconfig-ca ready for squash/merge. CA_FILE temp file cleanup in init.sh not yet addressed (minor).
 Blockers: None
 
 ---

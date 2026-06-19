@@ -39,7 +39,6 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^12.1.5",
     "@testing-library/user-event": "^14.6.1",
-    "@types/libsodium-wrappers": "^0.8.2",
     "@types/node": "^22.0.0",
     "@types/react": "^17.0.37",
     "@types/react-router-dom": "^5.3.3",

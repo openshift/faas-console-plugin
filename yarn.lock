@@ -3281,15 +3281,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/libsodium-wrappers@npm:^0.8.2":
-  version: 0.8.2
-  resolution: "@types/libsodium-wrappers@npm:0.8.2"
-  dependencies:
-    libsodium-wrappers: "npm:*"
-  checksum: 10c0/c19cffdad50b49e9c8e9a5c036803e6dbd345f5b81aadd875360487fc06f4f58c3f02b0e6c991e809c56d3fddb290d27c5a555fe69148e655e4c053b747417e9
-  languageName: node
-  linkType: hard
-
 "@types/lodash@npm:^4.14.175":
   version: 4.14.202
   resolution: "@types/lodash@npm:4.14.202"
@@ -5552,7 +5543,6 @@ __metadata:
     "@testing-library/jest-dom": "npm:^6.9.1"
     "@testing-library/react": "npm:^12.1.5"
     "@testing-library/user-event": "npm:^14.6.1"
-    "@types/libsodium-wrappers": "npm:^0.8.2"
     "@types/node": "npm:^22.0.0"
     "@types/react": "npm:^17.0.37"
     "@types/react-router-dom": "npm:^5.3.3"
@@ -10369,7 +10359,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"libsodium-wrappers@npm:*, libsodium-wrappers@npm:^0.8.4":
+"libsodium-wrappers@npm:^0.8.4":
   version: 0.8.4
   resolution: "libsodium-wrappers@npm:0.8.4"
   dependencies:

@@ -1,4 +1,5 @@
 import { Octokit } from '@octokit/rest';
+import sodium from 'libsodium-wrappers';
 import { FileEntry, ForgeUser, RepoMetadata, RepoSecret } from '../types';
 import { SourceControlService } from './SourceControlService';
 
@@ -273,18 +274,7 @@ export class GithubService implements SourceControlService {
   }
 
   async #encryptForGithub(value: string, publicKeyBase64: string): Promise<string> {
-    const mod = await import('libsodium-wrappers');
-    // The default export is the mutable sodium object where crypto functions
-    // are populated after ready. The ES module namespace is immutable and
-    // only exposes static utility exports.
-    type SodiumFull = typeof mod & {
-      crypto_box_seal(message: Uint8Array, publicKey: Uint8Array): Uint8Array;
-    };
-    const sodium = ((mod as unknown as { default?: SodiumFull }).default ?? mod) as SodiumFull;
     await sodium.ready;
-    if (typeof sodium.crypto_box_seal !== 'function') {
-      throw new Error('libsodium crypto_box_seal not available');
-    }
     const publicKey = sodium.from_base64(publicKeyBase64, sodium.base64_variants.ORIGINAL);
     const encrypted = sodium.crypto_box_seal(sodium.from_string(value), publicKey);
     return sodium.to_base64(encrypted, sodium.base64_variants.ORIGINAL);

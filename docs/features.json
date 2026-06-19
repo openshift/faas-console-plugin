@@ -180,5 +180,27 @@
       "All tests pass, no broken imports"
     ],
     "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "Landing page: copy buttons handle clipboard failures gracefully (non-HTTPS, permission denied)",
+    "steps": [
+      "Pre-check navigator.clipboard availability before calling writeText",
+      "Catch writeText rejections (e.g. permission denied, iframe sandbox)",
+      "Error state shows X icon with 'Copy failed' label on hover, auto-clears after 1.5s",
+      "Both copy buttons (install command and YAML) have error handling"
+    ],
+    "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "GitHub Pages local development: script to generate plugin.yaml and serve the pages site locally",
+    "steps": [
+      "Add a script (e.g. hack/pages-dev.sh) that runs helm template to generate plugin.yaml into pages/",
+      "Script starts a local HTTP server (e.g. python -m http.server) to serve pages/ so fetch('plugin.yaml') works",
+      "Add pages/plugin.yaml to .gitignore so the generated file is not committed",
+      "Document usage in README or script header"
+    ],
+    "passes": true
   }
 ]

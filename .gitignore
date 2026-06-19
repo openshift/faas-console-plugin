@@ -53,3 +53,5 @@ install-state.gz
 # Built binaries
 /bin
 pages/plugin.yaml
+backend/static/index.html
+backend/static/plugin.yaml

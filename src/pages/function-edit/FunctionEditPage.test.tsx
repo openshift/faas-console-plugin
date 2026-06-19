@@ -16,9 +16,26 @@ let mockOnChange: ((value: string) => void) | undefined;
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   DocumentTitle: ({ children }: { children: string }) => children,
   ListPageHeader: ({ title }: { title: string }) => title,
-  CodeEditor: ({ onChange }: { onChange?: (value: string) => void }) => {
+  CodeEditor: ({
+    onChange,
+    value,
+    language,
+    showEditor,
+    emptyState,
+  }: {
+    onChange?: (value: string) => void;
+    value?: string;
+    language?: string;
+    showEditor?: boolean;
+    emptyState?: unknown;
+  }) => {
     mockOnChange = onChange;
-    return 'CodeEditor';
+    if (!showEditor && emptyState) return emptyState;
+    return (
+      <div data-testid="code-editor" data-language={language ?? ''}>
+        {value ?? ''}
+      </div>
+    );
   },
 }));
 
@@ -147,6 +164,230 @@ describe('FunctionEditPage', () => {
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
   });
 
+  it('shows selected file content in editor when tree item is clicked', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByText('func.yaml'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toHaveTextContent('name: my-func');
+    });
+  });
+
+  it('marks hasChanges true after editing a file', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+
+    act(() => mockOnChange?.('const x = 1;'));
+
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeEnabled();
+  });
+
+  it('resets hasChanges after save', async () => {
+    setupFetchHandlers();
+    setupPushHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    act(() => mockOnChange?.('const x = 1;'));
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeEnabled();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+    });
+  });
+
+  it('persists edited content when switching files and back', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    act(() => mockOnChange?.('edited module'));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('func.yaml'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toHaveTextContent('name: my-func');
+    });
+
+    // After editing, dirty indicator appends ● to the filename
+    await user.click(screen.getByText(/^index\.js/));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toHaveTextContent('edited module');
+    });
+  });
+
+  it('updates editor language when selecting a different file type', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('code-editor')).toHaveAttribute('data-language', 'javascript');
+
+    await userEvent.setup().click(screen.getByText('func.yaml'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toHaveAttribute('data-language', 'yaml');
+    });
+  });
+
+  it('calls GitHub push API when saving edited files', async () => {
+    setupFetchHandlers();
+    setupPushHandlers();
+
+    const createTree = vi.fn();
+    server.use(
+      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/trees`, async ({ request }) => {
+        createTree(await request.json());
+        return HttpResponse.json({ sha: 'tree-sha' });
+      }),
+    );
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    act(() => mockOnChange?.('edited'));
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(createTree).toHaveBeenCalled();
+    });
+  });
+
+  it('shows danger alert when save fails', async () => {
+    setupFetchHandlers();
+    setupPushHandlers();
+    server.use(
+      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
+        HttpResponse.json({ message: 'Server Error' }, { status: 500 }),
+      ),
+    );
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    act(() => mockOnChange?.('edited'));
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Server Error')).toBeInTheDocument();
+    });
+  });
+
+  it('disables save button while saving is in progress', async () => {
+    setupFetchHandlers();
+    setupPushHandlers();
+    server.use(
+      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, async () => {
+        await delay('infinite');
+        return HttpResponse.json({ sha: 'blob-sha' });
+      }),
+    );
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    act(() => mockOnChange?.('edited'));
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+    });
+  });
+
+  it('clears error alert when next save succeeds', async () => {
+    setupFetchHandlers();
+    setupPushHandlers();
+
+    server.use(
+      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
+        HttpResponse.json({ message: 'Server Error' }, { status: 500 }),
+      ),
+    );
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('index.js')).toBeInTheDocument();
+    });
+
+    act(() => mockOnChange?.('edited'));
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Server Error')).toBeInTheDocument();
+    });
+
+    server.use(
+      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
+        HttpResponse.json({ sha: 'blob-sha' }),
+      ),
+    );
+
+    act(() => mockOnChange?.('edited again'));
+    await user.click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
+    });
+  });
+
+  it('shows empty state placeholder when no file is selected', async () => {
+    renderEditPage('nonexistent');
+
+    await waitFor(() => {
+      expect(screen.getByText('No files')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Start editing')).toBeInTheDocument();
+    expect(
+      screen.getByText('Select a file from the tree view to start editing.'),
+    ).toBeInTheDocument();
+  });
+
   it('shows success message after save and hides it after 2 seconds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     setupFetchHandlers();
@@ -182,7 +423,7 @@ function setupPushHandlers() {
     http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/ref/:ref+`, () =>
       HttpResponse.json({ object: { sha: 'head-sha' } }),
     ),
-    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/commits/head-sha`, () =>
+    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/commits/:sha`, () =>
       HttpResponse.json({ tree: { sha: 'parent-tree-sha' } }),
     ),
     http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>

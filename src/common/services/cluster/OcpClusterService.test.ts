@@ -16,6 +16,8 @@ describe('OcpClusterService', () => {
     (window as unknown as Record<string, unknown>).SERVER_FLAGS = {
       kubeAPIServerURL: 'https://api.cluster.example.com:6443',
     };
+    // GET call: cluster CA endpoint
+    mockGet.mockResolvedValueOnce({ ca: 'dGVzdC1jYQ==' });
     // POST calls: SA, Role, RoleBinding, ImageBuilderBinding, TokenRequest
     mockPost
       .mockResolvedValueOnce({})
@@ -79,19 +81,36 @@ describe('OcpClusterService', () => {
       }),
     );
 
+    // Verify CA endpoint was called
+    expect(mockGet).toHaveBeenCalledWith(expect.stringContaining('/api/cluster/ca?server='));
+
     // Verify kubeconfig structure
     const parsed = JSON.parse(kubeconfig);
     expect(parsed.apiVersion).toBe('v1');
     expect(parsed.kind).toBe('Config');
     expect(parsed.clusters[0].cluster.server).toBe('https://api.cluster.example.com:6443');
-    expect(parsed.clusters[0].cluster['insecure-skip-tls-verify']).toBe(true);
+    expect(parsed.clusters[0].cluster['certificate-authority-data']).toBe('dGVzdC1jYQ==');
+    expect(parsed.clusters[0].cluster['insecure-skip-tls-verify']).toBeUndefined();
     expect(parsed.users[0].user.token).toBe('sa-token-value');
     expect(parsed.contexts[0].context.namespace).toBe(namespace);
+  });
+
+  it('omits CA fields when cluster uses a publicly trusted certificate', async () => {
+    mockGet.mockReset().mockResolvedValueOnce({ ca: null });
+
+    const svc = new OcpClusterService();
+    const kubeconfig = await svc.generateKubeconfig(namespace);
+
+    const parsed = JSON.parse(kubeconfig);
+    expect(parsed.clusters[0].cluster['certificate-authority-data']).toBeUndefined();
+    expect(parsed.clusters[0].cluster['insecure-skip-tls-verify']).toBeUndefined();
+    expect(parsed.clusters[0].cluster.server).toBe('https://api.cluster.example.com:6443');
   });
 
   it('treats 409 Conflict (response.status) on SA/Role/RoleBinding as success', async () => {
     const conflict = Object.assign(new Error('Conflict'), { response: { status: 409 } });
 
+    mockGet.mockReset().mockResolvedValueOnce({ ca: 'dGVzdC1jYQ==' });
     mockPost
       .mockReset()
       .mockRejectedValueOnce(conflict) // SA already exists
@@ -109,6 +128,7 @@ describe('OcpClusterService', () => {
   it('treats K8s Status object with code 409 as success', async () => {
     const k8sConflict = { code: 409, reason: 'AlreadyExists', message: 'already exists' };
 
+    mockGet.mockReset().mockResolvedValueOnce({ ca: 'dGVzdC1jYQ==' });
     mockPost
       .mockReset()
       .mockRejectedValueOnce(k8sConflict)

@@ -3,6 +3,7 @@ import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 const SA_NAME = 'func-github';
 const ROLE_NAME = 'func-github-deployer';
 const TOKEN_EXPIRY_SECONDS = 31536000; // 1 year; token rotation is not yet implemented
+const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
 export class OcpClusterService {
   /**
@@ -11,8 +12,10 @@ export class OcpClusterService {
    * necessary ServiceAccount, Role, and RoleBindings in the target
    * namespace if they do not already exist.
    *
-   * The kubeconfig uses insecure-skip-tls-verify so it works regardless
-   * of whether the API server uses a publicly trusted or self-signed CA.
+   * The kubeconfig embeds the cluster CA certificate when the API
+   * server uses a private CA (not trusted by the system trust store).
+   * When the cert is publicly trusted, the CA is omitted and the
+   * runner's system trust store handles verification.
    */
   async generateKubeconfig(namespace: string): Promise<string> {
     await this.#createServiceAccount(namespace);
@@ -22,8 +25,9 @@ export class OcpClusterService {
 
     const token = await this.#requestToken(namespace);
     const apiServerURL = this.#getApiServerURL();
+    const ca = await this.#fetchClusterCA(apiServerURL);
 
-    return this.#buildKubeconfig(apiServerURL, token, namespace);
+    return this.#buildKubeconfig(apiServerURL, token, namespace, ca);
   }
 
   async #createServiceAccount(namespace: string): Promise<void> {
@@ -116,6 +120,13 @@ export class OcpClusterService {
     return result.status.token;
   }
 
+  async #fetchClusterCA(server: string): Promise<string | null> {
+    const result = await consoleFetchJSON(
+      `${PROXY_BASE}/api/cluster/ca?server=${encodeURIComponent(server)}`,
+    );
+    return (result as { ca: string | null }).ca;
+  }
+
   #getApiServerURL(): string {
     const serverFlags = (window as unknown as Record<string, unknown>).SERVER_FLAGS as
       | { kubeAPIServerURL?: string }
@@ -126,16 +137,18 @@ export class OcpClusterService {
     return serverFlags.kubeAPIServerURL;
   }
 
-  #buildKubeconfig(server: string, token: string, namespace: string): string {
+  #buildKubeconfig(server: string, token: string, namespace: string, ca: string | null): string {
+    const clusterEntry: Record<string, unknown> = { server };
+    if (ca) {
+      clusterEntry['certificate-authority-data'] = ca;
+    }
+
     return JSON.stringify({
       apiVersion: 'v1',
       kind: 'Config',
       clusters: [
         {
-          cluster: {
-            server,
-            'insecure-skip-tls-verify': true,
-          },
+          cluster: clusterEntry,
           name: 'cluster',
         },
       ],

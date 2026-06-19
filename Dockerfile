@@ -27,6 +27,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o
 
 FROM registry.access.redhat.com/ubi9-micro:latest
 
+COPY --from=go-build /etc/pki/tls/certs/ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt
 COPY --from=go-build /opt/app-root/src/backend/plugin-backend /usr/bin/plugin-backend
 USER 1001
 

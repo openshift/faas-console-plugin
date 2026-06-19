@@ -63,6 +63,9 @@ else
     PLUGIN_HOST="host.docker.internal"
 fi
 CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    CONTAINER_NETWORK_OPTS="${CONTAINER_NETWORK_OPTS} --add-host api.crc.testing:host-gateway"
+fi
 
 BRIDGE_PLUGINS="${PLUGIN_NAME}=http://${PLUGIN_HOST}:${PLUGIN_PORT}"
 BRIDGE_PLUGIN_PROXY='{"services":[{"consoleAPIPath":"/api/proxy/plugin/'"${PLUGIN_NAME}"'/backend/","endpoint":"http://'"${PLUGIN_HOST}"':'"${BACKEND_PORT}"'","authorize":false}]}'

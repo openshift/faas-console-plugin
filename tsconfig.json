@@ -8,6 +8,7 @@
     "jsx": "react-jsx",
     "allowJs": true,
     "strict": true,
+    "allowSyntheticDefaultImports": true,
     "noUnusedLocals": true,
     "types": ["vitest/globals"]
   },

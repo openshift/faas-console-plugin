@@ -5,16 +5,15 @@ import { FileEntry, RepoMetadata, RepoSecret } from '../types';
 
 vi.mock('libsodium-wrappers', () => {
   const fakeSealed = new Uint8Array([1, 2, 3, 4]);
-  return {
-    default: {
-      ready: Promise.resolve(),
-      base64_variants: { ORIGINAL: 1 },
-      from_base64: () => new Uint8Array([10, 20, 30]),
-      from_string: () => new Uint8Array([5, 6, 7]),
-      crypto_box_seal: () => fakeSealed,
-      to_base64: () => 'AQIDBA==',
-    },
+  const sodium = {
+    ready: Promise.resolve(),
+    base64_variants: { ORIGINAL: 1 },
+    from_base64: () => new Uint8Array([10, 20, 30]),
+    from_string: () => new Uint8Array([5, 6, 7]),
+    crypto_box_seal: () => fakeSealed,
+    to_base64: () => 'AQIDBA==',
   };
+  return { default: sodium };
 });
 
 const GITHUB_API = 'https://api.github.com';
