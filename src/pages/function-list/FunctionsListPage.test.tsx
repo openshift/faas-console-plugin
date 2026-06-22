@@ -537,6 +537,51 @@ describe('FunctionsListPage', () => {
     });
   });
 
+  it('shows error item when fetchFileContent throws (deleted repo)', async () => {
+    renderAuthenticated();
+    setupReposHandler([repoFixture('good-func'), repoFixture('deleted-repo')]);
+    setupFuncYamlHandler('good-func', 'name: good-func\nruntime: go\nnamespace: demo\n');
+    server.use(
+      http.get(`${GITHUB_API}/repos/twoGiants/deleted-repo/contents/func.yaml`, () =>
+        HttpResponse.json({ message: 'Not Found' }, { status: 404 }),
+      ),
+    );
+    mockUseClusterService.mockReturnValue(clusterData());
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    const names = await screen.findAllByTestId('fn-name');
+    expect(names).toHaveLength(2);
+    expect(names[0]).toHaveTextContent('good-func');
+    expect(names[1]).toHaveTextContent('deleted-repo');
+  });
+
+  it('uses func.yaml name instead of repo name for cluster matching', async () => {
+    renderAuthenticated();
+    setupReposHandler([repoFixture('my-repo')]);
+    setupFuncYamlHandler('my-repo', 'name: my-function\nruntime: node\nnamespace: demo\n');
+    mockUseClusterService.mockReturnValue(
+      clusterData({
+        knativeServices: [ksvcFixture('my-function', 'True')],
+        deployments: [deploymentFixture('my-function', 1, 1)],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('fn-name')).toHaveTextContent('my-function');
+    expect(screen.getByTestId('fn-status')).toHaveTextContent('Running');
+    expect(mockUseClusterService).toHaveBeenLastCalledWith(['my-function']);
+  });
+
   it('removes a deleted repo from the list after refresh', async () => {
     renderAuthenticated();
     let callCount = 0;

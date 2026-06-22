@@ -37,6 +37,7 @@ const mockDeployment = {
 const mockFunctions: FunctionTableItem[] = [
   {
     name: 'my-func',
+    repoName: 'my-func',
     runtime: 'go',
     status: 'Running',
     url: 'http://my-func.demo.svc',
@@ -46,6 +47,7 @@ const mockFunctions: FunctionTableItem[] = [
   },
   {
     name: 'idle-func',
+    repoName: 'idle-func',
     runtime: 'node',
     status: 'NotDeployed',
     replicas: 0,
@@ -125,6 +127,28 @@ describe('FunctionTable', () => {
 
     await user.click(screen.getByRole('button', { name: 'Edit' }));
     expect(onEdit).toHaveBeenCalledWith('my-func');
+  });
+
+  it('calls onEdit with repoName, not display name', async () => {
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+    const fn: FunctionTableItem = {
+      name: 'my-function',
+      repoName: 'my-repo',
+      runtime: 'node',
+      status: 'Running',
+      replicas: 1,
+      namespace: 'demo',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[fn]} onEdit={onEdit} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(onEdit).toHaveBeenCalledWith('my-repo');
   });
 
   it('launches delete modal when delete button is clicked', async () => {

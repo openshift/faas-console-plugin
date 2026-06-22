@@ -12,11 +12,7 @@ import { ForgeConnectionProvider } from '../../common/context/ForgeConnectionPro
 import { SourceControlService } from '../../common/services/source-control/SourceControlService';
 import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
 import { FileEntry, RepoMetadata } from '../../common/services/types';
-import {
-  getLanguageFromPath,
-  handlerMap,
-  parseNamespaceAndRuntime,
-} from '../../common/utils/utils';
+import { getLanguageFromPath, handlerMap, parseFuncYaml } from '../../common/utils/utils';
 
 // --- page component ---
 
@@ -203,7 +199,7 @@ function determineHandler(loadedFiles: FileEntry[]): string {
   const funcYaml = loadedFiles.find((f) => f.path === 'func.yaml');
   if (!funcYaml) return '';
 
-  const { runtime } = parseNamespaceAndRuntime(funcYaml.content);
+  const { runtime } = parseFuncYaml(funcYaml.content);
 
   const handlerPath = handlerMap[runtime];
   if (loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;

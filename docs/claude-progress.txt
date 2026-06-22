@@ -2,6 +2,13 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-06-19 | Session: SRVOCF-840 PR review fixes
+Worked on: Address PR review comments on error handling catch block
+Completed:
+- Replaced '<UNKNOWN>' with empty strings for namespace/runtime (TextOrDash renders em dashes automatically)
+- Added console.error logging in catch block for developer debugging
+- Removed redundant null filter since catch always returns an item now
+Left off: Changes committed on SRVOCF-840 branch.
 ## 2026-06-19 | Session: MSW migration merge conflict resolution
 Worked on: Merge upstream/master into SRVOCF-846 branch, resolve conflicts
 Completed:
