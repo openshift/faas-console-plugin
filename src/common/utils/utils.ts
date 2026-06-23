@@ -20,6 +20,8 @@ const extensionMap: Record<string, string> = {
   txt: 'plaintext',
 };
 
+(
+
 const filenameMap: Record<string, string> = {
   Dockerfile: 'dockerfile',
   Makefile: 'plaintext',
