@@ -2,6 +2,19 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-06-23 | Session: CI fix, PR review fixes, Functions 2.0 research
+Worked on: Fix CI test failures on PR #4, address PR review comments on PRs #5 and #6, research Functions 2.0 architecture
+Completed:
+- Fixed two broken tests in FunctionsListPage.test.tsx that referenced undefined mockUseSourceControl, migrated to MSW handlers (setupReposHandler, setupFuncYamlHandler, 404 handler for deleted repo)
+- Pushed fix to SRVOCF-840 branch, CI on openshift/faas-console-plugin PR #4 should pass
+- Squashed SRVOCF-850 branch (PR #5) into single commit with descriptive message per reviewer request
+- Rewrote SRVOCF-946 commit message (PR #6) with descriptive body per reviewer request
+- Researched and explained Functions 2.0 architecture (Knative to KEDA migration, CRDs, triggers, operator/controller patterns)
+- Identified openshift-knative/serverless-operator as the repo where Functions 2.0 controller work lives
+Left off: PRs #4, #5, #6 on openshift/faas-console-plugin awaiting re-review after fixes.
+Blockers: None
+
+---
 ## 2026-05-21 | Session: Page co-location restructure (continued)
 Worked on: Follow-up fixes from review, test cleanup, docs
 Completed:
