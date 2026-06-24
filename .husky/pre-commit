@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+
+yarn lint
+yarn type-check
+
+cd backend
+go vet ./...
+if [ -n "$(gofmt -l .)" ]; then
+  echo "Go files not formatted. Run: gofmt -w backend/"
+  gofmt -l .
+  exit 1
+fi

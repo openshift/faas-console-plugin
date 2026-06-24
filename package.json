@@ -24,6 +24,8 @@
     "cypress-merge": "mochawesome-merge ./integration-tests/screenshots/cypress_report*.json > ./integration-tests/screenshots/cypress.json",
     "cypress-generate": "marge -o ./integration-tests/screenshots/ -f cypress-report -t 'OpenShift Console Plugin Template Cypress Test Results' -p 'OpenShift Cypress Plugin Template Test Results' --showPassed false --assetsDir ./integration-tests/screenshots/cypress/assets ./integration-tests/screenshots/cypress.json",
     "cypress-postreport": "yarn cypress-merge && yarn cypress-generate",
+    "type-check": "tsc --noEmit",
+    "prepare": "husky",
     "webpack": "node -r ts-node/register ./node_modules/.bin/webpack"
   },
   "devDependencies": {
@@ -56,6 +58,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
+    "husky": "^9.1.7",
     "i18next": "^23.11.5",
     "i18next-parser": "^9.4.0",
     "jsdom": "^29.0.2",
