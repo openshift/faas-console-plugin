@@ -139,6 +139,19 @@ describe('FunctionEditPage', () => {
     expect(screen.getByRole('button', { name: /Back to Functions/ })).toBeInTheDocument();
   });
 
+  it('shows info bar with function name and repo link after loading', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    const repoLink = screen.getByRole('link', { name: 'twoGiants/my-func' });
+    expect(repoLink).toHaveAttribute('target', '_blank');
+  });
+
   it('auto-selects handler file based on runtime from func.yaml', async () => {
     setupFetchHandlers();
 
