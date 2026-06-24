@@ -1,0 +1,45 @@
+#!/usr/bin/env sh
+
+MSG_FILE="$1"
+
+# Strip comment lines
+MSG=$(grep -v '^#' "$MSG_FILE")
+
+SUBJECT=$(echo "$MSG" | head -1)
+
+# Skip merge, fixup, and squash commits
+case "$SUBJECT" in
+  Merge\ branch\ *|Merge\ remote-tracking\ *|Merge\ tag\ *) exit 0 ;;
+  fixup\!\ *|squash\!\ *) exit 0 ;;
+esac
+
+ERRORS=""
+
+# 1. Conventional commit format
+TYPES="feat|fix|refactor|docs|test|chore|style|perf|ci|build"
+if ! echo "$SUBJECT" | grep -qE "^($TYPES): .+"; then
+  ERRORS="$ERRORS
+  Subject must match '<type>: <description>'.
+  Types: feat, fix, refactor, docs, test, chore, style, perf, ci, build"
+fi
+
+# 2. Authorship trailer
+if ! echo "$MSG" | grep -qE '^(Co-Authored-By|Signed-off-by): .+'; then
+  ERRORS="$ERRORS
+  Missing authorship trailer (Co-Authored-By or Signed-off-by)."
+fi
+
+# 3. No em dashes
+if echo "$MSG" | grep -q '—'; then
+  ERRORS="$ERRORS
+  Em dashes are not allowed. Use commas, periods, or parentheses."
+fi
+
+if [ -n "$ERRORS" ]; then
+  echo ""
+  echo "commit-msg: FAILED"
+  echo "$ERRORS"
+  echo ""
+  echo "See docs/references/commit-message-guide.md for rules."
+  exit 1
+fi
