@@ -174,6 +174,23 @@ describe('FileTreeView', () => {
     expect(screen.queryByText('No files')).not.toBeInTheDocument();
   });
 
+  it('renders icons on both directory and file nodes', () => {
+    render(
+      <FileTreeView
+        files={nodeFuncFiles}
+        selectedPath={null}
+        dirtyPaths={new Set()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const testDir = screen.getByText('test').closest('[role="treeitem"]');
+    expect(testDir?.querySelector('.pf-v6-c-tree-view__node-icon')).toBeInTheDocument();
+
+    const fileItem = screen.getByText('index.js').closest('[role="treeitem"]');
+    expect(fileItem?.querySelector('.pf-v6-c-tree-view__node-icon')).toBeInTheDocument();
+  });
+
   it('shows dirty indicator for modified files', () => {
     render(
       <FileTreeView

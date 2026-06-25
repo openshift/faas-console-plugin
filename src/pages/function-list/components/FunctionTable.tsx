@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 
 export interface FunctionTableItem {
   name: string;
+  repoName: string;
   runtime: string;
   status: FunctionStatus;
   url?: string;
@@ -83,7 +84,7 @@ export function FunctionTable({
                     variant="plain"
                     aria-label={t('Edit')}
                     icon={<PencilAltIcon />}
-                    onClick={() => onEdit(fn.name)}
+                    onClick={() => onEdit(fn.repoName)}
                   />
                 </ActionListItem>
                 <ActionListItem>

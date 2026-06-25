@@ -1,6 +1,17 @@
 import { CodeEditor, DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
 import type { Language } from '@patternfly/react-code-editor';
-import { EmptyState, EmptyStateBody, Flex, FlexItem, PageSection } from '@patternfly/react-core';
+import {
+  DescriptionList,
+  DescriptionListDescription,
+  DescriptionListGroup,
+  DescriptionListTerm,
+  EmptyState,
+  EmptyStateBody,
+  PageSection,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+} from '@patternfly/react-core';
 import { CodeIcon } from '@patternfly/react-icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -12,11 +23,7 @@ import { ForgeConnectionProvider } from '../../common/context/ForgeConnectionPro
 import { SourceControlService } from '../../common/services/source-control/SourceControlService';
 import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
 import { FileEntry, RepoMetadata } from '../../common/services/types';
-import {
-  getLanguageFromPath,
-  handlerMap,
-  parseNamespaceAndRuntime,
-} from '../../common/utils/utils';
+import { getLanguageFromPath, handlerMap, parseFuncYaml } from '../../common/utils/utils';
 
 // --- page component ---
 
@@ -40,15 +47,26 @@ function FunctionEditPageContent() {
       </ListPageHeader>
       <PageSection>
         <EditToolbar hasChanges={state.hasChanges} onSave={state.saveFiles} />
-        <Flex
-          direction={{ default: 'row' }}
-          flexWrap={{ default: 'nowrap' }}
-          alignItems={{ default: 'alignItemsStretch' }}
-        >
-          <FlexItem
-            flex={{ default: 'flexNone' }}
-            style={{ width: '16rem', overflowX: 'auto', overflowY: 'auto' }}
-          >
+        <Sidebar hasGutter hasBorder>
+          <SidebarPanel width={{ default: 'width_25' }}>
+            {state.repoMetadata && (
+              <DescriptionList isHorizontal isCompact>
+                <DescriptionListGroup>
+                  <DescriptionListTerm>{t('Repository')}</DescriptionListTerm>
+                  <DescriptionListDescription>
+                    <a href={state.repoMetadata.url} target="_blank" rel="noopener noreferrer">
+                      {state.repoMetadata.owner}/{state.repoMetadata.name}
+                    </a>
+                  </DescriptionListDescription>
+                </DescriptionListGroup>
+                <DescriptionListGroup>
+                  <DescriptionListTerm>{t('Branch')}</DescriptionListTerm>
+                  <DescriptionListDescription>
+                    {state.repoMetadata.defaultBranch}
+                  </DescriptionListDescription>
+                </DescriptionListGroup>
+              </DescriptionList>
+            )}
             <FileTreeView
               files={state.files}
               selectedPath={state.selectedPath}
@@ -56,8 +74,8 @@ function FunctionEditPageContent() {
               isLoading={state.isLoading}
               onSelect={state.onFileSelect}
             />
-          </FlexItem>
-          <FlexItem grow={{ default: 'grow' }} style={{ minWidth: '32rem' }}>
+          </SidebarPanel>
+          <SidebarContent>
             <CodeEditor
               value={state.selectedContent}
               language={state.selectedLanguage}
@@ -73,8 +91,8 @@ function FunctionEditPageContent() {
               }
               isLanguageLabelVisible
             />
-          </FlexItem>
-        </Flex>
+          </SidebarContent>
+        </Sidebar>
       </PageSection>
     </>
   );
@@ -203,7 +221,7 @@ function determineHandler(loadedFiles: FileEntry[]): string {
   const funcYaml = loadedFiles.find((f) => f.path === 'func.yaml');
   if (!funcYaml) return '';
 
-  const { runtime } = parseNamespaceAndRuntime(funcYaml.content);
+  const { runtime } = parseFuncYaml(funcYaml.content);
 
   const handlerPath = handlerMap[runtime];
   if (loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;

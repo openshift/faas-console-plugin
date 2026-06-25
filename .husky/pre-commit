@@ -1,12 +1,14 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
+set -euo pipefail
 
 yarn lint
 yarn type-check
 
 cd backend
 go vet ./...
-if [ -n "$(gofmt -l .)" ]; then
+unformatted="$(gofmt -l .)"
+if [ -n "$unformatted" ]; then
   echo "Go files not formatted. Run: gofmt -w backend/"
-  gofmt -l .
+  echo "$unformatted"
   exit 1
 fi
