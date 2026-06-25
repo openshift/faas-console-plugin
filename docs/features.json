@@ -202,5 +202,18 @@
       "Document usage in README or script header"
     ],
     "passes": true
+  },
+  {
+    "category": "technical",
+    "description": "useClusterService: fix resource coupling and improve tests. Knative Services and Deployments are co-present via OwnerReferences, clarify this invariant and simplify to a merged return type.",
+    "steps": [
+      "Merge separate knativeServices/deployments arrays into a single paired return type (e.g. ClusterFunction[]) that pairs each ksvc with its deployment",
+      "Move ksvc-to-deployment matching logic from FunctionsListPage into useClusterService",
+      "Rename FunctionTableItem.deployment to knativeService (it stores the ksvc, not the deployment)",
+      "Update useClusterService tests to reflect the co-presence invariant (no test should have a ksvc without a deployment or vice versa)",
+      "Update FunctionsListPage to consume the simplified return type",
+      "All tests pass, no broken imports"
+    ],
+    "passes": false
   }
 ]
