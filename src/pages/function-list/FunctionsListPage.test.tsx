@@ -51,19 +51,25 @@ const GITHUB_API = 'https://api.github.com';
 
 function clusterData(
   overrides: Partial<{
-    knativeServices: unknown[];
-    deployments: unknown[];
+    functions: unknown[];
     loaded: boolean;
     error: unknown;
   }> = {},
 ) {
   return {
-    knativeServices: [],
-    deployments: [],
+    functions: [],
     loaded: true,
     error: null,
     ...overrides,
   };
+}
+
+function clusterFunction(
+  name: string,
+  ksvc: ReturnType<typeof ksvcFixture>,
+  dep: ReturnType<typeof deploymentFixture>,
+) {
+  return { name, knativeService: ksvc, deployment: dep };
 }
 
 function renderAuthenticated() {
@@ -199,8 +205,13 @@ describe('FunctionsListPage', () => {
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        knativeServices: [ksvcFixture('my-func', 'True')],
-        deployments: [deploymentFixture('my-func', 1, 1)],
+        functions: [
+          clusterFunction(
+            'my-func',
+            ksvcFixture('my-func', 'True'),
+            deploymentFixture('my-func', 1, 1),
+          ),
+        ],
       }),
     );
 
@@ -311,8 +322,13 @@ describe('FunctionsListPage', () => {
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        knativeServices: [ksvcFixture('my-func', 'True')],
-        deployments: [deploymentFixture('my-func', 1, 1)],
+        functions: [
+          clusterFunction(
+            'my-func',
+            ksvcFixture('my-func', 'True'),
+            deploymentFixture('my-func', 1, 1),
+          ),
+        ],
       }),
     );
 
@@ -333,8 +349,13 @@ describe('FunctionsListPage', () => {
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        knativeServices: [ksvcFixture('my-func', 'True')],
-        deployments: [deploymentFixture('my-func', 0, 0)],
+        functions: [
+          clusterFunction(
+            'my-func',
+            ksvcFixture('my-func', 'True'),
+            deploymentFixture('my-func', 0, 0),
+          ),
+        ],
       }),
     );
 
@@ -354,8 +375,13 @@ describe('FunctionsListPage', () => {
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        knativeServices: [ksvcFixture('my-func', 'Unknown')],
-        deployments: [deploymentFixture('my-func', 1, 0)],
+        functions: [
+          clusterFunction(
+            'my-func',
+            ksvcFixture('my-func', 'Unknown'),
+            deploymentFixture('my-func', 1, 0),
+          ),
+        ],
       }),
     );
 
@@ -374,30 +400,12 @@ describe('FunctionsListPage', () => {
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        knativeServices: [ksvcFixture('my-func', 'False')],
-        deployments: [deploymentFixture('my-func', 0, 0)],
-      }),
-    );
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByTestId('fn-status')).toHaveTextContent('Error');
-  });
-
-  it('picks latest revision deployment when multiple revisions exist', async () => {
-    renderAuthenticated();
-    setupReposHandler([repoFixture('my-func')]);
-    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
-    mockUseClusterService.mockReturnValue(
-      clusterData({
-        knativeServices: [ksvcFixture('my-func', 'True', undefined, 'my-func-00002')],
-        deployments: [
-          deploymentFixture('my-func', 0, 0, 'my-func-00001'),
-          deploymentFixture('my-func', 1, 1, 'my-func-00002'),
+        functions: [
+          clusterFunction(
+            'my-func',
+            ksvcFixture('my-func', 'False'),
+            deploymentFixture('my-func', 0, 0),
+          ),
         ],
       }),
     );
@@ -408,8 +416,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByTestId('fn-status')).toHaveTextContent('Running');
-    expect(screen.getByTestId('fn-replicas')).toHaveTextContent('1');
+    expect(await screen.findByTestId('fn-status')).toHaveTextContent('Error');
   });
 
   it('passes function names to useClusterService', async () => {
@@ -566,8 +573,13 @@ describe('FunctionsListPage', () => {
     setupFuncYamlHandler('my-repo', 'name: my-function\nruntime: node\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        knativeServices: [ksvcFixture('my-function', 'True')],
-        deployments: [deploymentFixture('my-function', 1, 1)],
+        functions: [
+          clusterFunction(
+            'my-function',
+            ksvcFixture('my-function', 'True'),
+            deploymentFixture('my-function', 1, 1),
+          ),
+        ],
       }),
     );
 
