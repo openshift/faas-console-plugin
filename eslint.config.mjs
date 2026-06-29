@@ -3,7 +3,6 @@ import tseslint from 'typescript-eslint';
 import react from 'eslint-plugin-react';
 import prettier from 'eslint-plugin-prettier/recommended';
 import reactHooks from 'eslint-plugin-react-hooks';
-import cypress from 'eslint-plugin-cypress';
 import globals from 'globals';
 
 export default tseslint.config(
@@ -28,13 +27,13 @@ export default tseslint.config(
         ecmaFeatures: {
           jsx: true,
         },
-      }
+      },
     },
     settings: {
       react: {
         version: 'detect',
       },
-    }
+    },
   },
   {
     files: ['src/**/*.test.{ts,tsx}'],
@@ -52,20 +51,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['integration-tests/**/*.{ts,tsx,js}'],
-    ...cypress.configs.recommended,
+    files: ['e2e/**/*.ts'],
     languageOptions: {
-      globals: {
-        require: 'readonly',
-        module: 'writable',
-      },
+      globals: globals.node,
     },
     rules: {
-      ...cypress.configs.recommended.rules,
       'no-console': 'off',
-      '@typescript-eslint/no-namespace': 'off',
-      '@typescript-eslint/no-require-imports': 'off',
-      '@typescript-eslint/no-unused-expressions': 'off',
+      'react-hooks/rules-of-hooks': 'off',
     },
   },
   prettier,

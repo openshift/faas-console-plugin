@@ -3,7 +3,7 @@
 set -euo pipefail
 
 LOG_DIR=".dev-logs"
-CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
+CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest@sha256:caf2de765940d4c9980d306177645d95aded87a5ba09bbc2504d0521e1918e65"}"
 BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000
@@ -13,9 +13,18 @@ PID_DIR=".dev-pids"
 wait_for_port() {
   local port=$1
   local label=$2
+  local pidfile="${3:-}"
   local elapsed=0
 
   while ! bash -c "echo >/dev/tcp/localhost/$port" 2>/dev/null; do
+    if [ -n "$pidfile" ] && [ -f "$pidfile" ]; then
+      local pid
+      pid=$(cat "$pidfile")
+      if ! kill -0 "$pid" 2>/dev/null; then
+        echo "Error: $label process exited. Check $LOG_DIR/ for details."
+        exit 1
+      fi
+    fi
     if [ $elapsed -ge $TIMEOUT ]; then
       echo "Error: $label did not start within ${TIMEOUT}s. Check $LOG_DIR/ for details."
       exit 1
@@ -222,6 +231,7 @@ start_console() {
     --console-port "$CONSOLE_PORT" \
     --cidfile "$PID_DIR/console.cid" \
     >"$LOG_DIR/console.log" 2>&1 &
+  echo $! > "$PID_DIR/console.pid"
 }
 
 print_status() {
@@ -240,14 +250,19 @@ main() {
   install_dependencies
   stop_dev
   write_dev_env
+<<<<<<< HEAD
   extract_cluster_ca
+=======
+  trap 'stop_dev' EXIT
+>>>>>>> 94dabf4 (test: replace Cypress with Playwright e2e)
   start_backend
-  wait_for_port "$BACKEND_PORT" "Go backend"
+  wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"
   start_backend_watcher
   start_plugin
-  wait_for_port "$PLUGIN_PORT" "Plugin dev server"
+  wait_for_port "$PLUGIN_PORT" "Plugin dev server" "$PID_DIR/webpack.pid"
   start_console
-  wait_for_port "$CONSOLE_PORT" "OpenShift console"
+  wait_for_port "$CONSOLE_PORT" "OpenShift console" "$PID_DIR/console.pid"
+  trap - EXIT
   print_status
 }
 

@@ -16,7 +16,7 @@ Do NOT write all test cases first and then implement everything at once.
 | Layer | Tool | Scope |
 |-------|------|-------|
 | Unit / Component | Vitest + React Testing Library | Hooks, services, component rendering, form logic |
-| E2e / Feature validation | Cypress | Validate features.json entries in real browser |
+| E2e / Feature validation | Playwright | Validate features.json entries in real browser |
 | API mocking | MSW (Mock Service Worker) | GitHub API + K8s API — mock everything first, real cluster later |
 
 ## Mock Strategy
@@ -141,6 +141,87 @@ afterEach(() => {
 
 ## E2e Conventions
 
-- **Selectors:** Prefer `data-test` attributes (`cy.get('[data-test="create-function"]')`) over CSS/ARIA selectors
-- **Async:** Use `cy.intercept` for API mocking and assertions, avoid `cy.wait` with arbitrary timeouts
-- **MSW integration:** MSW handlers mock GitHub API responses in standalone mode
+### Environment
+
+`playwright.config.ts` auto-loads `.env` from the project root. Required variables:
+
+| Variable | Purpose | Required |
+|----------|---------|----------|
+| `BRIDGE_GITHUB_PAT` | GitHub PAT with `repo` scope | Yes (tests skip without it) |
+| `BRIDGE_BASE_ADDRESS` | Console URL (default: `http://localhost:9000`) | No |
+| `BRIDGE_KUBEADMIN_PASSWORD` | Cluster login password | Only when auth is enabled |
+
+### Running
+
+```bash
+yarn test:e2e                              # all tests, headless
+yarn test:e2e e2e/smoke/my-feature.test.ts # single file
+yarn test:e2e:headed                       # visible browser
+yarn test:e2e:ui                           # interactive UI mode
+yarn test:e2e:report                       # open HTML report
+```
+
+### Helpers (`e2e/helpers.ts`)
+
+| Helper | Purpose |
+|--------|---------|
+| `navigateToFunctionsList(page)` | Go to `/faas`, inject PAT, reload, dismiss dialogs, wait for load |
+| `loadFunctionsList(page)` | Alias for `navigateToFunctionsList` |
+| `loadFunctionsListWithRealPat(page, pat)` | Same flow but with an explicit real PAT |
+| `injectGitHubPat(page)` | Auto-detect: uses real PAT from env if set, placeholder otherwise |
+| `injectRealGitHubPat(page, pat)` | Validate PAT against GitHub API and store in sessionStorage |
+| `dismissDialogs(page)` | Remove webpack overlay, dismiss PAT modal, dismiss guided tour |
+| `waitForLoadingComplete(page)` | Wait for PF6 spinners and OCP loaders to disappear |
+| `waitForTableOrEmpty(page)` | Wait for either the functions grid or "No functions found" heading |
+| `robustClick(locator)` | Click with retry logic (3 attempts, exponential backoff) |
+| `createButtonLocator(page)` | Locator for the create button (handles link/button/disabled variants) |
+
+### Selectors
+
+Use accessible selectors. Never add `data-test` attributes to production components.
+
+```typescript
+page.getByRole('heading', { name: 'Functions', exact: true })
+page.getByRole('button', { name: 'Create', exact: true })
+page.locator('#name')  // form inputs with HTML id
+```
+
+**PatternFly 6 ARIA gotchas:**
+
+| PF6 Component | Renders as | Use |
+|---------------|-----------|-----|
+| Table (sortable/interactive) | `role="grid"` | `getByRole('grid')`, not `getByRole('table')` |
+| Button with `component="a"` | `<a>` with `role="link"` | `getByRole('link')`, not `getByRole('button')` |
+| Modal backdrop (stacked) | Intercepts pointer events | `evaluate((el: HTMLElement) => el.click())` to bypass |
+
+**Use `exact: true`** when a name is a substring of other elements (e.g., "Name" matches "Namespace").
+
+### Auth and PAT
+
+- Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`
+- Tests that need GitHub API must guard with `test.skip(!pat, 'BRIDGE_GITHUB_PAT not set')`
+- After `page.goto()` + PAT injection + `page.reload()`, always call `dismissDialogs(page)`
+
+### Test file template
+
+```typescript
+import { test, expect } from '@playwright/test';
+import { loadFunctionsList, waitForTableOrEmpty } from '../helpers';
+
+const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
+
+test.describe('My feature', () => {
+  test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
+
+  test('page loads and shows heading', async ({ page }) => {
+    await loadFunctionsList(page);
+    await expect(
+      page.getByRole('heading', { name: 'My Feature', exact: true }),
+    ).toBeVisible();
+  });
+});
+```
+
+### Creating new e2e tests
+
+Use the `/e2e <feature-name>` slash command to scaffold tests. It reads the feature source code, proposes test cases, scaffolds the file, and debugs failures using Playwright MCP.

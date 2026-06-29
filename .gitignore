@@ -12,9 +12,13 @@ node_modules
 **/node_modules
 **/dist
 **/.DS_Store
+.env
 .devcontainer/dev.env
-integration-tests/videos
-integration-tests/screenshots
+# Playwright
+e2e/results/
+e2e/.auth/
+playwright-report/
+blob-report/
 
 # AI
 AGENTS.override.md
