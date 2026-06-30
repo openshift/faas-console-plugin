@@ -5,10 +5,16 @@ import { OcpClusterService } from './OcpClusterService';
 const instance = new OcpClusterService();
 
 const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
+const REVISION_LABEL = 'serving.knative.dev/revision';
+
+export interface ClusterFunction {
+  name: string;
+  knativeService?: K8sResourceKind;
+  deployment?: K8sResourceKind;
+}
 
 interface ClusterService {
-  knativeServices: K8sResourceKind[];
-  deployments: K8sResourceKind[];
+  functions: ClusterFunction[];
   loaded: boolean;
   error: unknown;
   generateKubeconfig: (namespace: string) => Promise<string>;
@@ -50,11 +56,32 @@ export function useClusterService(functionNames: string[] = []): ClusterService 
   const [knSvcs, knLoaded, knError] = useK8sWatchResource<K8sResourceKind[]>(knSvcConfig);
   const [deps, depLoaded, depError] = useK8sWatchResource<K8sResourceKind[]>(depConfig);
 
+  const functions = useMemo(() => {
+    const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
+    const safeDeps = depLoaded ? (deps ?? []) : [];
+    return pairResources(safeKnSvcs, safeDeps);
+  }, [knSvcs, knLoaded, deps, depLoaded]);
+
   return {
-    knativeServices: knLoaded ? (knSvcs ?? []) : [],
-    deployments: depLoaded ? (deps ?? []) : [],
+    functions,
     loaded: knLoaded && depLoaded,
     error: knError || depError,
     generateKubeconfig: instance.generateKubeconfig.bind(instance),
   };
+}
+
+function pairResources(
+  knSvcs: K8sResourceKind[],
+  deployments: K8sResourceKind[],
+): ClusterFunction[] {
+  return knSvcs.map((ksvc) => {
+    const name = ksvc.metadata?.labels?.[FUNCTION_NAME_LABEL] ?? ksvc.metadata?.name ?? '';
+    const latestRevision = ksvc.status?.latestReadyRevisionName;
+
+    const deployment = latestRevision
+      ? deployments.find((d) => d.metadata?.labels?.[REVISION_LABEL] === latestRevision)
+      : deployments.find((d) => d.metadata?.labels?.[FUNCTION_NAME_LABEL] === name);
+
+    return { name, knativeService: ksvc, deployment: deployment ?? undefined };
+  });
 }

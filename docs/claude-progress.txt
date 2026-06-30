@@ -2,6 +2,23 @@
 # Newest entries first. Agents: append your entry at the top after the header.
 
 ---
+## 2026-06-25 | Session: SRVOCF-841 fix resource coupling
+Worked on: Decouple ksvc/deployment pairing from FunctionsListPage into useClusterService
+Completed:
+- Introduced ClusterFunction interface (name, optional knativeService, optional deployment)
+- Moved ksvc-to-deployment pairing logic from FunctionsListPage into useClusterService with useMemo
+- Pairing matches by revision label with fallback to function name label
+- Changed ClusterService return type from separate arrays to functions: ClusterFunction[]
+- Simplified FunctionsListPage enrichment to a name-based lookup
+- Renamed FunctionTableItem.deployment to mainResource (it holds the ksvc, not a Deployment)
+- Fixed FunctionTable.test.tsx fixture to use Knative Service shape instead of Deployment
+- Added 4 new hook-level pairing tests (revision match, fallback, multiple revisions, empty)
+- Removed duplicate "picks latest revision" test from FunctionsListPage (now tested in hook)
+- All 147 tests passing, lint clean, build succeeds
+Left off: Changes staged, ready for commit.
+Blockers: None
+
+---
 ## 2026-06-24 | Session: Fix pre-commit hook error handling
 Worked on: Fix pre-commit hook to fail on lint/type-check/go vet errors
 Completed:
