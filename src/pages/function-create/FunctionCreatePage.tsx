@@ -2,7 +2,7 @@ import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin
 import { Alert, PageSection } from '@patternfly/react-core';
 import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom-v5-compat';
+import { useNavigate } from 'react-router';
 import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import {

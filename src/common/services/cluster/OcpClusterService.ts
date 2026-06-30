@@ -129,8 +129,7 @@ export class OcpClusterService {
 
   #getApiServerURL(): string {
     const serverFlags = (window as unknown as Record<string, unknown>).SERVER_FLAGS as
-      | { kubeAPIServerURL?: string }
-      | undefined;
+      { kubeAPIServerURL?: string } | undefined;
     if (!serverFlags?.kubeAPIServerURL) {
       throw new Error('Cannot determine API server URL from console');
     }

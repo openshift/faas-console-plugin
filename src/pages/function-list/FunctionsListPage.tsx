@@ -13,7 +13,7 @@ import {
 import { SyncAltIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router-dom-v5-compat';
+import { Link, useNavigate } from 'react-router';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { UserAvatar } from '../../common/components/UserAvatar';

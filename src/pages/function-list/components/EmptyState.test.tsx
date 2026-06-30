@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom-v5-compat';
+import { MemoryRouter } from 'react-router';
 import { FunctionsEmptyState } from './EmptyState';
 
 vi.mock('react-i18next', () => ({

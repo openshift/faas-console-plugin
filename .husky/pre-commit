@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+yarn i18n
 yarn lint
 yarn type-check
 

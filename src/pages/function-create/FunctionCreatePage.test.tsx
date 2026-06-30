@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../testing/msw/server';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
 import { PAT_KEY, USER_KEY } from '../../common/services/types';
 
@@ -49,7 +49,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
   };
 });
 
-vi.mock('react-router-dom-v5-compat', () => ({
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
   useNavigate: () => mockNavigate,
 }));
 
