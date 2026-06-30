@@ -15,10 +15,7 @@ node_modules
 .env
 .devcontainer/dev.env
 # Playwright
-e2e/results/
-e2e/.auth/
-playwright-report/
-blob-report/
+.e2e/
 
 # AI
 AGENTS.override.md

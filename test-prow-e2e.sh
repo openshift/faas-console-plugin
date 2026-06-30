@@ -5,8 +5,8 @@
 set -exuo pipefail
 
 ARTIFACT_DIR=${ARTIFACT_DIR:=/tmp/artifacts}
-RESULTS_DIR=e2e/results
-REPORT_DIR=playwright-report
+RESULTS_DIR=.e2e/results
+REPORT_DIR=.e2e/report
 INSTALLER_DIR=${INSTALLER_DIR:=${ARTIFACT_DIR}/installer}
 
 function copyArtifacts {

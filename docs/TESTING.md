@@ -168,6 +168,8 @@ yarn test:e2e:report                       # open HTML report
 | `navigateToFunctionsList(page)` | Go to `/faas`, inject PAT, reload, dismiss dialogs, wait for load |
 | `loadFunctionsList(page)` | Alias for `navigateToFunctionsList` |
 | `loadFunctionsListWithRealPat(page, pat)` | Same flow but with an explicit real PAT |
+| `loadFunctionsTable(page)` | Navigate to list and wait for the functions grid to be visible |
+| `loadCreatePage(page, pat)` | Navigate to `/faas/create`, inject real PAT, reload, dismiss dialogs |
 | `injectGitHubPat(page)` | Auto-detect: uses real PAT from env if set, placeholder otherwise |
 | `injectRealGitHubPat(page, pat)` | Validate PAT against GitHub API and store in sessionStorage |
 | `dismissDialogs(page)` | Remove webpack overlay, dismiss PAT modal, dismiss guided tour |

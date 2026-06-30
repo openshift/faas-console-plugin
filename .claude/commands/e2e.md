@@ -86,7 +86,7 @@ Scaffold Playwright e2e tests for `$ARGUMENTS`. If no argument is provided, ask 
 
 6. **Debug failures** -- when a test fails:
 
-   a. Read the error message and screenshot from `e2e/results/`
+   a. Read the error message and screenshot from `.e2e/results/`
    b. Use Playwright MCP to inspect the live page:
       - `browser_navigate` to the URL
       - `browser_snapshot` to see the accessibility tree (shows actual roles and names)
@@ -111,3 +111,6 @@ Scaffold Playwright e2e tests for `$ARGUMENTS`. If no argument is provided, ask 
 - Always call `dismissDialogs` after page navigation + reload
 - Tests that need GitHub API must have `test.skip(!pat)` guard
 - Keep tests focused on smoke-level validation, not exhaustive coverage
+- Review `e2e/helpers.ts` before writing setup code. If a helper already exists for your navigation pattern, use it. If you find yourself repeating setup across multiple tests, extract a new helper or use `test.beforeEach` in a nested `test.describe`
+- Minimize code repetition: shared setup belongs in `test.beforeEach`, reusable navigation belongs in `e2e/helpers.ts`
+- After adding or updating helpers, reconcile `docs/TESTING.md` (Helpers table in the E2e Conventions section) so the reference stays accurate

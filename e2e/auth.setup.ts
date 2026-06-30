@@ -1,7 +1,7 @@
 import { test as setup, expect } from '@playwright/test';
 import * as path from 'path';
 
-const authFile = path.join(__dirname, '.auth/session.json');
+const authFile = path.join(__dirname, '../.e2e/auth/session.json');
 
 setup('authenticate', async ({ page }) => {
   const username = process.env.BRIDGE_KUBEADMIN_USERNAME || 'kubeadmin';

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 LOG_DIR=".dev-logs"
-CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest@sha256:caf2de765940d4c9980d306177645d95aded87a5ba09bbc2504d0521e1918e65"}"
+CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
 BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000
@@ -101,7 +101,7 @@ build_pages() {
 
 extract_cluster_ca() {
   echo "Extracting cluster CA certificate..."
-  CA_FILE=$(mktemp --suffix=.crt)
+  CA_FILE=$(mktemp -t cluster-ca.XXXXXX).crt
   oc get cm kube-root-ca.crt -n default -o jsonpath='{.data.ca\.crt}' > "$CA_FILE"
 }
 
@@ -250,11 +250,8 @@ main() {
   install_dependencies
   stop_dev
   write_dev_env
-<<<<<<< HEAD
   extract_cluster_ca
-=======
   trap 'stop_dev' EXIT
->>>>>>> 94dabf4 (test: replace Cypress with Playwright e2e)
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"
   start_backend_watcher

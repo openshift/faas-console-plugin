@@ -1,10 +1,5 @@
 import { test, expect } from '@playwright/test';
-import {
-  dismissDialogs,
-  injectRealGitHubPat,
-  loadFunctionsList,
-  waitForTableOrEmpty,
-} from '../helpers';
+import { loadCreatePage, loadFunctionsList, waitForTableOrEmpty } from '../helpers';
 
 const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
 
@@ -25,48 +20,39 @@ test.describe('Create function page', () => {
     await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
   });
 
-  test('form has all required fields', async ({ page }) => {
-    await page.goto('/faas/create');
-    await injectRealGitHubPat(page, pat);
-    await page.reload();
-    await dismissDialogs(page);
+  test.describe('create form', () => {
+    test.beforeEach(async ({ page }) => {
+      await loadCreatePage(page, pat);
+    });
 
-    await expect(page.locator('#owner')).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('#repo')).toBeVisible();
-    await expect(page.locator('#branch')).toBeVisible();
-    await expect(page.locator('#name')).toBeVisible();
-    await expect(page.locator('#runtime')).toBeVisible();
-    await expect(page.locator('#registry')).toBeVisible();
-    await expect(page.locator('#namespace')).toBeVisible();
-  });
+    test('form has all required fields', async ({ page }) => {
+      await expect(page.locator('#owner')).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('#repo')).toBeVisible();
+      await expect(page.locator('#branch')).toBeVisible();
+      await expect(page.locator('#name')).toBeVisible();
+      await expect(page.locator('#runtime')).toBeVisible();
+      await expect(page.locator('#registry')).toBeVisible();
+      await expect(page.locator('#namespace')).toBeVisible();
+    });
 
-  test('submit button is disabled until form is valid', async ({ page }) => {
-    await page.goto('/faas/create');
-    await injectRealGitHubPat(page, pat);
-    await page.reload();
-    await dismissDialogs(page);
+    test('submit button is disabled until form is valid', async ({ page }) => {
+      const submitBtn = page.getByRole('button', { name: 'Create', exact: true });
+      await expect(submitBtn).toBeVisible({ timeout: 10_000 });
+      await expect(submitBtn).toBeDisabled();
 
-    const submitBtn = page.getByRole('button', { name: 'Create', exact: true });
-    await expect(submitBtn).toBeVisible({ timeout: 10_000 });
-    await expect(submitBtn).toBeDisabled();
+      await page.locator('#repo').fill('e2e-test-fn');
+      await page.locator('#branch').fill('main');
+      await page.locator('#name').fill('e2e-test-fn');
+      await page.locator('#namespace').fill('e2e-test-ns');
 
-    await page.locator('#repo').fill('e2e-test-fn');
-    await page.locator('#branch').fill('main');
-    await page.locator('#name').fill('e2e-test-fn');
-    await page.locator('#namespace').fill('e2e-test-ns');
+      await expect(submitBtn).toBeEnabled();
+    });
 
-    await expect(submitBtn).toBeEnabled();
-  });
-
-  test('cancel button navigates back to list', async ({ page }) => {
-    await page.goto('/faas/create');
-    await injectRealGitHubPat(page, pat);
-    await page.reload();
-    await dismissDialogs(page);
-
-    const cancelBtn = page.getByRole('button', { name: 'Cancel' });
-    await expect(cancelBtn).toBeVisible({ timeout: 10_000 });
-    await cancelBtn.click();
-    await expect(page).toHaveURL(/\/faas$/);
+    test('cancel button navigates back to list', async ({ page }) => {
+      const cancelBtn = page.getByRole('button', { name: 'Cancel' });
+      await expect(cancelBtn).toBeVisible({ timeout: 10_000 });
+      await cancelBtn.click();
+      await expect(page).toHaveURL(/\/faas$/);
+    });
   });
 });

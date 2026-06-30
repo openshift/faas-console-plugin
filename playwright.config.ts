@@ -15,10 +15,10 @@ export default defineConfig({
   workers: 1,
   reporter: process.env.CI
     ? [
-        ['junit', { outputFile: 'e2e/results/junit-results.xml' }],
-        ['html', { open: 'never' }],
+        ['junit', { outputFile: '.e2e/results/junit-results.xml' }],
+        ['html', { outputFolder: '.e2e/report', open: 'never' }],
       ]
-    : [['html', { open: 'on-failure' }]],
+    : [['html', { outputFolder: '.e2e/report', open: 'on-failure' }]],
   use: {
     baseURL,
     viewport: { width: 1920, height: 1080 },
@@ -37,10 +37,10 @@ export default defineConfig({
       name: 'smoke',
       use: {
         ...devices['Desktop Chrome'],
-        storageState: 'e2e/.auth/session.json',
+        storageState: '.e2e/auth/session.json',
       },
       dependencies: ['setup'],
     },
   ],
-  outputDir: 'e2e/results/',
+  outputDir: '.e2e/results/',
 });

@@ -109,6 +109,19 @@ export async function loadFunctionsListWithRealPat(page: Page, pat: string): Pro
   await waitForLoadingComplete(page);
 }
 
+export async function loadCreatePage(page: Page, pat: string): Promise<void> {
+  await page.goto('/faas/create');
+  await injectRealGitHubPat(page, pat);
+  await page.reload();
+  await dismissDialogs(page);
+  await waitForLoadingComplete(page);
+}
+
+export async function loadFunctionsTable(page: Page): Promise<void> {
+  await navigateToFunctionsList(page);
+  await page.getByRole('grid', { name: 'Functions' }).waitFor({ timeout: 30_000 });
+}
+
 export async function waitForTableOrEmpty(page: Page): Promise<'table' | 'empty'> {
   const table = page.getByRole('grid', { name: 'Functions' });
   const emptyHeading = page.getByRole('heading', { name: 'No functions found' });

@@ -40,7 +40,7 @@ test.describe('GitHub integration (real PAT)', () => {
     });
 
     await test.step('verify form fields are present', async () => {
-      await expect(page.getByRole('textbox', { name: 'Name' })).toBeVisible();
+      await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
     });
 
     await test.step('cancel returns to list', async () => {
