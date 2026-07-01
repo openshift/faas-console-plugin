@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../testing/msw/server';
-import { MemoryRouter, Route, Routes } from 'react-router-dom-v5-compat';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import FunctionEditPage from './FunctionEditPage';
 
 const GITHUB_API = 'https://api.github.com';
@@ -58,7 +58,7 @@ function setupSearchReposHandler() {
           {
             owner: { login: 'twoGiants' },
             name: 'my-func',
-            html_url: '',
+            html_url: 'https://github.com/twoGiants/my-func',
             default_branch: 'main',
           },
         ],

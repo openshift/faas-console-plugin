@@ -10,6 +10,20 @@ Completed:
 - Deduplicated gofmt call (was running twice, now captured in variable)
 - Tested: hook correctly blocks on lint failure and passes when clean
 Left off: Push fix to PR #6 on upstream repo.
+
+## 2026-06-22 | Session: Dependency CVE remediation and SDK 4.23 migration
+Worked on: Reduce CVE surface from 88 to 33 advisories across two sessions
+Completed:
+- Migrated OCP Console SDK 4.21->4.23 (React 17->18, react-router 5->7, react-i18next 11->16, i18next 23->25, @testing-library/react 12->16)
+- Replaced react-router-dom-v5-compat imports with react-router across 5 source files and 7 test files
+- Replaced deprecated i18next-parser with i18next-cli, removed i18n-scripts/ directory, pluralize dep
+- Removed dead deps: prettier-stylelint, @babel/core, @babel/preset-env, babel-loader (webpack uses ts-loader)
+- Removed Cypress and all related packages (e2e will use Playwright instead), removed integration-tests/ directory
+- Patch upgrades: webpack-dev-server 5.2.3->5.2.5, vitest+coverage-v8 4.1.5->4.1.9
+- Yarn resolutions for transitive CVEs: launch-editor, shell-quote, serialize-javascript, fast-uri, flatted, follow-redirects, http-proxy-middleware, postcss, vite, ws, minimatch
+- All 14 suites, 142 tests passing, build clean, lint clean
+- Remaining 33 CVEs are unfixable: undici (13, jsdom internal), react-router (5, SDK constrains ~7.13.x), picomatch (4, multi-major), tar (3, node-gyp/fsevents), OCP SDK upstream (4, immutable/lodash/glob/inflight), dev-only transitive (4)
+Left off: Remaining CVEs are upstream-constrained or dev-only transitive with no production exposure.
 ## 2026-06-19 | Session: SRVOCF-840 PR review fixes
 Worked on: Address PR review comments on error handling catch block
 Completed:

@@ -105,11 +105,13 @@ to run in-cluster.
 
 ## i18n
 
-The plugin uses [react-i18next](https://react.i18next.com/) for translations. The i18n namespace must match
-the name of the `ConsolePlugin` resource with the `plugin__` prefix to avoid
-naming conflicts. This plugin uses the
-`plugin__console-functions-plugin` namespace. You can use the `useTranslation` hook
-with this namespace as follows:
+The plugin uses [react-i18next](https://react.i18next.com/) for translations, with
+[i18next-cli](https://github.com/i18next/i18next-cli) for string extraction and
+TypeScript type generation. The i18n namespace must match the name of the
+`ConsolePlugin` resource with the `plugin__` prefix to avoid naming conflicts.
+This plugin uses the `plugin__console-functions-plugin` namespace.
+
+You can use the `useTranslation` hook with this namespace as follows:
 
 ```tsx
 const Header: React.FC = () => {
@@ -134,7 +136,10 @@ namespace. For example:
   }
 ```
 
-Running `yarn i18n` updates the JSON files in the `locales` folder when adding or changing messages.
+Running `yarn i18n` extracts translatable strings into the JSON files in the
+`locales` folder and regenerates TypeScript types in `src/types/`. The extraction
+configuration is in `i18next.config.ts`. CI validates that locale files are up to
+date, so run this command before committing whenever you add or change messages.
 
 ## Linting
 
