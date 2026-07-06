@@ -12,6 +12,8 @@ See `docs/design/` for full design specs.
 - Ask before staring modifications of code.
 - Ask before starting a new task or making a design decision.
 - Once actively implementing, keep going without asking. Only stop to ask when blocked by sandbox, permissions, or ambiguous requirements.
+- Always show Jira issue content (epic, story, comment) for review before creating or updating. Never push to Jira without approval.
+- Default values for new issues: Assignee = unassigned, Priority = Normal, Status = Backlog. Always ask about labels before creating. Ask if defaults should be changed before creating.
 
 ## Writing Style
 
