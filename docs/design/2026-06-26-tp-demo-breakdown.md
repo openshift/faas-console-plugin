@@ -12,16 +12,14 @@
 - [x] Define epics for the TP demo work -> SRVOCF-953, SRVOCF-956, SRVOCF-957
 - [x] Review open stories on SRVOCF-810, move relevant ones -> SRVOCF-862, SRVOCF-841 to 953
 - [x] Review stories on SRVOCF-913, move relevant ones -> SRVOCF-822, 825, 842, 844, 846, 847, 848, 859, 944 to 953
-- [ ] Create new stories where needed
-- [ ] Add KEDA deployer story (switch from Knative Serving to KEDA, depends on [SRVOCF-886](https://redhat.atlassian.net/browse/SRVOCF-886), see [OCPSTRAT-2942 comment](https://redhat.atlassian.net/browse/OCPSTRAT-2942?focusedCommentId=17367325))
-- [ ] Add workflow unification story (align workflows before moving forward, see [Slack thread](https://redhat-internal.slack.com/archives/CLMP7R2G2/p1781796463631199), [commit message hygiene](https://redhat-internal.slack.com/archives/CLMP7R2G2/p1782474964480759))
-  - branch naming rule and script
-  - PR guideline: subject + description
-  - commit message guideline + lint
-  - project development principles
-  - project values
-- [ ] Sync epics and stories to Jira
-- [ ] Prioritize stories
+- [x] Create new stories where needed -> SRVOCF-978, SRVOCF-979 on 953
+- [x] Add KEDA deployer stories -> SRVOCF-952 (func CLI, updated from spike), SRVOCF-981 (console) on 956
+- [x] Add workflow unification story -> SRVOCF-982 on 953
+- [x] Sync epics and stories to Jira
+- [x] Create remaining TBD stories on SRVOCF-956 -> SRVOCF-983, SRVOCF-984
+- [x] Create remaining TBD stories on SRVOCF-957 -> SRVOCF-985, SRVOCF-986, SRVOCF-987
+- [x] Update SRVOCF-954 with completed work
+- [x] Update SRVOCF-953 epic description
 
 ## Epics
 
@@ -47,6 +45,9 @@ Post-PoC cleanup, stabilization and development environment setup.
 | SRVOCF-841 | Service layer cleanup: ClusterService, kubeconfig, encryption | In Progress | Moved from 810 |
 | SRVOCF-825 | Error handling infrastructure | Backlog | Moved from 913 |
 | SRVOCF-822 | Function List shows cluster functions without PAT | Backlog | Moved from 913 |
+| SRVOCF-978 | Move backend logic from client to server | Refinement | New |
+| SRVOCF-979 | Replace GitHub repos as source of truth for function discovery | Refinement | New |
+| SRVOCF-982 | Workflow unification: development guidelines and tooling | Refinement | Blocker |
 
 ### SRVOCF-956: Console - Dynamic Plugin - TP Demo Features
 
@@ -56,12 +57,13 @@ New console plugin features for the TP demo.
 
 | Key | Summary | Status | Notes |
 |-----|---------|--------|-------|
-| SRVOCF-952 | KEDA deployer support (spike) | In Progress | nice-to-have |
+| SRVOCF-952 | func CLI: deploy using KEDA on OpenShift | In Progress | nice-to-have, was spike |
+| SRVOCF-981 | Console: support KEDA-deployed functions | Refinement | nice-to-have |
 | SRVOCF-863 | Create functions from template repositories | Backlog | nice-to-have |
 | SRVOCF-856 | OAuth authentication | Backlog | nice-to-have |
-| (TBD) | Secret reference UI | | must-have |
-| (TBD) | E2E demonstration of must-have implementation | | must-have |
-| (TBD) | Create file in editor | | nice-to-have |
+| SRVOCF-958 | Add runtime environment variables UI to Create page | Refinement | must-have |
+| SRVOCF-983 | E2E demonstration of must-have implementation | Backlog | must-have, blocked by 958 |
+| SRVOCF-984 | Create file in editor | Refinement | nice-to-have |
 
 ### SRVOCF-957: PDF Transcriber - Demo Function
 
@@ -71,9 +73,9 @@ Self-contained PDF transcription function for the TP demo.
 
 | Key | Summary | Status | Notes |
 |-----|---------|--------|-------|
-| (TBD) | Function handler | | must-have |
-| (TBD) | SPA frontend | | must-have |
-| (TBD) | Local development and testing | | must-have |
+| SRVOCF-985 | PDF transcriber function handler | Refinement | must-have, Major |
+| SRVOCF-986 | PDF transcriber SPA frontend | Refinement | must-have, Major, related to 863 and 984 |
+| SRVOCF-987 | PDF transcriber local development and testing | Refinement | must-have, Major |
 
 ## Stories Remaining on SRVOCF-913
 
