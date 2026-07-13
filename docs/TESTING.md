@@ -141,6 +141,14 @@ afterEach(() => {
 
 ## E2e Conventions
 
+E2e tests primarily cover use cases, exercising a flow from start to finish and verifying all expected visible elements and values. This ensures that features aligned with customer needs remain supported as the codebase evolves. A few additional e2e tests cover important standalone logic that benefits from browser-level validation.
+
+### Prerequisites
+
+- A running OpenShift cluster with the plugin deployed (or a local dev environment via `init.sh`)
+- A GitHub PAT with `repo` scope (set as `BRIDGE_GITHUB_PAT` in `.env`)
+- See the [Running](#running) section below for commands
+
 ### Environment
 
 `playwright.config.ts` auto-loads `.env` from the project root. Required variables:
@@ -154,11 +162,12 @@ afterEach(() => {
 ### Running
 
 ```bash
-yarn test:e2e                              # all tests, headless
-yarn test:e2e e2e/smoke/my-feature.test.ts # single file
-yarn test:e2e:headed                       # visible browser
-yarn test:e2e:ui                           # interactive UI mode
-yarn test:e2e:report                       # open HTML report
+yarn test:e2e                                        # all tests, headless
+yarn test:e2e:smoke                                  # smoke subset (runs on every push)
+yarn test:e2e e2e/creation/function-create-basic.test.ts  # single file
+yarn test:e2e:headed                                 # visible browser
+yarn test:e2e:ui                                     # interactive UI mode
+yarn test:e2e:report                                 # open HTML report
 ```
 
 ### Helpers (`e2e/helpers.ts`)
@@ -166,10 +175,9 @@ yarn test:e2e:report                       # open HTML report
 | Helper | Purpose |
 |--------|---------|
 | `navigateToFunctionsList(page)` | Go to `/faas`, inject PAT, reload, dismiss dialogs, wait for load |
-| `loadFunctionsList(page)` | Alias for `navigateToFunctionsList` |
-| `loadFunctionsListWithRealPat(page, pat)` | Same flow but with an explicit real PAT |
-| `loadFunctionsTable(page)` | Navigate to list and wait for the functions grid to be visible |
-| `loadCreatePage(page, pat)` | Navigate to `/faas/create`, inject real PAT, reload, dismiss dialogs |
+| `navigateToFunctionsListWithRealPat(page, pat)` | Same flow but with an explicit real PAT |
+| `navigateToFunctionsTable(page)` | Navigate to list and wait for the functions grid to be visible |
+| `navigateToCreatePage(page, pat)` | Navigate to `/faas/create`, inject real PAT, reload, dismiss dialogs |
 | `injectGitHubPat(page)` | Auto-detect: uses real PAT from env if set, placeholder otherwise |
 | `injectRealGitHubPat(page, pat)` | Validate PAT against GitHub API and store in sessionStorage |
 | `dismissDialogs(page)` | Remove webpack overlay, dismiss PAT modal, dismiss guided tour |
@@ -208,7 +216,7 @@ page.locator('#name')  // form inputs with HTML id
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { loadFunctionsList, waitForTableOrEmpty } from '../helpers';
+import { navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
 
 const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
 
@@ -216,7 +224,7 @@ test.describe('My feature', () => {
   test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
 
   test('page loads and shows heading', async ({ page }) => {
-    await loadFunctionsList(page);
+    await navigateToFunctionsList(page);
     await expect(
       page.getByRole('heading', { name: 'My Feature', exact: true }),
     ).toBeVisible();

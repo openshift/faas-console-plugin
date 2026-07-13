@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import {
   createButtonLocator,
-  loadFunctionsListWithRealPat,
+  navigateToFunctionsListWithRealPat,
   robustClick,
   waitForTableOrEmpty,
 } from '../helpers';
@@ -13,7 +13,7 @@ test.describe('GitHub integration (real PAT)', () => {
 
   test('authenticates and lists functions from GitHub', async ({ page }) => {
     await test.step('load list page with real PAT', async () => {
-      await loadFunctionsListWithRealPat(page, pat);
+      await navigateToFunctionsListWithRealPat(page, pat);
     });
 
     await test.step('verify page renders with data', async () => {
@@ -24,7 +24,7 @@ test.describe('GitHub integration (real PAT)', () => {
 
   test('navigates create form and returns to list', async ({ page }) => {
     await test.step('load list page with real PAT', async () => {
-      await loadFunctionsListWithRealPat(page, pat);
+      await navigateToFunctionsListWithRealPat(page, pat);
       await waitForTableOrEmpty(page);
     });
 

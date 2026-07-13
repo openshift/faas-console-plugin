@@ -99,9 +99,7 @@ export async function navigateToFunctionsList(page: Page): Promise<void> {
   await waitForLoadingComplete(page);
 }
 
-export const loadFunctionsList = navigateToFunctionsList;
-
-export async function loadFunctionsListWithRealPat(page: Page, pat: string): Promise<void> {
+export async function navigateToFunctionsListWithRealPat(page: Page, pat: string): Promise<void> {
   await page.goto('/faas');
   await injectRealGitHubPat(page, pat);
   await page.reload();
@@ -109,7 +107,7 @@ export async function loadFunctionsListWithRealPat(page: Page, pat: string): Pro
   await waitForLoadingComplete(page);
 }
 
-export async function loadCreatePage(page: Page, pat: string): Promise<void> {
+export async function navigateToCreatePage(page: Page, pat: string): Promise<void> {
   await page.goto('/faas/create');
   await injectRealGitHubPat(page, pat);
   await page.reload();
@@ -117,7 +115,7 @@ export async function loadCreatePage(page: Page, pat: string): Promise<void> {
   await waitForLoadingComplete(page);
 }
 
-export async function loadFunctionsTable(page: Page): Promise<void> {
+export async function navigateToFunctionsTable(page: Page): Promise<void> {
   await navigateToFunctionsList(page);
   await page.getByRole('grid', { name: 'Functions' }).waitFor({ timeout: 30_000 });
 }

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loadFunctionsTable } from '../helpers';
+import { navigateToFunctionsTable } from '../helpers';
 
 const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
 
@@ -7,7 +7,7 @@ test.describe('Edit function page', () => {
   test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
 
   test.beforeEach(async ({ page }) => {
-    await loadFunctionsTable(page);
+    await navigateToFunctionsTable(page);
     await page
       .getByRole('grid', { name: 'Functions' })
       .getByRole('button', { name: 'Edit' })

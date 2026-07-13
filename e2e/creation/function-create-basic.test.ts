@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loadCreatePage, loadFunctionsList, waitForTableOrEmpty } from '../helpers';
+import { navigateToCreatePage, navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
 
 const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
 
@@ -7,7 +7,7 @@ test.describe('Create function page', () => {
   test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
 
   test('navigates to create page and renders the form', async ({ page }) => {
-    await loadFunctionsList(page);
+    await navigateToFunctionsList(page);
     const result = await waitForTableOrEmpty(page);
 
     const createBtn =
@@ -22,7 +22,7 @@ test.describe('Create function page', () => {
 
   test.describe('create form', () => {
     test.beforeEach(async ({ page }) => {
-      await loadCreatePage(page, pat);
+      await navigateToCreatePage(page, pat);
     });
 
     test('form has all required fields', async ({ page }) => {

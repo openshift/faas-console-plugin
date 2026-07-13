@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { loadFunctionsList, navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
+import { navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
 
 test.describe('Functions list page', () => {
   test('loads and displays the page heading', async ({ page }) => {
@@ -8,12 +8,12 @@ test.describe('Functions list page', () => {
   });
 
   test('shows empty state or function table', async ({ page }) => {
-    await loadFunctionsList(page);
+    await navigateToFunctionsList(page);
     await waitForTableOrEmpty(page);
   });
 
   test('create button is visible', async ({ page }) => {
-    await loadFunctionsList(page);
+    await navigateToFunctionsList(page);
     await waitForTableOrEmpty(page);
 
     const createLink = page.getByRole('link', { name: 'Create new function' });

@@ -34,7 +34,7 @@ export default defineConfig({
       testMatch: /.*\.setup\.ts/,
     },
     {
-      name: 'smoke',
+      name: 'e2e',
       use: {
         ...devices['Desktop Chrome'],
         storageState: '.e2e/auth/session.json',
