@@ -12,7 +12,7 @@ Scaffold Playwright e2e tests for `$ARGUMENTS`. If no argument is provided, ask 
 1. **Learn the patterns** -- read these files to internalize the project's e2e conventions:
 
    - `e2e/helpers.ts` (all helper functions)
-   - `e2e/listing/function-list-basic.test.ts` (reference test file)
+   - `e2e/use-cases/listing/function-list-basic.test.ts` (reference test file)
    - `docs/TESTING.md` (E2e Conventions section)
 
 2. **Understand the feature** -- find and read the feature's source code:
@@ -36,17 +36,16 @@ Scaffold Playwright e2e tests for `$ARGUMENTS`. If no argument is provided, ask 
 
    Wait for user approval before writing code.
 
-4. **Scaffold the test file** at `e2e/<feature>/$ARGUMENTS.test.ts` following these conventions.
+4. **Scaffold the test file** at `e2e/use-cases/<feature>/$ARGUMENTS.test.ts` following these conventions.
 
    **Imports and setup:**
    ```typescript
    import { test, expect } from '@playwright/test';
-   import { navigateToFunctionsList, dismissDialogs, ... } from '../helpers';
+   import { navigateToFunctionsList, dismissDialogs, ... } from '../../helpers';
 
-   const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
+   const pat = process.env.BRIDGE_GITHUB_PAT || undefined;
 
    test.describe('Feature name', () => {
-     test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
      // tests...
    });
    ```
@@ -60,12 +59,13 @@ Scaffold Playwright e2e tests for `$ARGUMENTS`. If no argument is provided, ask 
    - Never add `data-test` attributes to production components
 
    **Navigation and dialog handling:**
-   - Use helpers: `navigateToFunctionsList(page)`, `navigateToFunctionsListWithRealPat(page, pat)`, `navigateToCreatePage(page, pat)`
+   - Use helpers: `navigateToFunctionsList(page, pat)`, `navigateToCreatePage(page, pat)`
+   - When no PAT is set, mock GitHub API routes are installed automatically
    - After any `page.goto()` + `page.reload()` sequence, call `dismissDialogs(page)`
    - For custom navigation, follow this pattern:
      ```typescript
      await page.goto('/faas/your-route');
-     await injectRealGitHubPat(page, pat);
+     await injectGitHubPat(page, pat);
      await page.reload();
      await dismissDialogs(page);
      ```
@@ -110,7 +110,7 @@ Scaffold Playwright e2e tests for `$ARGUMENTS`. If no argument is provided, ask 
 - Never add `data-test` attributes to production source code
 - Always use `exact: true` for ambiguous names
 - Always call `dismissDialogs` after page navigation + reload
-- Tests that need GitHub API must have `test.skip(!pat)` guard
+- Tests work with or without `BRIDGE_GITHUB_PAT` (mock routes are installed automatically when no PAT is set)
 - Use-case tests exercise a complete flow from start to finish, verifying all expected visible elements and values
 - Keep individual tests focused on user-visible behavior, not exhaustive coverage of internals
 - Review `e2e/helpers.ts` before writing setup code. If a helper already exists for your navigation pattern, use it. If you find yourself repeating setup across multiple tests, extract a new helper or use `test.beforeEach` in a nested `test.describe`

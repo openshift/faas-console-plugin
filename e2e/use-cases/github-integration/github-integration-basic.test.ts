@@ -1,19 +1,17 @@
 import { test, expect } from '@playwright/test';
 import {
   createButtonLocator,
-  navigateToFunctionsListWithRealPat,
+  navigateToFunctionsList,
   robustClick,
   waitForTableOrEmpty,
-} from '../helpers';
+} from '../../helpers';
 
-const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
+const pat = process.env.BRIDGE_GITHUB_PAT || undefined;
 
-test.describe('GitHub integration (real PAT)', () => {
-  test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
-
+test.describe('GitHub integration', () => {
   test('authenticates and lists functions from GitHub', async ({ page }) => {
-    await test.step('load list page with real PAT', async () => {
-      await navigateToFunctionsListWithRealPat(page, pat);
+    await test.step('load list page', async () => {
+      await navigateToFunctionsList(page, pat);
     });
 
     await test.step('verify page renders with data', async () => {
@@ -23,8 +21,8 @@ test.describe('GitHub integration (real PAT)', () => {
   });
 
   test('navigates create form and returns to list', async ({ page }) => {
-    await test.step('load list page with real PAT', async () => {
-      await navigateToFunctionsListWithRealPat(page, pat);
+    await test.step('load list page', async () => {
+      await navigateToFunctionsList(page, pat);
       await waitForTableOrEmpty(page);
     });
 

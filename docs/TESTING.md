@@ -40,7 +40,7 @@ If it makes an HTTP or WebSocket call, mock it with MSW, not `vi.mock`.
 | Component tests | `src/pages/<name>/components/*.test.ts\|tsx`, `src/common/components/*.test.ts\|tsx` |
 | Page tests | `src/pages/<name>/*.test.ts\|tsx` |
 | Service / Hook / Util tests | `src/common/**/*.test.ts\|tsx` |
-| E2e specs | `e2e/<feature-name>/*.test.ts` |
+| E2e specs | `e2e/use-cases/<feature-name>/*.test.ts` |
 | MSW handlers | `testing/msw/handlers.ts` |
 
 ## What Gets Tested
@@ -155,7 +155,7 @@ E2e tests primarily cover use cases, exercising a flow from start to finish and 
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `BRIDGE_GITHUB_PAT` | GitHub PAT with `repo` scope | Yes (tests skip without it) |
+| `BRIDGE_GITHUB_PAT` | GitHub PAT with `repo` scope | No (tests use mock GitHub API when unset) |
 | `BRIDGE_BASE_ADDRESS` | Console URL (default: `http://localhost:9000`) | No |
 | `BRIDGE_KUBEADMIN_PASSWORD` | Cluster login password | Only when auth is enabled |
 
@@ -164,7 +164,7 @@ E2e tests primarily cover use cases, exercising a flow from start to finish and 
 ```bash
 yarn test:e2e                                        # all tests, headless
 yarn test:e2e:smoke                                  # smoke subset (runs on every push)
-yarn test:e2e e2e/creation/function-create-basic.test.ts  # single file
+yarn test:e2e e2e/use-cases/creation/function-create-basic.test.ts  # single file
 yarn test:e2e:headed                                 # visible browser
 yarn test:e2e:ui                                     # interactive UI mode
 yarn test:e2e:report                                 # open HTML report
@@ -174,12 +174,12 @@ yarn test:e2e:report                                 # open HTML report
 
 | Helper | Purpose |
 |--------|---------|
-| `navigateToFunctionsList(page)` | Go to `/faas`, inject PAT, reload, dismiss dialogs, wait for load |
-| `navigateToFunctionsListWithRealPat(page, pat)` | Same flow but with an explicit real PAT |
+| `navigateTo(page, path, pat?)` | Base navigation: go to path, inject PAT (real if provided, mock if omitted), reload, dismiss dialogs, wait for load |
+| `navigateToFunctionsList(page, pat?)` | Go to `/faas` via `navigateTo` |
 | `navigateToFunctionsTable(page)` | Navigate to list and wait for the functions grid to be visible |
-| `navigateToCreatePage(page, pat)` | Navigate to `/faas/create`, inject real PAT, reload, dismiss dialogs |
-| `injectGitHubPat(page)` | Auto-detect: uses real PAT from env if set, placeholder otherwise |
-| `injectRealGitHubPat(page, pat)` | Validate PAT against GitHub API and store in sessionStorage |
+| `navigateToCreatePage(page, pat?)` | Go to `/faas/create` via `navigateTo` |
+| `injectGitHubPat(page, pat?)` | Inject PAT into sessionStorage. With a real PAT: validates against GitHub API. Without: installs mock API routes and uses placeholder |
+| `mockGitHubApi(page)` | Install `page.route()` interceptors for GitHub API (called automatically when no PAT is set) |
 | `dismissDialogs(page)` | Remove webpack overlay, dismiss PAT modal, dismiss guided tour |
 | `waitForLoadingComplete(page)` | Wait for PF6 spinners and OCP loaders to disappear |
 | `waitForTableOrEmpty(page)` | Wait for either the functions grid or "No functions found" heading |
@@ -209,22 +209,20 @@ page.locator('#name')  // form inputs with HTML id
 ### Auth and PAT
 
 - Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`
-- Tests that need GitHub API must guard with `test.skip(!pat, 'BRIDGE_GITHUB_PAT not set')`
+- When `BRIDGE_GITHUB_PAT` is set, tests use the real GitHub API. When unset, mock routes are installed automatically via `page.route()`
 - After `page.goto()` + PAT injection + `page.reload()`, always call `dismissDialogs(page)`
 
 ### Test file template
 
 ```typescript
 import { test, expect } from '@playwright/test';
-import { navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
+import { navigateToFunctionsList, waitForTableOrEmpty } from '../../helpers';
 
-const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
+const pat = process.env.BRIDGE_GITHUB_PAT || undefined;
 
 test.describe('My feature', () => {
-  test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
-
   test('page loads and shows heading', async ({ page }) => {
-    await navigateToFunctionsList(page);
+    await navigateToFunctionsList(page, pat);
     await expect(
       page.getByRole('heading', { name: 'My Feature', exact: true }),
     ).toBeVisible();

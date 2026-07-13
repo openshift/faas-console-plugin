@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
+import { navigateToFunctionsList, waitForTableOrEmpty } from '../../helpers';
 
 test.describe('Functions list page', () => {
   test('loads and displays the page heading', async ({ page }) => {

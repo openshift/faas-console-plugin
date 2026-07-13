@@ -1,11 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { navigateToCreatePage, navigateToFunctionsList, waitForTableOrEmpty } from '../helpers';
+import { navigateToCreatePage, navigateToFunctionsList, waitForTableOrEmpty } from '../../helpers';
 
-const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
+const pat = process.env.BRIDGE_GITHUB_PAT || undefined;
 
 test.describe('Create function page', () => {
-  test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
-
   test('navigates to create page and renders the form', async ({ page }) => {
     await navigateToFunctionsList(page);
     const result = await waitForTableOrEmpty(page);
@@ -17,7 +15,9 @@ test.describe('Create function page', () => {
     await createBtn.click();
 
     await expect(page).toHaveURL(/\/faas\/create/);
-    await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   test.describe('create form', () => {

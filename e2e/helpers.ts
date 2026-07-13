@@ -1,4 +1,5 @@
 import { Locator, Page, expect } from '@playwright/test';
+import { mockGitHubApi } from './mocks/github';
 
 const PAT_KEY = 'func-console-pat';
 const USER_KEY = 'func-console-user';
@@ -53,11 +54,26 @@ export async function dismissDialogs(page: Page): Promise<void> {
   }
 }
 
-export async function injectGitHubPat(page: Page): Promise<void> {
-  const pat = process.env.BRIDGE_GITHUB_PAT;
+export async function injectGitHubPat(page: Page, pat?: string): Promise<void> {
   if (pat) {
-    await injectRealGitHubPat(page, pat);
+    const response = await page.request.get('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${pat}` },
+    });
+    const user = await response.json();
+    await page.evaluate(
+      ({ patKey, userKey, patValue, userValue }) => {
+        sessionStorage.setItem(patKey, patValue);
+        sessionStorage.setItem(userKey, JSON.stringify(userValue));
+      },
+      {
+        patKey: PAT_KEY,
+        userKey: USER_KEY,
+        patValue: pat,
+        userValue: { login: user.login, name: user.name },
+      },
+    );
   } else {
+    await mockGitHubApi(page);
     await page.evaluate(
       ({ patKey, userKey }) => {
         sessionStorage.setItem(patKey, 'placeholder-pat');
@@ -71,48 +87,20 @@ export async function injectGitHubPat(page: Page): Promise<void> {
   }
 }
 
-export async function injectRealGitHubPat(page: Page, pat: string): Promise<void> {
-  const response = await page.request.get('https://api.github.com/user', {
-    headers: { Authorization: `Bearer ${pat}` },
-  });
-  const user = await response.json();
-
-  await page.evaluate(
-    ({ patKey, userKey, patValue, userValue }) => {
-      sessionStorage.setItem(patKey, patValue);
-      sessionStorage.setItem(userKey, JSON.stringify(userValue));
-    },
-    {
-      patKey: PAT_KEY,
-      userKey: USER_KEY,
-      patValue: pat,
-      userValue: { login: user.login, name: user.name },
-    },
-  );
-}
-
-export async function navigateToFunctionsList(page: Page): Promise<void> {
-  await page.goto('/faas');
-  await injectGitHubPat(page);
+async function navigateTo(page: Page, path: string, pat?: string): Promise<void> {
+  await page.goto(path);
+  await injectGitHubPat(page, pat ?? process.env.BRIDGE_GITHUB_PAT);
   await page.reload();
   await dismissDialogs(page);
   await waitForLoadingComplete(page);
 }
 
-export async function navigateToFunctionsListWithRealPat(page: Page, pat: string): Promise<void> {
-  await page.goto('/faas');
-  await injectRealGitHubPat(page, pat);
-  await page.reload();
-  await dismissDialogs(page);
-  await waitForLoadingComplete(page);
+export async function navigateToFunctionsList(page: Page, pat?: string): Promise<void> {
+  await navigateTo(page, '/faas', pat);
 }
 
-export async function navigateToCreatePage(page: Page, pat: string): Promise<void> {
-  await page.goto('/faas/create');
-  await injectRealGitHubPat(page, pat);
-  await page.reload();
-  await dismissDialogs(page);
-  await waitForLoadingComplete(page);
+export async function navigateToCreatePage(page: Page, pat?: string): Promise<void> {
+  await navigateTo(page, '/faas/create', pat);
 }
 
 export async function navigateToFunctionsTable(page: Page): Promise<void> {
