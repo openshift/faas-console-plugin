@@ -1,8 +1,4 @@
-import {
-  DocumentTitle,
-  K8sResourceKind,
-  ListPageHeader,
-} from '@openshift-console/dynamic-plugin-sdk';
+import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
   Button,
@@ -19,16 +15,14 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom-v5-compat';
 import { FunctionsEmptyState } from './components/EmptyState';
-import { FunctionStatus, FunctionTable, FunctionTableItem } from './components/FunctionTable';
+import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import {
   ForgeConnectionContext,
   ForgeConnectionProvider,
 } from '../../common/context/ForgeConnectionProvider';
-import {
-  ClusterFunction,
-  useClusterService,
-} from '../../common/services/cluster/useClusterService';
+import { ClusterFunction } from '../../common/services/cluster/ClusterFunction';
+import { useClusterService } from '../../common/services/cluster/useClusterService';
 import { SourceControlService } from '../../common/services/source-control/SourceControlService';
 import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
 import { errorMessage, parseFuncYaml } from '../../common/utils/utils';
@@ -246,33 +240,11 @@ function newItem(
 }
 
 function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTableItem {
-  const { knativeService: ksvc, deployment } = cf;
-  if (!ksvc || !deployment) return item;
-
   return {
     ...item,
-    status: deriveStatus(ksvc, deployment),
-    url: ksvc.status?.url,
-    replicas: deployment.status?.readyReplicas ?? 0,
-    mainResource: ksvc,
+    status: cf.status,
+    url: cf.url,
+    replicas: cf.replicas,
+    mainResource: cf.mainResource,
   };
-}
-
-function deriveStatus(ksvc: K8sResourceKind, deployment: K8sResourceKind): FunctionStatus {
-  const conditions = ksvc.status?.conditions ?? [];
-
-  const ready = conditions.find((c: { type: string }) => c.type === 'Ready');
-  if (!ready) return 'Deploying';
-
-  if (ready.status === 'True') {
-    const desired = deployment.spec?.replicas ?? 0;
-    const readyReplicas = deployment.status?.readyReplicas ?? 0;
-    if (desired === 0 && readyReplicas === 0) return 'ScaledToZero';
-
-    return 'Running';
-  }
-
-  if (ready.status === 'False') return 'Error';
-
-  return 'Deploying';
 }

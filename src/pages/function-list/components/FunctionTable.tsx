@@ -1,5 +1,5 @@
 import {
-  K8sResourceKind,
+  K8sResourceCommon,
   SuccessStatus,
   ProgressStatus,
   ErrorStatus,
@@ -11,6 +11,7 @@ import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import { ActionList, ActionListItem, Button } from '@patternfly/react-core';
 import { useTranslation } from 'react-i18next';
+import { FunctionStatus } from '../../../common/services/types';
 
 export interface FunctionTableItem {
   name: string;
@@ -20,19 +21,8 @@ export interface FunctionTableItem {
   url?: string;
   replicas: number;
   namespace: string;
-  mainResource?: K8sResourceKind;
+  mainResource?: K8sResourceCommon;
 }
-
-export type FunctionStatus =
-  | 'CreatingRepo'
-  | 'Pushing'
-  | 'PushedToGitHub'
-  | 'Deploying'
-  | 'Running'
-  | 'ScaledToZero'
-  | 'Error'
-  | 'Unknown'
-  | 'NotDeployed';
 
 export function FunctionTable({
   functions,
@@ -133,10 +123,10 @@ function UrlCell({ url }: { url?: string }) {
   );
 }
 
-function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceKind }) {
+function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
   const launchDelete = useDeleteModal(
-    mainResource as K8sResourceKind,
+    mainResource as K8sResourceCommon,
     undefined,
     undefined,
     t('Undeploy'),

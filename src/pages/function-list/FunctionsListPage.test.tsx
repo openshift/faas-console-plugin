@@ -64,12 +64,18 @@ function clusterData(
   };
 }
 
-function clusterFunction(
-  name: string,
-  ksvc: ReturnType<typeof ksvcFixture>,
-  dep: ReturnType<typeof deploymentFixture>,
-) {
-  return { name, knativeService: ksvc, deployment: dep };
+function clusterFunction(name: string, status: string, replicas: number, url?: string) {
+  return {
+    name,
+    status,
+    url,
+    replicas,
+    mainResource: {
+      apiVersion: 'serving.knative.dev/v1',
+      kind: 'Service',
+      metadata: { name, namespace: 'demo' },
+    },
+  };
 }
 
 function renderAuthenticated() {
@@ -118,50 +124,6 @@ function repoFixture(name: string) {
   };
 }
 
-function ksvcFixture(
-  name: string,
-  readyStatus: string,
-  url = `https://${name}-demo.apps.example.com`,
-  revision = `${name}-00001`,
-) {
-  return {
-    apiVersion: 'serving.knative.dev/v1',
-    kind: 'Service',
-    metadata: {
-      name,
-      namespace: 'demo',
-      labels: { 'function.knative.dev/name': name },
-    },
-    status: {
-      url,
-      latestReadyRevisionName: revision,
-      conditions: [{ type: 'Ready', status: readyStatus }],
-    },
-  };
-}
-
-function deploymentFixture(
-  name: string,
-  specReplicas: number,
-  readyReplicas: number,
-  revision = `${name}-00001`,
-) {
-  return {
-    apiVersion: 'apps/v1',
-    kind: 'Deployment',
-    metadata: {
-      name: `${revision}-deployment`,
-      namespace: 'demo',
-      labels: {
-        'function.knative.dev/name': name,
-        'serving.knative.dev/revision': revision,
-      },
-    },
-    spec: { replicas: specReplicas },
-    status: { readyReplicas },
-  };
-}
-
 describe('FunctionsListPage', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -206,11 +168,7 @@ describe('FunctionsListPage', () => {
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [
-          clusterFunction(
-            'my-func',
-            ksvcFixture('my-func', 'True'),
-            deploymentFixture('my-func', 1, 1),
-          ),
+          clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
         ],
       }),
     );
@@ -316,18 +274,14 @@ describe('FunctionsListPage', () => {
     expect(button).toBeDisabled();
   });
 
-  it('enriches function with status from Knative Service and replicas from Deployment', async () => {
+  it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
     renderAuthenticated();
     setupReposHandler([repoFixture('my-func')]);
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [
-          clusterFunction(
-            'my-func',
-            ksvcFixture('my-func', 'True'),
-            deploymentFixture('my-func', 1, 1),
-          ),
+          clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
         ],
       }),
     );
@@ -343,19 +297,13 @@ describe('FunctionsListPage', () => {
     expect(screen.getByTestId('fn-url')).toHaveTextContent('https://my-func-demo.apps.example.com');
   });
 
-  it('shows ScaledToZero when Knative Service is Ready but Deployment has 0 replicas', async () => {
+  it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
     renderAuthenticated();
     setupReposHandler([repoFixture('my-func')]);
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        functions: [
-          clusterFunction(
-            'my-func',
-            ksvcFixture('my-func', 'True'),
-            deploymentFixture('my-func', 0, 0),
-          ),
-        ],
+        functions: [clusterFunction('my-func', 'ScaledToZero', 0)],
       }),
     );
 
@@ -369,19 +317,13 @@ describe('FunctionsListPage', () => {
     expect(screen.getByTestId('fn-replicas')).toHaveTextContent('0');
   });
 
-  it('shows Deploying when Knative Service Ready condition is Unknown', async () => {
+  it('shows Deploying status from ClusterFunction', async () => {
     renderAuthenticated();
     setupReposHandler([repoFixture('my-func')]);
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        functions: [
-          clusterFunction(
-            'my-func',
-            ksvcFixture('my-func', 'Unknown'),
-            deploymentFixture('my-func', 1, 0),
-          ),
-        ],
+        functions: [clusterFunction('my-func', 'Deploying', 0)],
       }),
     );
 
@@ -394,19 +336,13 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByTestId('fn-status')).toHaveTextContent('Deploying');
   });
 
-  it('shows Error when Knative Service Ready condition is False', async () => {
+  it('shows Error status from ClusterFunction', async () => {
     renderAuthenticated();
     setupReposHandler([repoFixture('my-func')]);
     setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(
       clusterData({
-        functions: [
-          clusterFunction(
-            'my-func',
-            ksvcFixture('my-func', 'False'),
-            deploymentFixture('my-func', 0, 0),
-          ),
-        ],
+        functions: [clusterFunction('my-func', 'Error', 0)],
       }),
     );
 
@@ -574,11 +510,7 @@ describe('FunctionsListPage', () => {
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [
-          clusterFunction(
-            'my-function',
-            ksvcFixture('my-function', 'True'),
-            deploymentFixture('my-function', 1, 1),
-          ),
+          clusterFunction('my-function', 'Running', 1, 'https://my-function-demo.apps.example.com'),
         ],
       }),
     );

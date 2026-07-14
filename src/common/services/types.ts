@@ -33,3 +33,14 @@ export interface RepoSecret {
   name: string;
   value: string;
 }
+
+export type FunctionStatus =
+  | 'CreatingRepo'
+  | 'Pushing'
+  | 'PushedToGitHub'
+  | 'Deploying'
+  | 'Running'
+  | 'ScaledToZero'
+  | 'Error'
+  | 'Unknown'
+  | 'NotDeployed';
