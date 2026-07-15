@@ -43,16 +43,25 @@ const MOCK_BLOBS: Record<string, { content: string; encoding: string }> = {
   },
 };
 
+const MOCK_PUBLIC_KEY = {
+  key_id: 'mock-key-id',
+  key: Buffer.from('mock-public-key-exactly-32-bytes').toString('base64'),
+};
+
 const mockedPages = new WeakSet<Page>();
+let blobCounter = 0;
 
 export async function mockGitHubApi(page: Page): Promise<void> {
   if (mockedPages.has(page)) return;
   mockedPages.add(page);
+  blobCounter = 0;
 
   await page.route('https://api.github.com/**', (route: Route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname;
+    const path = decodeURIComponent(url.pathname);
     const method = route.request().method();
+
+    // --- GET endpoints ---
 
     if (method === 'GET' && path === '/user') {
       return route.fulfill({ json: MOCK_USER });
@@ -76,6 +85,86 @@ export async function mockGitHubApi(page: Page): Promise<void> {
       return route.fulfill({ json: blob });
     }
 
+    // git.getRef: GET /repos/:owner/:repo/git/ref/heads/:branch (singular)
+    if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/git\/ref\/heads\//.test(path)) {
+      return route.fulfill({
+        json: { ref: path.replace('/git/ref/', '/git/refs/'), object: { sha: 'mock-parent-sha' } },
+      });
+    }
+
+    // git.getCommit: GET /repos/:owner/:repo/git/commits/:sha
+    if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/git\/commits\//.test(path)) {
+      const sha = path.split('/').pop() ?? '';
+      return route.fulfill({
+        json: { sha, tree: { sha: 'mock-base-tree' }, parents: [] },
+      });
+    }
+
+    // repos.get (existence check): GET /repos/:owner/:repo
+    // Must come after more specific /repos/ patterns above
+    if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+$/.test(path)) {
+      return route.fulfill({ status: 404, json: { message: 'Not Found' } });
+    }
+
+    // actions.getRepoPublicKey
+    if (method === 'GET' && /^\/repos\/[^/]+\/[^/]+\/actions\/secrets\/public-key$/.test(path)) {
+      return route.fulfill({ json: MOCK_PUBLIC_KEY });
+    }
+
+    // --- POST endpoints ---
+
+    // repos.createForAuthenticatedUser
+    if (method === 'POST' && path === '/user/repos') {
+      return route.fulfill({
+        status: 201,
+        json: {
+          name: 'new-fn',
+          html_url: 'https://github.com/e2e-user/new-fn',
+          default_branch: 'main',
+          owner: { login: 'e2e-user' },
+        },
+      });
+    }
+
+    // git.createBlob
+    if (method === 'POST' && /^\/repos\/[^/]+\/[^/]+\/git\/blobs$/.test(path)) {
+      blobCounter++;
+      return route.fulfill({
+        status: 201,
+        json: { sha: `mock-blob-${String(blobCounter).padStart(3, '0')}` },
+      });
+    }
+
+    // git.createTree
+    if (method === 'POST' && /^\/repos\/[^/]+\/[^/]+\/git\/trees$/.test(path)) {
+      return route.fulfill({ status: 201, json: { sha: 'mock-new-tree' } });
+    }
+
+    // git.createCommit
+    if (method === 'POST' && /^\/repos\/[^/]+\/[^/]+\/git\/commits$/.test(path)) {
+      return route.fulfill({ status: 201, json: { sha: 'mock-new-commit' } });
+    }
+
+    // --- PUT endpoints ---
+
+    // actions.createOrUpdateRepoSecret
+    if (method === 'PUT' && /^\/repos\/[^/]+\/[^/]+\/actions\/secrets\//.test(path)) {
+      return route.fulfill({ status: 204, body: '' });
+    }
+
+    // repos.replaceAllTopics
+    if (method === 'PUT' && /^\/repos\/[^/]+\/[^/]+\/topics$/.test(path)) {
+      return route.fulfill({ json: { names: ['serverless-function'] } });
+    }
+
+    // --- PATCH endpoints ---
+
+    // git.updateRef: PATCH /repos/:owner/:repo/git/refs/heads/:branch (plural)
+    if (method === 'PATCH' && /^\/repos\/[^/]+\/[^/]+\/git\/refs\/heads\//.test(path)) {
+      return route.fulfill({ json: { object: { sha: 'mock-new-commit' } } });
+    }
+
+    // Fallback
     return route.fulfill({
       status: 404,
       json: { message: 'Not Found (e2e mock)' },

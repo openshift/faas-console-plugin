@@ -164,7 +164,7 @@ E2e tests primarily cover use cases, exercising a flow from start to finish and 
 ```bash
 yarn test:e2e                                        # all tests, headless
 yarn test:e2e:smoke                                  # smoke subset (runs on every push)
-yarn test:e2e e2e/use-cases/creation/function-create-basic.test.ts  # single file
+yarn test:e2e e2e/use-cases/creation/function-create.test.ts  # single file
 yarn test:e2e:headed                                 # visible browser
 yarn test:e2e:ui                                     # interactive UI mode
 yarn test:e2e:report                                 # open HTML report
@@ -174,12 +174,15 @@ yarn test:e2e:report                                 # open HTML report
 
 | Helper | Purpose |
 |--------|---------|
-| `navigateTo(page, path, pat?)` | Base navigation: go to path, inject PAT (real if provided, mock if omitted), reload, dismiss dialogs, wait for load |
-| `navigateToFunctionsList(page, pat?)` | Go to `/faas` via `navigateTo` |
+| `navigateTo(page, path)` | Base navigation: inject PAT (real or mock), go to path, dismiss dialogs, wait for load |
+| `navigateToFunctionsList(page)` | Go to `/faas` via `navigateTo` |
 | `navigateToFunctionsTable(page)` | Navigate to list and wait for the functions grid to be visible |
-| `navigateToCreatePage(page, pat?)` | Go to `/faas/create` via `navigateTo` |
-| `injectGitHubPat(page, pat?)` | Inject PAT into sessionStorage. With a real PAT: validates against GitHub API. Without: installs mock API routes and uses placeholder |
+| `navigateToCreatePage(page)` | Go to `/faas/create` via `navigateTo` |
+| `navigateToEditPage(page, repoName?)` | Go to `/faas/edit/:repoName` via `navigateTo`, or navigate via list table if no repoName |
+| `injectGitHubPat(page)` | Inject PAT into sessionStorage (idempotent via WeakSet). With `BRIDGE_GITHUB_PAT` set: validates against GitHub API. Without: installs mock API routes (GitHub + cluster) and uses placeholder |
 | `mockGitHubApi(page)` | Install `page.route()` interceptors for GitHub API (called automatically when no PAT is set) |
+| `mockClusterApis(page)` | Install `page.route()` interceptors for backend proxy and K8s API (called automatically when no PAT is set) |
+| `mockDeployedFunction(page)` | Install `page.route()` interceptors for Knative Service + Deployment K8s APIs to simulate a deployed function (in `e2e/mocks/cluster.ts`) |
 | `dismissDialogs(page)` | Remove webpack overlay, dismiss PAT modal, dismiss guided tour |
 | `waitForLoadingComplete(page)` | Wait for PF6 spinners and OCP loaders to disappear |
 | `waitForTableOrEmpty(page)` | Wait for either the functions grid or "No functions found" heading |
@@ -203,8 +206,26 @@ page.locator('#name')  // form inputs with HTML id
 | Table (sortable/interactive) | `role="grid"` | `getByRole('grid')`, not `getByRole('table')` |
 | Button with `component="a"` | `<a>` with `role="link"` | `getByRole('link')`, not `getByRole('button')` |
 | Modal backdrop (stacked) | Intercepts pointer events | `evaluate((el: HTMLElement) => el.click())` to bypass |
+| TreeView items | All treeitems get `aria-expanded` | Use `:not(:has([role="group"]))` to select files only (directories have a nested `[role="group"]`) |
 
 **Use `exact: true`** when a name is a substring of other elements (e.g., "Name" matches "Namespace").
+
+### Playwright Route LIFO Ordering
+
+Playwright evaluates `page.route()` handlers in LIFO (last-in, first-out) order. Routes registered last are checked first. This means:
+
+- When a test needs to override a mock catch-all route (e.g., `https://api.github.com/**`), the test's specific route must be registered **after** the catch-all
+- Call `injectGitHubPat(page)` **before** registering per-test route overrides so the test's routes take priority
+- `injectGitHubPat` is idempotent (uses a `WeakSet<Page>`) so it's safe to call early
+
+```typescript
+// Correct: injectGitHubPat registers catch-all first, then test override wins
+await injectGitHubPat(page);
+await page.route('https://api.github.com/search/repositories*', (route) =>
+  route.fulfill({ json: { total_count: 0, items: [] } }),
+);
+await navigateToFunctionsList(page);
+```
 
 ### Auth and PAT
 
@@ -218,11 +239,9 @@ page.locator('#name')  // form inputs with HTML id
 import { test, expect } from '@playwright/test';
 import { navigateToFunctionsList, waitForTableOrEmpty } from '../../helpers';
 
-const pat = process.env.BRIDGE_GITHUB_PAT || undefined;
-
 test.describe('My feature', () => {
   test('page loads and shows heading', async ({ page }) => {
-    await navigateToFunctionsList(page, pat);
+    await navigateToFunctionsList(page);
     await expect(
       page.getByRole('heading', { name: 'My Feature', exact: true }),
     ).toBeVisible();

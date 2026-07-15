@@ -1,4 +1,5 @@
 import { Locator, Page, expect } from '@playwright/test';
+import { mockClusterApis } from './mocks/cluster';
 import { mockGitHubApi } from './mocks/github';
 
 const PAT_KEY = 'func-console-pat';
@@ -54,58 +55,71 @@ export async function dismissDialogs(page: Page): Promise<void> {
   }
 }
 
-export async function injectGitHubPat(page: Page, pat?: string): Promise<void> {
+const injectedPages = new WeakSet<Page>();
+
+export async function injectGitHubPat(page: Page): Promise<void> {
+  if (injectedPages.has(page)) return;
+  injectedPages.add(page);
+
+  const pat = process.env.BRIDGE_GITHUB_PAT;
   if (pat) {
     const response = await page.request.get('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${pat}` },
     });
     const user = await response.json();
-    await page.evaluate(
+    await page.addInitScript(
       ({ patKey, userKey, patValue, userValue }) => {
         sessionStorage.setItem(patKey, patValue);
         sessionStorage.setItem(userKey, JSON.stringify(userValue));
       },
-      {
-        patKey: PAT_KEY,
-        userKey: USER_KEY,
-        patValue: pat,
-        userValue: { login: user.login, name: user.name },
-      },
+      { patKey: PAT_KEY, userKey: USER_KEY, patValue: pat, userValue: { name: user.login } },
     );
   } else {
     await mockGitHubApi(page);
-    await page.evaluate(
+    await mockClusterApis(page);
+    await page.addInitScript(
       ({ patKey, userKey }) => {
         sessionStorage.setItem(patKey, 'placeholder-pat');
-        sessionStorage.setItem(
-          userKey,
-          JSON.stringify({ login: 'e2e-user', name: 'E2E Test User' }),
-        );
+        sessionStorage.setItem(userKey, JSON.stringify({ name: 'e2e-user' }));
       },
       { patKey: PAT_KEY, userKey: USER_KEY },
     );
   }
 }
 
-async function navigateTo(page: Page, path: string, pat?: string): Promise<void> {
+async function navigateTo(page: Page, path: string): Promise<void> {
+  await injectGitHubPat(page);
   await page.goto(path);
-  await injectGitHubPat(page, pat ?? process.env.BRIDGE_GITHUB_PAT);
-  await page.reload();
   await dismissDialogs(page);
   await waitForLoadingComplete(page);
 }
 
-export async function navigateToFunctionsList(page: Page, pat?: string): Promise<void> {
-  await navigateTo(page, '/faas', pat);
+export async function navigateToFunctionsList(page: Page): Promise<void> {
+  await navigateTo(page, '/faas');
 }
 
-export async function navigateToCreatePage(page: Page, pat?: string): Promise<void> {
-  await navigateTo(page, '/faas/create', pat);
+export async function navigateToCreatePage(page: Page): Promise<void> {
+  await navigateTo(page, '/faas/create');
+}
+
+export async function navigateToEditPage(page: Page, repoName?: string): Promise<void> {
+  if (repoName) {
+    await navigateTo(page, `/faas/edit/${repoName}`);
+  } else {
+    await navigateToFunctionsTable(page);
+    await page
+      .getByRole('grid', { name: 'Functions' })
+      .getByRole('button', { name: 'Edit' })
+      .first()
+      .click();
+    await page.getByRole('heading', { name: 'Edit function' }).waitFor({ timeout: 10_000 });
+  }
 }
 
 export async function navigateToFunctionsTable(page: Page): Promise<void> {
   await navigateToFunctionsList(page);
-  await page.getByRole('grid', { name: 'Functions' }).waitFor({ timeout: 30_000 });
+  await page.getByRole('heading', { name: 'Functions', exact: true }).waitFor({ timeout: 10_000 });
+  await page.getByRole('grid', { name: 'Functions' }).waitFor({ timeout: 10_000 });
 }
 
 export async function waitForTableOrEmpty(page: Page): Promise<'table' | 'empty'> {
