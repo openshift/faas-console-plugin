@@ -141,4 +141,18 @@ test.describe('Create function', () => {
     await page.locator('#namespace').fill('other-ns');
     await expect(registry).toHaveValue('image-registry.openshift-image-registry.svc:5000/other-ns');
   });
+
+  test.afterAll(async ({ request }) => {
+    const pat = process.env.BRIDGE_GITHUB_PAT;
+    if (!pat) return;
+
+    const userRes = await request.get('https://api.github.com/user', {
+      headers: { Authorization: `Bearer ${pat}` },
+    });
+    const { login } = await userRes.json();
+
+    await request.delete(`https://api.github.com/repos/${login}/new-fn`, {
+      headers: { Authorization: `Bearer ${pat}` },
+    });
+  });
 });

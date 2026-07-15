@@ -1,5 +1,4 @@
 import { Locator, Page, expect } from '@playwright/test';
-import { mockClusterApis } from './mocks/cluster';
 import { mockGitHubApi } from './mocks/github';
 
 const PAT_KEY = 'func-console-pat';
@@ -76,7 +75,6 @@ export async function injectGitHubPat(page: Page): Promise<void> {
     );
   } else {
     await mockGitHubApi(page);
-    await mockClusterApis(page);
     await page.addInitScript(
       ({ patKey, userKey }) => {
         sessionStorage.setItem(patKey, 'placeholder-pat');
