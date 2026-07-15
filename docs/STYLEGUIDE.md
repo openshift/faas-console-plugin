@@ -16,6 +16,7 @@
 - **Write minimal code**: Satisfy the requirements with the least code necessary. If a simple solution works, use it—don't add abstractions, helpers, or extra structure unless complexity demands it. When requirements force more code, that's fine, but always start with the simplest approach that could work.
 - **No `any` type**: Use proper TypeScript types.
 - **No `console.log`**: Use structured approach if logging needed.
+- **Use `consoleFetch`**: Use `consoleFetch` or `consoleFetchJSON` for HTTP requests, not raw `fetch`. Console injects auth headers automatically.
 - **Naming**: `use*` for hooks, `*Service` for services, PascalCase for components/types.
 - **Co-locate helper functions**: Keep helper functions in the same file as the component or hook that uses them. Test them indirectly through the consumer's tests. Only extract to `utils/` when shared across multiple unrelated modules.
 

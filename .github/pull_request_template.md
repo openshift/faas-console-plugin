@@ -18,3 +18,7 @@ Optional: link an issue.
 Usage: `Fixes #<issue number>`, or `Relates to #<issue number>`.
 If no issue exists, include the 'why' behind your changes above.
 -->
+
+## Checklist
+
+- [ ] Updated `docs/ARCHITECTURE.md` (if there are relevant changes to our layered architecture)

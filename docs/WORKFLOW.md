@@ -2,18 +2,18 @@
 
 ## Startup Sequence
 
-Handled by the `init-session` command (`.claude/commands/init-session.md`).
+Handled by the `begin` command (`.claude/commands/begin.md`).
 
 ## Feature Development Sequence
 
 After [Startup Sequence](#startup-sequence), work through the picked feature:
 
 1. **Branch** — create feature branch per [Branching](#branching) convention. Immediately push and open a **draft PR** (`gh pr create --draft`) to reserve the PR number for other contributors' branch numbering.
-2. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then use `/brainstorming` to design the chosen feature from `docs/features.json`, then use `/writing-plans` to create implementation plan → `docs/plans/active/<NNN>-<type>-<short-name>.md`
+2. **Plan** — read `docs/ARCHITECTURE.md` + `docs/STYLEGUIDE.md` + `docs/TESTING.md`, then design the feature and create implementation plan in `docs/plans/active/`
 3. **Implement** — using `/executing-plans` skill
 4. **Review** — code review using `/requesting-code-review` skill, fix found issues
 5. **Manual Test** — use browser automation and validate it works in the browser
-6. **Complete** — flip `passes` to `true` in [`docs/features.json`](references/features-json-readme.md), update [`docs/claude-progress.txt`](references/claude-progress-readme.md), move plan to `docs/plans/completed/`, commit
+6. **Complete** — move plan to `docs/plans/completed/`, commit
 7. **PR** — push branch, open PR per [Pull Requests](#pull-requests) convention
 8. Stop — wait for PR review. Rework per [Received PR Reviews](#received-pr-reviews) when asked.
 
@@ -23,7 +23,7 @@ For each comment: read the full text and its diff hunk context, make the fix, th
 
 ## Branching
 
-Create a feature branch per plan: `<NNN>-<type>-<short-name>` where `<NNN>` is determined by `./hack/next-plan-number.sh` (next PR number on the remote) and `<type>` is the conventional commit type as per our [Git Commit Guide](references/commit-message-guide.md#conventional-commits). The plan file uses the same number. Example: `010-feat-function-list-empty-state`. If we're on a feature branch already do nothing.
+Format: `<JIRA-ID>-<short-description>`. Example: `SRVOCF-982-workflow-guide-cleanup`. If we're on a feature branch already do nothing.
 
 ## Pull Requests
 
@@ -39,9 +39,4 @@ No em dashes (`—`) in PR titles or descriptions. Use commas, periods, or paren
 
 - One feature at a time
 - Clean state at end (code suitable for merging to main)
-- Update [`docs/claude-progress.txt`](references/claude-progress-readme.md) before session ends
-- Commit work to git before ending — follow [`docs/references/commit-message-guide.md`](references/commit-message-guide.md) strictly
-
-## Continuous Improvement
-
-When you struggle, don't silently work around it. Log it to `docs/agent-struggles.json` — see [`docs/references/agent-struggles-readme.md`](references/agent-struggles-readme.md) for format.
+- Commit work to git before ending, follow [commit-message-guide.md](references/commit-message-guide.md) strictly

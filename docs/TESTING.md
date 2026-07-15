@@ -16,7 +16,7 @@ Do NOT write all test cases first and then implement everything at once.
 | Layer | Tool | Scope |
 |-------|------|-------|
 | Unit / Component | Vitest + React Testing Library | Hooks, services, component rendering, form logic |
-| E2e / Feature validation | Playwright | Validate features.json entries in real browser |
+| E2e / Feature validation | Playwright | Validate user flows in real browser |
 | API mocking | MSW (Mock Service Worker) | GitHub API + K8s API — mock everything first, real cluster later |
 
 ## Mock Strategy

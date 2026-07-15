@@ -1,1 +1,0 @@
-../../.claude/commands/session-commit.md
