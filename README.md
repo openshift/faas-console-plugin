@@ -13,7 +13,6 @@ Check out the **[Github page](https://functions-dev.github.io/ocp-console-plugin
 - Communicate often and speak freely without hesitation
 - Care about bringing value to the customer
 
-
 ## Guides
 
 | Guide | Description |
