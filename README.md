@@ -4,7 +4,7 @@ A Functions-as-a-Service PoC UI for the OpenShift Web Console. Developers create
 
 Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/console/tree/main/frontend/packages/console-dynamic-plugin-sdk) using React, TypeScript, and PatternFly 6.
 
-Check out the **[Github page](https://functions-dev.github.io/ocp-console-plugin/)** for a quick start or read ahead.
+Check out the **[Github page](https://github.com/openshift/faas-console-plugin)** for a quick start or read ahead.
 
 ## Team Values
 
