@@ -5,7 +5,7 @@ import { ClusterFunction } from './ClusterFunction';
 const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
 const REVISION_LABEL = 'serving.knative.dev/revision';
 
-export function pairKnativeResources(
+export function listKnativeClusterFunctions(
   knSvcs: K8sResourceKind[],
   deployments: K8sResourceKind[],
 ): ClusterFunction[] {

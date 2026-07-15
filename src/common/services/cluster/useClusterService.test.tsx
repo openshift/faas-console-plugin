@@ -9,7 +9,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 }));
 
 vi.mock('./ClusterFunctionKnative', () => ({
-  pairKnativeResources: (knSvcs: unknown[]) =>
+  listKnativeClusterFunctions: (knSvcs: unknown[]) =>
     (knSvcs as { metadata?: { labels?: Record<string, string>; name?: string } }[]).map((ksvc) => ({
       name: ksvc.metadata?.labels?.['function.knative.dev/name'] ?? ksvc.metadata?.name ?? '',
       status: 'Running' as const,
@@ -118,7 +118,7 @@ describe('useClusterService', () => {
     expect(screen.getByTestId('fn-count')).toHaveTextContent('0');
   });
 
-  it('delegates to pairKnativeResources and returns results', () => {
+  it('delegates to listKnativeClusterFunctions and returns results', () => {
     mockUseK8sWatchResource
       .mockReturnValueOnce([[mockKsvc], true, null])
       .mockReturnValueOnce([[], true, null]);

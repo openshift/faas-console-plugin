@@ -1,4 +1,4 @@
-import { pairKnativeResources } from './ClusterFunctionKnative';
+import { listKnativeClusterFunctions } from './ClusterFunctionKnative';
 
 function ksvcFixture(
   name: string,
@@ -44,10 +44,10 @@ function deploymentFixture(
   };
 }
 
-describe('pairKnativeResources', () => {
+describe('listKnativeClusterFunctions', () => {
   describe('pairing', () => {
     it('pairs ksvc with deployment by revision label', () => {
-      const result = pairKnativeResources(
+      const result = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'True')],
         [deploymentFixture('my-func', 1, 1)],
       );
@@ -74,7 +74,7 @@ describe('pairKnativeResources', () => {
         },
       };
 
-      const result = pairKnativeResources([ksvcNoRevision], [depByName]);
+      const result = listKnativeClusterFunctions([ksvcNoRevision], [depByName]);
 
       expect(result).toHaveLength(1);
       expect(result[0].status).toBe('Running');
@@ -91,38 +91,38 @@ describe('pairKnativeResources', () => {
       const depV1 = deploymentFixture('my-func', 0, 0, 'my-func-00001');
       const depV2 = deploymentFixture('my-func', 1, 1, 'my-func-00002');
 
-      const result = pairKnativeResources([ksvcV2], [depV1, depV2]);
+      const result = listKnativeClusterFunctions([ksvcV2], [depV1, depV2]);
 
       expect(result).toHaveLength(1);
       expect(result[0].replicas).toBe(1);
     });
 
     it('returns empty array when no ksvc resources', () => {
-      expect(pairKnativeResources([], [])).toHaveLength(0);
+      expect(listKnativeClusterFunctions([], [])).toHaveLength(0);
     });
   });
 
   describe('name', () => {
     it('uses function.knative.dev/name label', () => {
-      const [cf] = pairKnativeResources([ksvcFixture('my-func', 'True')], []);
+      const [cf] = listKnativeClusterFunctions([ksvcFixture('my-func', 'True')], []);
       expect(cf.name).toBe('my-func');
     });
 
     it('falls back to metadata.name when label is missing', () => {
       const ksvc = { metadata: { name: 'fallback-name' } };
-      const [cf] = pairKnativeResources([ksvc], []);
+      const [cf] = listKnativeClusterFunctions([ksvc], []);
       expect(cf.name).toBe('fallback-name');
     });
   });
 
   describe('status', () => {
     it('returns Deploying when deployment is undefined', () => {
-      const [cf] = pairKnativeResources([ksvcFixture('my-func', 'True')], []);
+      const [cf] = listKnativeClusterFunctions([ksvcFixture('my-func', 'True')], []);
       expect(cf.status).toBe('Deploying');
     });
 
     it('returns Running when Ready=True and replicas > 0', () => {
-      const [cf] = pairKnativeResources(
+      const [cf] = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'True')],
         [deploymentFixture('my-func', 1, 1)],
       );
@@ -130,7 +130,7 @@ describe('pairKnativeResources', () => {
     });
 
     it('returns ScaledToZero when Ready=True and replicas are 0', () => {
-      const [cf] = pairKnativeResources(
+      const [cf] = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'True')],
         [deploymentFixture('my-func', 0, 0)],
       );
@@ -138,7 +138,7 @@ describe('pairKnativeResources', () => {
     });
 
     it('returns Error when Ready=False', () => {
-      const [cf] = pairKnativeResources(
+      const [cf] = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'False')],
         [deploymentFixture('my-func', 0, 0)],
       );
@@ -146,7 +146,7 @@ describe('pairKnativeResources', () => {
     });
 
     it('returns Deploying when Ready=Unknown', () => {
-      const [cf] = pairKnativeResources(
+      const [cf] = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'Unknown')],
         [deploymentFixture('my-func', 1, 0)],
       );
@@ -158,14 +158,14 @@ describe('pairKnativeResources', () => {
         metadata: { name: 'my-func', labels: { 'function.knative.dev/name': 'my-func' } },
         status: { conditions: [{ type: 'ConfigurationsReady', status: 'True' }] },
       };
-      const [cf] = pairKnativeResources([ksvc], [deploymentFixture('my-func', 1, 0)]);
+      const [cf] = listKnativeClusterFunctions([ksvc], [deploymentFixture('my-func', 1, 0)]);
       expect(cf.status).toBe('Deploying');
     });
   });
 
   describe('url', () => {
     it('returns ksvc status url', () => {
-      const [cf] = pairKnativeResources(
+      const [cf] = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'True')],
         [deploymentFixture('my-func', 1, 1)],
       );
@@ -174,14 +174,14 @@ describe('pairKnativeResources', () => {
 
     it('returns undefined when ksvc has no status url', () => {
       const ksvc = { metadata: { name: 'my-func' }, status: {} };
-      const [cf] = pairKnativeResources([ksvc], []);
+      const [cf] = listKnativeClusterFunctions([ksvc], []);
       expect(cf.url).toBeUndefined();
     });
   });
 
   describe('replicas', () => {
     it('returns readyReplicas from deployment', () => {
-      const [cf] = pairKnativeResources(
+      const [cf] = listKnativeClusterFunctions(
         [ksvcFixture('my-func', 'True')],
         [deploymentFixture('my-func', 2, 2)],
       );
@@ -189,7 +189,7 @@ describe('pairKnativeResources', () => {
     });
 
     it('returns 0 when deployment is undefined', () => {
-      const [cf] = pairKnativeResources([ksvcFixture('my-func', 'True')], []);
+      const [cf] = listKnativeClusterFunctions([ksvcFixture('my-func', 'True')], []);
       expect(cf.replicas).toBe(0);
     });
   });
@@ -197,7 +197,7 @@ describe('pairKnativeResources', () => {
   describe('mainResource', () => {
     it('returns the knative service', () => {
       const ksvc = ksvcFixture('my-func', 'True');
-      const [cf] = pairKnativeResources([ksvc], []);
+      const [cf] = listKnativeClusterFunctions([ksvc], []);
       expect(cf.mainResource).toBe(ksvc);
     });
   });

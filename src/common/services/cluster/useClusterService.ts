@@ -1,7 +1,7 @@
 import { K8sResourceKind, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 import { useMemo } from 'react';
 import { ClusterFunction } from './ClusterFunction';
-import { pairKnativeResources } from './ClusterFunctionKnative';
+import { listKnativeClusterFunctions } from './ClusterFunctionKnative';
 import { OcpClusterService } from './OcpClusterService';
 
 const instance = new OcpClusterService();
@@ -54,7 +54,7 @@ export function useClusterService(functionNames: string[] = []): ClusterService 
   const functions = useMemo(() => {
     const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
     const safeDeps = depLoaded ? (deps ?? []) : [];
-    return pairKnativeResources(safeKnSvcs, safeDeps);
+    return listKnativeClusterFunctions(safeKnSvcs, safeDeps);
   }, [knSvcs, knLoaded, deps, depLoaded]);
 
   return {
