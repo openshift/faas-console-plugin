@@ -5,8 +5,10 @@ Describe your changes here.
 
 - :gift: Add new feature
 - :bug: Fix bug
-- :broom: Update or clean up current behavior
-- :wastebasket: Remove feature or internal logic
+- :wrench: Refactoring and improvements 
+- :test_tube: Add or update tests
+- :books: Update documentation
+- :broom: Maintenance, dependencies, config
 -->
 
 -
