@@ -9,6 +9,7 @@ Describe your changes here.
 - :test_tube: Add or update tests
 - :books: Update documentation
 - :broom: Maintenance, dependencies, config
+- :robot: AI commands, prompts, agent tooling
 -->
 
 -
