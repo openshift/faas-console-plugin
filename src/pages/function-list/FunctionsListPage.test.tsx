@@ -51,16 +51,17 @@ const GITHUB_API = 'https://api.github.com';
 
 function clusterData(
   overrides: Partial<{
-    functions: unknown[];
+    functions: { name: string }[];
     loaded: boolean;
     error: unknown;
   }> = {},
 ) {
+  const { functions: list = [], ...rest } = overrides;
   return {
-    functions: [],
+    functions: new Map(list.map((cf) => [cf.name, cf])),
     loaded: true,
     error: null,
-    ...overrides,
+    ...rest,
   };
 }
 

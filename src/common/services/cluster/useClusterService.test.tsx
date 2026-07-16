@@ -25,8 +25,8 @@ function TestConsumer({ functionNames = [] }: { functionNames?: string[] }) {
     <>
       <span data-testid="loaded">{String(loaded)}</span>
       <span data-testid="error">{String(error)}</span>
-      <span data-testid="fn-count">{functions.length}</span>
-      {functions.map((fn: ClusterFunction) => (
+      <span data-testid="fn-count">{functions.size}</span>
+      {[...functions.values()].map((fn: ClusterFunction) => (
         <div key={fn.name} data-testid="cluster-fn">
           <span data-testid="fn-name">{fn.name}</span>
         </div>

@@ -9,7 +9,7 @@ const instance = new OcpClusterService();
 const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
 
 interface ClusterService {
-  functions: ClusterFunction[];
+  functions: ReadonlyMap<string, ClusterFunction>;
   loaded: boolean;
   error: unknown;
   generateKubeconfig: (namespace: string) => Promise<string>;
@@ -54,7 +54,8 @@ export function useClusterService(functionNames: string[] = []): ClusterService 
   const functions = useMemo(() => {
     const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
     const safeDeps = depLoaded ? (deps ?? []) : [];
-    return listKnativeClusterFunctions(safeKnSvcs, safeDeps);
+    const list = listKnativeClusterFunctions(safeKnSvcs, safeDeps);
+    return new Map(list.map((cf) => [cf.name, cf]));
   }, [knSvcs, knLoaded, deps, depLoaded]);
 
   return {

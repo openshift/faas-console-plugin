@@ -184,7 +184,7 @@ function useFunctionListPage(): {
   const functions = useMemo(
     () =>
       functionItems.map((item) => {
-        const cf = clusterFunctions.find((f) => f.name === item.name);
+        const cf = clusterFunctions.get(item.name);
         return cf ? enrichItem(item, cf) : item;
       }),
     [functionItems, clusterFunctions],
