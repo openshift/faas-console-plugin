@@ -1,15 +1,22 @@
 import {
   Alert,
   Button,
+  Divider,
+  Flex,
+  FlexItem,
   Form,
   FormGroup,
+  FormHelperText,
+  HelperText,
+  HelperTextItem,
   Modal,
   ModalBody,
   ModalFooter,
   ModalHeader,
   TextInput,
+  Tooltip,
 } from '@patternfly/react-core';
-import { KeyIcon, UserIcon } from '@patternfly/react-icons';
+import { GithubIcon, KeyIcon, UserIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
 import { ForgeUser, PAT_KEY, USER_KEY } from '../services/types';
 import { useContext, useState } from 'react';
@@ -102,6 +109,31 @@ function PatModal({ isOpen, onClose, onConnect }: PatModalProps) {
         {error && (
           <Alert variant="danger" title={error} isInline style={{ marginBottom: '1rem' }} />
         )}
+        <Tooltip content={t('Coming soon')}>
+          <Button
+            className="pf-v6-u-my-md"
+            variant="secondary"
+            icon={<GithubIcon />}
+            isAriaDisabled
+            isBlock
+            data-test="oauth-button"
+          >
+            {t('Sign in with GitHub')}
+          </Button>
+        </Tooltip>
+        <Flex
+          className="pf-v6-u-my-md"
+          alignItems={{ default: 'alignItemsCenter' }}
+          spaceItems={{ default: 'spaceItemsSm' }}
+        >
+          <FlexItem flex={{ default: 'flex_1' }}>
+            <Divider />
+          </FlexItem>
+          <FlexItem>{t('or')}</FlexItem>
+          <FlexItem flex={{ default: 'flex_1' }}>
+            <Divider />
+          </FlexItem>
+        </Flex>
         <Form>
           <FormGroup label={t('Personal Access Token')} fieldId="pat-input">
             <TextInput
@@ -110,9 +142,15 @@ function PatModal({ isOpen, onClose, onConnect }: PatModalProps) {
               value={pat}
               onChange={(_, value) => setPat(value)}
             />
+            <FormHelperText>
+              <HelperText>
+                <HelperTextItem>
+                  {t('Enter your GitHub Personal Access Token to connect your repositories.')}
+                </HelperTextItem>
+              </HelperText>
+            </FormHelperText>
           </FormGroup>
         </Form>
-        {t('Enter your GitHub Personal Access Token to connect your repositories.')}
       </ModalBody>
       <ModalFooter>
         <Button

@@ -98,6 +98,32 @@ describe('UserAvatar', () => {
     });
   });
 
+  describe('OAuth button placeholder', () => {
+    it('renders a disabled "Sign in with GitHub" button', () => {
+      renderWithContext(<UserAvatar enableReconnect />);
+
+      const oauthButton = screen.getByRole('button', { name: /Sign in with GitHub/i });
+      expect(oauthButton).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('does not trigger any action when clicked', async () => {
+      const user = userEvent.setup();
+      const connectToForge = vi.fn();
+
+      renderWithContext(<UserAvatar enableReconnect />, {
+        isActive: false,
+        user: testUser,
+        connectionId: 0,
+        connectToForge,
+      });
+
+      const oauthButton = screen.getByRole('button', { name: /Sign in with GitHub/i });
+      await user.click(oauthButton);
+
+      expect(connectToForge).not.toHaveBeenCalled();
+    });
+  });
+
   describe('PAT modal', () => {
     it('Connect button disabled when input is empty', () => {
       renderWithContext(<UserAvatar enableReconnect />);
