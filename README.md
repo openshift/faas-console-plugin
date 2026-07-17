@@ -72,6 +72,19 @@ To use random ports (useful when defaults are already in use):
 ./init.sh --randomize-ports
 ```
 
+### Running e2e tests
+
+E2e tests use Playwright against a running cluster. Set `BRIDGE_GITHUB_PAT` in `.env` with a GitHub PAT that has `repo` scope, then:
+
+```shell
+yarn test:e2e              # all tests, headless
+yarn test:e2e:smoke        # smoke subset (runs on every push)
+yarn test:e2e:headed       # visible browser
+yarn test:e2e:ui           # interactive UI mode
+```
+
+See [docs/TESTING.md](docs/TESTING.md#e2e-conventions) for full conventions, helpers, and environment variables.
+
 ### Viewing GitHub Pages locally
 
 The landing page served at [functions-dev.github.io/ocp-console-plugin](https://functions-dev.github.io/ocp-console-plugin/) is built from `pages/index.html` and the Helm chart. The `init.sh` script generates these assets into `backend/static/` automatically, so the running backend serves them at <http://localhost:8080>.
