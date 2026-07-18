@@ -4,7 +4,32 @@ A Functions-as-a-Service PoC UI for the OpenShift Web Console. Developers create
 
 Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/console/tree/main/frontend/packages/console-dynamic-plugin-sdk) using React, TypeScript, and PatternFly 6.
 
-Check out the **[Github page](https://functions-dev.github.io/ocp-console-plugin/)** for a quick start or read ahead.
+Check out the **[Github page](https://github.com/openshift/faas-console-plugin)** for a quick start or read ahead.
+
+## Team Values
+
+- Support each other and find time for each other
+- Deliver high quality output
+- Communicate often and speak freely without hesitation
+- Care about bringing value to the customer
+
+## Guides
+
+| Guide | Description |
+|-------|-------------|
+| [Agile Workflow](docs/AGILE.md) | Issue tracking, branching, pull requests, and commit conventions |
+| [Architecture](docs/ARCHITECTURE.md) | Layered architecture, dependency rules, and React patterns |
+| [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, CSS rules, and OCP plugin constraints |
+| [Testing](docs/TESTING.md) | TDD approach, test layers, mock strategy, and file conventions |
+| [Workflow](docs/WORKFLOW.md) | Startup sequence, feature development steps, and session rules |
+
+### Templates
+
+| Template | Description |
+|----------|-------------|
+| [PR Template](.github/pull_request_template.md) | Pull request description format |
+| [Jira Epic](docs/templates/jira-epic-template.md) | Template for creating Jira epics |
+| [Jira Story](docs/templates/jira-story-template.md) | Template for creating Jira stories |
 
 ## Deployment on cluster
 
@@ -151,14 +176,6 @@ overwriting default console styles, breaking the layout of existing pages. The
 best practice is to prefix your CSS class names with your plugin name to avoid
 conflicts. Please don't disable these rules without understanding how they can
 break console styles!
-
-## Reporting
-
-Steps to generate reports
-
-1. In command prompt, navigate to root folder and execute the command `yarn run cypress-merge`
-2. Then execute command `yarn run cypress-generate`
-The cypress-report.html file is generated and should be in (/integration-tests/screenshots) directory.
 
 ## References
 
