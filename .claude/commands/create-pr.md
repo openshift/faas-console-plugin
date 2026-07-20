@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(hack/pre-pr-check.sh), Bash(git diff upstream/master*), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(jira issue move *), Read, Agent, Skill(superpowers:requesting-code-review), Skill(superpowers:requesting-code-review:*)
+allowed-tools: Bash(bash hack/pre-pr-check.sh 2>&1), Bash(git diff upstream/master*), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(jira issue move *), Read, Agent, Skill(superpowers:requesting-code-review), Skill(superpowers:requesting-code-review:*), Bash(jira issue view *)
 description: Create a PR from the PR template
 ---
 
@@ -16,7 +16,7 @@ Create a pull request using the project's PR template and conventions.
 
 2. **Read the full diff** -- run `git diff upstream/master...HEAD` to get the complete diff for analysis.
 
-3. **Validate Jira against diff** -- using the Jira issue details from the script output:
+3. **Validate Jira against diff** -- run `jira issue view <issue_key>` to fetch the Jira issue details, then:
    - **Check description:** if the description is empty or null, stop and tell the user to add a description to the Jira issue before creating the PR. If present, verify each actionable point in the description is addressed by the committed changes (diff). List each point with a pass/fail status. If any points are not met, inform the user and ask if they want to continue anyway.
    - **Check acceptance criteria:** if the acceptance criteria field is empty or null, note it but continue (not a blocker). If present, verify each criterion is satisfied by the committed changes (diff). List each criterion with a pass/fail status. If any criteria are not met, inform the user and ask if they want to continue anyway.
 
