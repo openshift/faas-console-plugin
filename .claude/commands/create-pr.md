@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(hack/pre-pr-check.sh), Bash(git diff *), Bash(git push *), Bash(gh pr create *), Bash(jira issue move *), Read, Agent, Skill(superpowers:requesting-code-review), Skill(superpowers:requesting-code-review:*)
+allowed-tools: Bash(hack/pre-pr-check.sh), Bash(git diff upstream/master*), Bash(git push -u origin HEAD), Bash(gh pr create *), Bash(jira issue move *), Read, Agent, Skill(superpowers:requesting-code-review), Skill(superpowers:requesting-code-review:*)
 description: Create a PR from the PR template
 ---
 
