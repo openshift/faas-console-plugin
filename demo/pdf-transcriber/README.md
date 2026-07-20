@@ -33,6 +33,16 @@ Two environment variables configure the Vertex AI endpoint:
 | `ANTHROPIC_VERTEX_PROJECT_ID` | GCP project with Claude API enabled |
 | `CLOUD_ML_REGION` | Vertex AI region |
 
+Copy `.env.example` to `.env` and fill in your values:
+
+```sh
+cp .env.example .env
+```
+
+The `/pdf-transcription-demo` skill loads these automatically and applies
+them to the cluster via `func.yaml` run envs. The `.env` file is
+gitignored.
+
 ## AI Prompting
 
 The function uses the Anthropic Java SDK (`AnthropicOkHttpClient`) with the

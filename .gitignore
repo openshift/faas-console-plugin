@@ -51,8 +51,9 @@ install-state.gz
 # MCP
 .playwright-mcp
 
-# Demo (scaffolded by func create at deploy time)
+# Demo
 /pdf-transcriber
+demo/pdf-transcriber/.env
 
 # Built binaries
 /bin

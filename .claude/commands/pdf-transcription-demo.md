@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(oc whoami*), Bash(oc get *), Bash(oc create *), Bash(oc apply *), Bash(oc new-project *), Bash(oc project *), Bash(oc delete pipelinerun *), Bash(func create *), Bash(func deploy *), Bash(func info *), Bash(func version*), Bash(command -v *), Bash(ls *), Bash(cat *), Bash(test *), Bash(pwd), Bash(for *), Bash(brew install *), Bash(brew tap *), Bash(brew trust *), Bash(gcloud auth *), Bash(cp demo/pdf-transcriber/*), Bash(rm -f pdf-transcriber/src/*), Bash(sleep *), Read, Edit, AskUserQuestion
+allowed-tools: Bash(oc whoami*), Bash(oc get *), Bash(oc create *), Bash(oc apply *), Bash(oc new-project *), Bash(oc project *), Bash(oc delete pipelinerun *), Bash(func create *), Bash(func deploy *), Bash(func info *), Bash(func version*), Bash(command -v *), Bash(ls *), Bash(cat *), Bash(test *), Bash(pwd), Bash(for *), Bash(brew install *), Bash(brew tap *), Bash(brew trust *), Bash(gcloud auth *), Bash(cp demo/pdf-transcriber/*), Bash(rm -f pdf-transcriber/src/*), Bash(sleep *), Bash(printenv *), Bash(echo $*), Read, Edit, AskUserQuestion
 description: Deploy the PDF transcriber demo to an OpenShift cluster
 ---
 
@@ -9,12 +9,12 @@ Walk the user through the full end-to-end flow: install prerequisites, log into 
 
 ## Variables
 
-Before starting, check the user's environment for required GCP variables. If any are missing, ask the user to provide them. Do not proceed without values for all of these.
+Before starting, check if `demo/pdf-transcriber/.env` exists. If it does not, copy `demo/pdf-transcriber/.env.example` to `demo/pdf-transcriber/.env` and ask the user to fill in the values. Then read `demo/pdf-transcriber/.env` to load `ANTHROPIC_VERTEX_PROJECT_ID` and `CLOUD_ML_REGION`. If either value is empty, ask the user to fill them in and re-read. Do not proceed without values for both.
 
 - NAMESPACE: `pdf-transcriber`
 - ADC_FILE: `$HOME/.config/gcloud/application_default_credentials.json`
-- GCP_PROJECT: read from `$ANTHROPIC_VERTEX_PROJECT_ID` or ask the user
-- GCP_REGION: read from `$CLOUD_ML_REGION` or ask the user
+- GCP_PROJECT: `ANTHROPIC_VERTEX_PROJECT_ID` from `demo/pdf-transcriber/.env`
+- GCP_REGION: `CLOUD_ML_REGION` from `demo/pdf-transcriber/.env`
 - DEMO_DIR: `demo/pdf-transcriber`
 - PROJECT_DIR: `pdf-transcriber`
 
@@ -113,8 +113,8 @@ Do NOT rewrite `func.yaml` from scratch. The `func` CLI generates fields like `c
 - Add `run.volumes` with the GCP secret mount:
   - `secret: gcp-adc`, `path: /var/secrets/google`
 - Add these to `run.envs` if not already present:
-  - `ANTHROPIC_VERTEX_PROJECT_ID` = value of GCP_PROJECT variable (from user environment)
-  - `CLOUD_ML_REGION` = value of GCP_REGION variable (from user environment)
+  - `ANTHROPIC_VERTEX_PROJECT_ID` = value loaded from `demo/pdf-transcriber/.env`
+  - `CLOUD_ML_REGION` = value loaded from `demo/pdf-transcriber/.env`
   - `GOOGLE_APPLICATION_CREDENTIALS` = `/var/secrets/google/application_default_credentials.json`
 
 Show the user the planned changes and confirm before editing.
