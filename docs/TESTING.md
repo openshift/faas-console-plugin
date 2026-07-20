@@ -40,7 +40,7 @@ If it makes an HTTP or WebSocket call, mock it with MSW, not `vi.mock`.
 | Component tests | `src/pages/<name>/components/*.test.ts\|tsx`, `src/common/components/*.test.ts\|tsx` |
 | Page tests | `src/pages/<name>/*.test.ts\|tsx` |
 | Service / Hook / Util tests | `src/common/**/*.test.ts\|tsx` |
-| E2e specs | `e2e/<feature-name>/*.test.ts` |
+| E2e specs | `e2e/use-cases/<feature-name>/*.test.ts` |
 | MSW handlers | `testing/msw/handlers.ts` |
 
 ## What Gets Tested
@@ -141,42 +141,87 @@ afterEach(() => {
 
 ## E2e Conventions
 
+E2e tests run against a real OpenShift cluster. GitHub API calls are intercepted with `page.route()` mocks, while K8s API calls go to the real cluster. Each test file covers a single use case, exercising a flow from start to finish with `test.step` for structure.
+
+### Prerequisites
+
+- A running OpenShift cluster with the plugin deployed (or a local dev environment via `init.sh`)
+- The OpenShift Serverless operator should be installed on the cluster (tests install it automatically, but first install takes several minutes)
+
 ### Environment
 
-`playwright.config.ts` auto-loads `.env` from the project root. Required variables:
+`playwright.config.ts` auto-loads `.env` from the project root.
 
 | Variable | Purpose | Required |
 |----------|---------|----------|
-| `BRIDGE_GITHUB_PAT` | GitHub PAT with `repo` scope | Yes (tests skip without it) |
 | `BRIDGE_BASE_ADDRESS` | Console URL (default: `http://localhost:9000`) | No |
 | `BRIDGE_KUBEADMIN_PASSWORD` | Cluster login password | Only when auth is enabled |
 
 ### Running
 
 ```bash
-yarn test:e2e                              # all tests, headless
-yarn test:e2e e2e/smoke/my-feature.test.ts # single file
-yarn test:e2e:headed                       # visible browser
-yarn test:e2e:ui                           # interactive UI mode
-yarn test:e2e:report                       # open HTML report
+yarn test:e2e                                          # all tests, headless
+yarn test:e2e e2e/use-cases/creation/                  # one use-case directory
+yarn test:e2e e2e/use-cases/delete/function-delete.test.ts  # single file
+yarn test:e2e:headed                                   # visible browser
+yarn test:e2e:ui                                       # interactive UI mode
+yarn test:e2e:report                                   # open HTML report
 ```
 
-### Helpers (`e2e/helpers.ts`)
+### File Structure
+
+```
+e2e/
+  auth.setup.ts                    # Playwright login setup (saves storageState)
+  fixtures/
+    authenticated-page.ts          # Custom test fixture: injects GitHub mock + PAT
+  helpers/
+    cluster.ts                     # K8s API helpers (namespace, operator, deploy)
+    navigation.ts                  # Page navigation helpers
+    ui.ts                          # Dialog dismissal, loading spinners
+  mocks/
+    github.ts                      # Stateful GitHub API mock (page.route)
+  use-cases/
+    creation/                      # Create function tests
+    delete/                        # Delete/undeploy function tests
+```
+
+### Fixtures and Mocks
+
+Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. The fixture automatically installs the GitHub API mock and injects a placeholder PAT into sessionStorage before each test.
+
+The GitHub mock (`e2e/mocks/github.ts`) is stateful. It maintains seed repos and tracks dynamically created repos through the full `createRepoWithSecret` flow. It exports two constants used by tests:
+
+- `EXISTING_FUNC_NAME` ('test-func'): a seed repo, used by delete tests
+- `NEW_FUNC_NAME` ('new-test-func'): used by create tests
+
+### Helpers
+
+**Navigation** (`e2e/helpers/navigation.ts`)
 
 | Helper | Purpose |
 |--------|---------|
-| `navigateToFunctionsList(page)` | Go to `/faas`, inject PAT, reload, dismiss dialogs, wait for load |
-| `loadFunctionsList(page)` | Alias for `navigateToFunctionsList` |
-| `loadFunctionsListWithRealPat(page, pat)` | Same flow but with an explicit real PAT |
-| `loadFunctionsTable(page)` | Navigate to list and wait for the functions grid to be visible |
-| `loadCreatePage(page, pat)` | Navigate to `/faas/create`, inject real PAT, reload, dismiss dialogs |
-| `injectGitHubPat(page)` | Auto-detect: uses real PAT from env if set, placeholder otherwise |
-| `injectRealGitHubPat(page, pat)` | Validate PAT against GitHub API and store in sessionStorage |
+| `navigateToFunctionsList(page)` | Go to `/faas`, dismiss dialogs, wait for load |
+| `navigateToFunctionsTable(page)` | Navigate to list and wait for the functions grid |
+| `navigateToCreatePage(page)` | Go to `/faas/create` |
+| `navigateToEditPage(page, repoName?)` | Go to edit page directly or via list table |
+
+**Cluster** (`e2e/helpers/cluster.ts`)
+
+| Helper | Purpose |
+|--------|---------|
+| `k8sHeaders(page)` | Get CSRF token headers for K8s API calls |
+| `ensureNamespace(page, name)` | Create namespace if it doesn't exist (waits for terminating namespaces) |
+| `ensureServerlessOperator(page)` | Install the Serverless operator if not present |
+| `simulateGitHubActionsDeploy(page, name, ns)` | Create a ksvc and patch the deployment label to simulate `func deploy` |
+| `ksvcApiPath(ns)` / `deploymentApiPath(ns)` | Build K8s API paths for Knative services and deployments |
+
+**UI** (`e2e/helpers/ui.ts`)
+
+| Helper | Purpose |
+|--------|---------|
 | `dismissDialogs(page)` | Remove webpack overlay, dismiss PAT modal, dismiss guided tour |
 | `waitForLoadingComplete(page)` | Wait for PF6 spinners and OCP loaders to disappear |
-| `waitForTableOrEmpty(page)` | Wait for either the functions grid or "No functions found" heading |
-| `robustClick(locator)` | Click with retry logic (3 attempts, exponential backoff) |
-| `createButtonLocator(page)` | Locator for the create button (handles link/button/disabled variants) |
 
 ### Selectors
 
@@ -198,32 +243,31 @@ page.locator('#name')  // form inputs with HTML id
 
 **Use `exact: true`** when a name is a substring of other elements (e.g., "Name" matches "Namespace").
 
-### Auth and PAT
+### Playwright Route LIFO Ordering
 
-- Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`
-- Tests that need GitHub API must guard with `test.skip(!pat, 'BRIDGE_GITHUB_PAT not set')`
-- After `page.goto()` + PAT injection + `page.reload()`, always call `dismissDialogs(page)`
+Playwright evaluates `page.route()` handlers in LIFO (last-in, first-out) order. Routes registered last are checked first. When a test needs to override the GitHub mock catch-all (e.g., for the duplicate-name error test), register the override after the fixture has set up the catch-all.
+
+### Auth
+
+Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`. The authenticated-page fixture then injects the GitHub mock and PAT on top of that session.
 
 ### Test file template
 
 ```typescript
-import { test, expect } from '@playwright/test';
-import { loadFunctionsList, waitForTableOrEmpty } from '../helpers';
-
-const pat = process.env.BRIDGE_GITHUB_PAT ?? '';
+import { test, expect } from '../../fixtures/authenticated-page';
+import { navigateToFunctionsList } from '../../helpers/navigation';
+import { EXISTING_FUNC_NAME as FUNC_NAME } from '../../mocks/github';
 
 test.describe('My feature', () => {
-  test.skip(!pat, 'BRIDGE_GITHUB_PAT not set');
+  test('user does something', async ({ page }) => {
+    await test.step('navigate to functions list', async () => {
+      await navigateToFunctionsList(page);
+    });
 
-  test('page loads and shows heading', async ({ page }) => {
-    await loadFunctionsList(page);
-    await expect(
-      page.getByRole('heading', { name: 'My Feature', exact: true }),
-    ).toBeVisible();
+    await test.step('verify expected state', async () => {
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      await expect(grid).toBeVisible({ timeout: 30_000 });
+    });
   });
 });
 ```
-
-### Creating new e2e tests
-
-Use the `/e2e <feature-name>` slash command to scaffold tests. It reads the feature source code, proposes test cases, scaffolds the file, and debugs failures using Playwright MCP.

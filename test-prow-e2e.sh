@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# TODO: Update for Playwright. Requires a Playwright-compatible CI image
-# (see .ci-operator.yaml) and npx playwright install chromium before running.
 
 set -exuo pipefail
 
@@ -34,9 +32,6 @@ echo "Install dependencies"
 if [ ! -d node_modules ]; then
   yarn install --immutable
 fi
-
-echo "Install Playwright browsers"
-npx playwright install chromium
 
 echo "Run Playwright e2e tests"
 yarn test:e2e

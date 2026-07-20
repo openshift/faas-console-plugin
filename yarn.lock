@@ -2531,6 +2531,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@playwright/browser-chromium@npm:^1.61.1":
+  version: 1.61.1
+  resolution: "@playwright/browser-chromium@npm:1.61.1"
+  dependencies:
+    playwright-core: "npm:1.61.1"
+  checksum: 10c0/2d3a47f4474180a1e78ff294c6040af7322b0e66051c899e84a809dc2d94650d92d77c324abc003e769b61d458afef94f7d2288769f3b3a8da396e089cafcce5
+  languageName: node
+  linkType: hard
+
 "@playwright/test@npm:^1.61.1":
   version: 1.61.1
   resolution: "@playwright/test@npm:1.61.1"
@@ -5192,6 +5201,7 @@ __metadata:
     "@patternfly/react-core": "npm:^6.2.2"
     "@patternfly/react-icons": "npm:^6.2.2"
     "@patternfly/react-table": "npm:^6.2.2"
+    "@playwright/browser-chromium": "npm:^1.61.1"
     "@playwright/test": "npm:^1.61.1"
     "@testing-library/dom": "npm:^8.20.1"
     "@testing-library/jest-dom": "npm:^6.9.1"
