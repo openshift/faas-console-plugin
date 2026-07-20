@@ -55,7 +55,7 @@ Create a pull request using the project's PR template and conventions.
 
 6. **Draft the PR** -- analyze ALL commits and the full diff, then draft:
    - **Title:** `<JIRA-ID>: <Type>: <Sentence ending with a period.>` per `docs/WORKFLOW.md`. Include the Jira issue key from the branch name. Capitalize the type and the first word after the colon. End with a period. No em dashes.
-   - **Body:** Fill in the PR template. Replace the placeholder bullets with a concise summary of what changed and why. Include `Relates to <ISSUE-KEY>` (from the branch name) at the bottom. Remove HTML comments from the filled-in template.
+   - **Body:** Fill in the PR template. Replace the placeholder bullets with a concise summary of what changed and why. Do not add a separate Jira reference in the body since the Jira ID is already in the title. Remove HTML comments from the filled-in template.
 
 7. **Show for approval** -- display the full draft (title + body) and ask the user to confirm or request changes. Do NOT create the PR until approved.
 
