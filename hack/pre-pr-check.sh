@@ -57,7 +57,8 @@ git fetch "$REMOTE" master --quiet
 if ! git merge-base --is-ancestor "$REMOTE/master" HEAD 2>/dev/null; then
   fail "Branch is behind $REMOTE/master. Rebase first."
 fi
-CONFLICTS=$(git merge-tree "$(git merge-base "$REMOTE/master" HEAD)" "$REMOTE/master" HEAD 2>/dev/null | grep -c '<<<<<<<' || true)
+MARKER='<<<<<<<'
+CONFLICTS=$(git merge-tree "$(git merge-base "$REMOTE/master" HEAD)" "$REMOTE/master" HEAD 2>/dev/null | grep -c "^${MARKER}" || true)
 if [[ "$CONFLICTS" -gt 0 ]]; then
   fail "Merge conflicts with $REMOTE/master. Resolve first."
 fi
