@@ -17,11 +17,10 @@ Check out the **[Github page](https://github.com/openshift/faas-console-plugin)*
 
 | Guide | Description |
 |-------|-------------|
-| [Agile Workflow](docs/AGILE.md) | Issue tracking, branching, pull requests, and commit conventions |
+| [Agile Workflow](docs/AGILE.md) | Issue tracking, branching, pull requests |
 | [Architecture](docs/ARCHITECTURE.md) | Layered architecture, dependency rules, and React patterns |
-| [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, CSS rules, and OCP plugin constraints |
+| [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, commit conventions, CSS rules, and OCP plugin constraints |
 | [Testing](docs/TESTING.md) | TDD approach, test layers, mock strategy, and file conventions |
-| [Workflow](docs/WORKFLOW.md) | Startup sequence, feature development steps, and session rules |
 
 ### Templates
 
