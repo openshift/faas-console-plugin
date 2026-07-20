@@ -4,6 +4,8 @@
 
 Red/green/refactor TDD — **one test at a time**:
 
+> This applies to both frontend and backend. The tools differ; the discipline does not.
+
 1. Write one test case (red)
 2. Write the minimum implementation to make it pass (green)
 3. Refactor if needed
@@ -269,4 +271,67 @@ test.describe('My feature', () => {
     });
   });
 });
+```
+
+### Creating new e2e tests
+
+Use the `/e2e <feature-name>` slash command to scaffold tests. It reads the feature source code, proposes test cases, scaffolds the file, and debugs failures using Playwright MCP.
+
+---
+
+## Backend (Go)
+
+Ginkgo v2 + Gomega for specs. `net/http/httptest` for faking HTTP dependencies. No other third-party test libraries.
+
+### Mock Strategy
+
+`httptest.NewServer` is the Go equivalent of MSW — a real local TCP server returning canned JSON. Use it for anything that makes an HTTP call (GitHub API, K8s API). Never mock at the interface level for network calls.
+
+Tests live in the same package as the code (`package cluster`, not `package cluster_test`) for white-box access. Each package has a `suite_test.go` that registers the Ginkgo runner.
+
+### Spec pattern
+
+```go
+var _ = Describe("POST /api/v1/auth/login", func() {
+    It("validates the GitHub token and returns the user identity", func() {
+        srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+        }))
+        DeferCleanup(srv.Close)
+
+        h := &Handlers{githubBaseURL: srv.URL}
+        // ... act and assert
+        Expect(w.Code).To(Equal(http.StatusOK))
+        Expect(resp.Login).To(Equal("alice"))
+    })
+})
+```
+
+Use `DeferCleanup(srv.Close)` — not `defer`. For handlers, spin up one server per dependency (`githubBaseURL`, `k8sBaseURL`).
+
+### Tests are use cases
+
+Each `It(...)` describes a behaviour from the caller's perspective. The description says **what the system does**, not which function was called.
+
+```
+// Bad — method-focused
+It("TestCreateBlob_HappyPath")
+
+// Good — use case
+It("commits all files to the branch")
+```
+
+Use `DescribeTable` / `Entry` for validation and error variants to keep them concise.
+
+### Rules
+
+- `It(...)` descriptions are use cases, not method names
+- Every use case needs at minimum: the success path + the main failure path
+- Test behaviour, not call counts
+- Keep fake servers inline — no shared mock fixtures
+
+### Running
+
+```bash
+make test-backend
 ```

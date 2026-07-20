@@ -106,12 +106,13 @@ extract_cluster_ca() {
 }
 
 start_backend() {
+  KUBE_API_SERVER=$(oc whoami --show-server)
   build_pages
   echo "Building Go backend..."
   (cd backend && go build -buildvcs=false -o ../bin/backend .)
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
   echo "Starting Go backend..."
-  ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" >>"$LOG_DIR/backend.log" 2>&1 &
+  ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-api-server "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
@@ -142,7 +143,7 @@ start_backend_watcher() {
 
       if $build_ok; then
         mv bin/backend-tmp bin/backend
-        ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" >>"$LOG_DIR/backend.log" 2>&1 &
+        ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-api-server "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
       else
