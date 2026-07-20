@@ -51,6 +51,9 @@ install-state.gz
 # MCP
 .playwright-mcp
 
+# Demo (scaffolded by func create at deploy time)
+/pdf-transcriber
+
 # Built binaries
 /bin
 pages/plugin.yaml
