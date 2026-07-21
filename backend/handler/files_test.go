@@ -58,6 +58,40 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
+	It("rejects requests with an invalid owner or repo name", func() {
+		h := &Handlers{}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/../evil/files", nil)
+		req.Header.Set("X-GitHub-Token", "test-pat")
+		req.SetPathValue("owner", "../evil")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		h.HandleGetFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("forwards the ?ref query parameter to GitHub", func() {
+		var capturedRef string
+		mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "/git/trees/") {
+				capturedRef = r.URL.Path
+				json.NewEncoder(w).Encode(map[string]any{"tree": []map[string]any{}})
+			}
+		}))
+		DeferCleanup(mock.Close)
+
+		h := &Handlers{githubBaseURL: mock.URL}
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/alice/my-func/files?ref=develop", nil)
+		req.Header.Set("X-GitHub-Token", "test-pat")
+		req.SetPathValue("owner", "alice")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		h.HandleGetFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		Expect(capturedRef).To(ContainSubstring("develop"))
+	})
+
 	It("returns 401 when the GitHub token is invalid", func() {
 		mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -143,6 +177,23 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 		h.HandlePutFiles(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+	})
+
+	It("rejects requests with an invalid owner or repo name", func() {
+		h := &Handlers{}
+		body, _ := json.Marshal(putFilesRequest{
+			Files:   []scm.FileEntry{{Path: "f.go", Mode: "100644", Content: "x", Type: "blob"}},
+			Message: "update",
+			Branch:  "main",
+		})
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/../evil/my-func/files", bytes.NewBuffer(body))
+		req.Header.Set("X-GitHub-Token", "token")
+		req.SetPathValue("owner", "../evil")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		h.HandlePutFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
 
 	It("rejects requests with an empty file list", func() {

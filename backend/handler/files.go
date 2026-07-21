@@ -20,13 +20,23 @@ func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 	owner := r.PathValue("owner")
 	name := r.PathValue("name")
 
-	files, err := github.New(pat, h.githubBaseURL).GetFiles(owner, name, "HEAD")
+	if !validGitHubName.MatchString(owner) || !validGitHubName.MatchString(name) {
+		writeError(w, http.StatusBadRequest, "invalid owner or repository name")
+		return
+	}
+
+	ref := r.URL.Query().Get("ref")
+	if ref == "" {
+		ref = "HEAD"
+	}
+
+	files, err := github.New(pat, h.githubBaseURL).GetFiles(owner, name, ref)
 	if err != nil {
 		if github.IsUnauthorized(err) {
 			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
 			return
 		}
-		slog.Error("failed to get files", "owner", owner, "repo", name, "err", err)
+		slog.Error("failed to get files", "owner", owner, "repo", name, "ref", ref, "err", err)
 		writeError(w, http.StatusBadGateway, "failed to fetch repository files")
 		return
 	}
@@ -49,6 +59,11 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 
 	owner := r.PathValue("owner")
 	name := r.PathValue("name")
+
+	if !validGitHubName.MatchString(owner) || !validGitHubName.MatchString(name) {
+		writeError(w, http.StatusBadRequest, "invalid owner or repository name")
+		return
+	}
 
 	var req putFilesRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
