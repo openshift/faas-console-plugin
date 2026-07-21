@@ -34,7 +34,10 @@ type Client interface {
 	RequestToken(namespace string) (string, error)
 }
 
-const DefaultTokenExpiry int64 = 90 * 24 * 60 * 60 // 90 days
+// DefaultTokenExpiry is the requested SA token lifetime in seconds. Matches the
+// previous frontend behaviour. Security concern: a long-lived token in a GitHub
+// Actions secret increases exposure if leaked; shorter expiry is a follow-up.
+const DefaultTokenExpiry int64 = 365 * 24 * 60 * 60 // 1 year
 
 func New(token, baseURL string, caCert []byte, tokenExpiry int64) (Client, error) {
 	if baseURL == "" {

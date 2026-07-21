@@ -146,7 +146,7 @@ func (c *httpClient) GetFiles(owner, repo, ref string) ([]scm.FileEntry, error) 
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fetch blobs: %w", err)
 	}
 	return entries, nil
 }
@@ -296,7 +296,7 @@ func (c *httpClient) createBlobs(ctx context.Context, owner, repo string, files 
 		})
 	}
 	if err := g.Wait(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create blobs: %w", err)
 	}
 	return entries, nil
 }

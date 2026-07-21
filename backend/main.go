@@ -25,7 +25,7 @@ func main() {
 	keyFile := flag.String("key", "/var/cert/tls.key", "TLS key file")
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
 	kubeAPIServer := flag.String("kube-api-server", "", "Kubernetes API server URL (overrides KUBERNETES_SERVICE_HOST/PORT and request body)")
-	saTokenExpiry := flag.Int64("sa-token-expiry", 0, "service account token lifetime in seconds (0 = 90-day default)")
+	saTokenExpiry := flag.Int64("sa-token-expiry", 0, "service account token lifetime in seconds (0 = use DefaultTokenExpiry)")
 	flag.Parse()
 
 	static, err := fs.Sub(staticFiles, "static")
