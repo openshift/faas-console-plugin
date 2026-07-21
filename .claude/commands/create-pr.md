@@ -54,7 +54,7 @@ Create a pull request using the project's PR template and conventions.
 5. **Read the PR template** at `.github/pull_request_template.md`.
 
 6. **Draft the PR** -- analyze ALL commits and the full diff, then draft:
-   - **Title:** `<JIRA-ID>: <Type>: <Sentence ending with a period.>` per `docs/WORKFLOW.md`. Include the Jira issue key from the branch name. Capitalize the type and the first word after the colon. End with a period. No em dashes.
+   - **Title:** `<JIRA-ID>: <Sentence>`. Include the Jira issue key from the branch name. Capitalize the first word. Do not end with a period. No type prefix (conventional commit types belong in commit messages, not PR titles). No em dashes.
    - **Body:** Fill in the PR template. Replace the placeholder bullets with a concise summary of what changed and why. Do not add a separate Jira reference in the body since the Jira ID is already in the title. Remove HTML comments from the filled-in template.
 
 7. **Show for approval** -- display the full draft (title + body) and ask the user to confirm or request changes. Do NOT create the PR until approved.
@@ -73,6 +73,5 @@ Create a pull request using the project's PR template and conventions.
 - Analyze ALL commits in the branch, not just the latest one
 - Never create the PR without showing the draft first
 - No em dashes in title or body
-- Follow the title format exactly: `<JIRA-ID>: <Type>: <Sentence.>` (capitalized)
-- Types: Feat, Fix, Refactor, Docs, Test, Chore, Style, Perf, CI, Build
+- Follow the title format exactly: `<JIRA-ID>: <Sentence>` (no type prefix, no trailing period)
 - Do NOT push to remote or create the PR until the user approves
