@@ -105,8 +105,12 @@ extract_cluster_ca() {
   oc get cm kube-root-ca.crt -n default -o jsonpath='{.data.ca\.crt}' > "$CA_FILE"
 }
 
-start_backend() {
+resolve_kube_api_server() {
+  echo "Resolving cluster API server URL..."
   KUBE_API_SERVER=$(oc whoami --show-server)
+}
+
+start_backend() {
   build_pages
   echo "Building Go backend..."
   (cd backend && go build -buildvcs=false -o ../bin/backend .)
@@ -252,6 +256,7 @@ main() {
   stop_dev
   write_dev_env
   extract_cluster_ca
+  resolve_kube_api_server
   trap 'stop_dev' EXIT
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"

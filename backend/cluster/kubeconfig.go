@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -10,7 +11,7 @@ import (
 
 const inClusterSATokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
-func resolveExternalAPIURL(baseURL string, caCert []byte) (string, error) {
+func resolveExternalAPIURL(ctx context.Context, baseURL string, caCert []byte) (string, error) {
 	if baseURL != "" {
 		return baseURL, nil
 	}
@@ -22,29 +23,29 @@ func resolveExternalAPIURL(baseURL string, caCert []byte) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("create SA cluster client: %w", err)
 	}
-	return saClient.GetExternalAPIURL()
+	return saClient.GetExternalAPIURL(ctx)
 }
 
-func GenerateKubeconfig(client Client, namespace, baseURL string, caCert []byte) (string, error) {
-	apiServerURL, err := resolveExternalAPIURL(baseURL, caCert)
+func GenerateKubeconfig(ctx context.Context, client Client, namespace, baseURL string, caCert []byte) (string, error) {
+	apiServerURL, err := resolveExternalAPIURL(ctx, baseURL, caCert)
 	if err != nil {
 		return "", fmt.Errorf("resolve external API URL: %w", err)
 	}
 
-	if err := client.CreateServiceAccount(namespace); err != nil {
+	if err := client.CreateServiceAccount(ctx, namespace); err != nil {
 		return "", fmt.Errorf("create service account: %w", err)
 	}
-	if err := client.ApplyRole(namespace); err != nil {
+	if err := client.ApplyRole(ctx, namespace); err != nil {
 		return "", fmt.Errorf("apply role: %w", err)
 	}
-	if err := client.CreateRoleBinding(namespace); err != nil {
+	if err := client.CreateRoleBinding(ctx, namespace); err != nil {
 		return "", fmt.Errorf("create role binding: %w", err)
 	}
-	if err := client.CreateImageBuilderBinding(namespace); err != nil {
+	if err := client.CreateImageBuilderBinding(ctx, namespace); err != nil {
 		return "", fmt.Errorf("create image builder binding: %w", err)
 	}
 
-	token, err := client.RequestToken(namespace)
+	token, err := client.RequestToken(ctx, namespace)
 	if err != nil {
 		return "", fmt.Errorf("request token: %w", err)
 	}

@@ -30,7 +30,7 @@ func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 		ref = "HEAD"
 	}
 
-	files, err := github.New(pat, h.githubBaseURL).GetFiles(owner, name, ref)
+	files, err := github.New(pat, h.githubBaseURL).GetFiles(r.Context(), owner, name, ref)
 	if err != nil {
 		if github.IsUnauthorized(err) {
 			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
@@ -88,7 +88,7 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := github.New(pat, h.githubBaseURL).PushFiles(owner, name, req.Branch, req.Message, req.Files); err != nil {
+	if err := github.New(pat, h.githubBaseURL).PushFiles(r.Context(), owner, name, req.Branch, req.Message, req.Files); err != nil {
 		if github.IsUnauthorized(err) {
 			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
 			return

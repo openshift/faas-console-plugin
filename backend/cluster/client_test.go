@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				w.WriteHeader(http.StatusCreated)
 			})
 
-			Expect(cl.CreateServiceAccount("default")).To(Succeed())
+			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
 			Expect(called).To(BeTrue())
 		})
 
@@ -46,7 +47,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"reason": "AlreadyExists", "message": "already exists"})
 			})
 
-			Expect(cl.CreateServiceAccount("default")).To(Succeed())
+			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
 		})
 
 		It("returns an error for non-conflict failures", func() {
@@ -55,7 +56,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
 			})
 
-			Expect(cl.CreateServiceAccount("default")).NotTo(Succeed())
+			Expect(cl.CreateServiceAccount(context.Background(), "default")).NotTo(Succeed())
 		})
 	})
 
@@ -79,7 +80,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				}
 			})
 
-			Expect(cl.ApplyRole("default")).To(Succeed())
+			Expect(cl.ApplyRole(context.Background(), "default")).To(Succeed())
 			Expect(postCalled).To(BeTrue())
 		})
 
@@ -104,7 +105,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				}
 			})
 
-			Expect(cl.ApplyRole("default")).To(Succeed())
+			Expect(cl.ApplyRole(context.Background(), "default")).To(Succeed())
 			Expect(putCalled).To(BeTrue())
 		})
 	})
@@ -120,7 +121,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				w.WriteHeader(http.StatusCreated)
 			})
 
-			Expect(cl.CreateRoleBinding("default")).To(Succeed())
+			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
 		})
 
 		It("succeeds when the binding already exists", func() {
@@ -129,7 +130,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"reason": "AlreadyExists"})
 			})
 
-			Expect(cl.CreateRoleBinding("default")).To(Succeed())
+			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
 		})
 
 		It("returns an error for non-conflict failures", func() {
@@ -138,7 +139,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
 			})
 
-			Expect(cl.CreateRoleBinding("default")).NotTo(Succeed())
+			Expect(cl.CreateRoleBinding(context.Background(), "default")).NotTo(Succeed())
 		})
 	})
 
@@ -153,7 +154,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				w.WriteHeader(http.StatusCreated)
 			})
 
-			Expect(cl.CreateImageBuilderBinding("default")).To(Succeed())
+			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).To(Succeed())
 		})
 
 		It("returns an error for non-conflict failures", func() {
@@ -162,7 +163,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
 			})
 
-			Expect(cl.CreateImageBuilderBinding("default")).NotTo(Succeed())
+			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).NotTo(Succeed())
 		})
 	})
 
@@ -179,7 +180,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				})
 			})
 
-			token, err := cl.RequestToken("default")
+			token, err := cl.RequestToken(context.Background(), "default")
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(token).To(Equal("sa-token-value"))
@@ -191,7 +192,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
 			})
 
-			_, err := cl.RequestToken("default")
+			_, err := cl.RequestToken(context.Background(), "default")
 
 			Expect(err).To(HaveOccurred())
 		})
@@ -207,7 +208,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				})
 			})
 
-			url, err := cl.GetExternalAPIURL()
+			url, err := cl.GetExternalAPIURL(context.Background())
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(url).To(Equal("https://api.mycluster.example.com:6443"))
@@ -219,7 +220,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"message": "Forbidden"})
 			})
 
-			_, err := cl.GetExternalAPIURL()
+			_, err := cl.GetExternalAPIURL(context.Background())
 
 			Expect(err).To(HaveOccurred())
 		})
@@ -231,7 +232,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 				})
 			})
 
-			_, err := cl.GetExternalAPIURL()
+			_, err := cl.GetExternalAPIURL(context.Background())
 
 			Expect(err).To(HaveOccurred())
 		})
@@ -239,13 +240,13 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 	Describe("resolveExternalAPIURL", func() {
 		It("returns baseURL directly when non-empty (dev mode)", func() {
-			url, err := resolveExternalAPIURL("https://api.example.com:6443", nil)
+			url, err := resolveExternalAPIURL(context.Background(), "https://api.example.com:6443", nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(url).To(Equal("https://api.example.com:6443"))
 		})
 
 		It("returns an error when the in-cluster SA token file is missing", func() {
-			_, err := resolveExternalAPIURL("", nil)
+			_, err := resolveExternalAPIURL(context.Background(), "", nil)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("read SA token"))
 		})
@@ -280,7 +281,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 		It("provisions RBAC and returns a valid kubeconfig", func() {
 			cl, calls := buildK8sMock()
 
-			kubeconfig, err := GenerateKubeconfig(cl, "default", fakeAPIURL, nil)
+			kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect((*calls)["sa"]).To(Equal(1))
@@ -301,7 +302,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 			cl, _ := buildK8sMock()
 			caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
 
-			kubeconfig, err := GenerateKubeconfig(cl, "default", fakeAPIURL, caCert)
+			kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, caCert)
 
 			Expect(err).NotTo(HaveOccurred())
 			var parsed map[string]any

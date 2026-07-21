@@ -26,12 +26,12 @@ const (
 )
 
 type Client interface {
-	GetExternalAPIURL() (string, error)
-	CreateServiceAccount(namespace string) error
-	ApplyRole(namespace string) error
-	CreateRoleBinding(namespace string) error
-	CreateImageBuilderBinding(namespace string) error
-	RequestToken(namespace string) (string, error)
+	GetExternalAPIURL(ctx context.Context) (string, error)
+	CreateServiceAccount(ctx context.Context, namespace string) error
+	ApplyRole(ctx context.Context, namespace string) error
+	CreateRoleBinding(ctx context.Context, namespace string) error
+	CreateImageBuilderBinding(ctx context.Context, namespace string) error
+	RequestToken(ctx context.Context, namespace string) (string, error)
 }
 
 // DefaultTokenExpiry is the requested SA token lifetime in seconds. Matches the
@@ -76,7 +76,7 @@ type httpClient struct {
 	tokenExpiry int64
 }
 
-func (c *httpClient) do(method, path string, body, result any) error {
+func (c *httpClient) do(ctx context.Context, method, path string, body, result any) error {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -86,7 +86,7 @@ func (c *httpClient) do(method, path string, body, result any) error {
 		bodyReader = bytes.NewReader(data)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), method, c.baseURL+path, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -118,13 +118,13 @@ func (c *httpClient) do(method, path string, body, result any) error {
 	return nil
 }
 
-func (c *httpClient) GetExternalAPIURL() (string, error) {
+func (c *httpClient) GetExternalAPIURL(ctx context.Context) (string, error) {
 	var result struct {
 		Status struct {
 			APIServerURL string `json:"apiServerURL"`
 		} `json:"status"`
 	}
-	if err := c.do("GET", "/apis/config.openshift.io/v1/infrastructures/cluster", nil, &result); err != nil {
+	if err := c.do(ctx, "GET", "/apis/config.openshift.io/v1/infrastructures/cluster", nil, &result); err != nil {
 		return "", fmt.Errorf("get infrastructure: %w", err)
 	}
 	if result.Status.APIServerURL == "" {
@@ -133,23 +133,23 @@ func (c *httpClient) GetExternalAPIURL() (string, error) {
 	return result.Status.APIServerURL, nil
 }
 
-func (c *httpClient) CreateServiceAccount(namespace string) error {
+func (c *httpClient) CreateServiceAccount(ctx context.Context, namespace string) error {
 	body := &corev1.ServiceAccount{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
 		ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: namespace},
 	}
-	err := c.do("POST", fmt.Sprintf("/api/v1/namespaces/%s/serviceaccounts", namespace), body, nil)
+	err := c.do(ctx, "POST", fmt.Sprintf("/api/v1/namespaces/%s/serviceaccounts", namespace), body, nil)
 	if k8serrors.IsAlreadyExists(err) {
 		return nil
 	}
 	return err
 }
 
-func (c *httpClient) ApplyRole(namespace string) error {
+func (c *httpClient) ApplyRole(ctx context.Context, namespace string) error {
 	url := fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/roles", namespace)
 	body := roleBody(namespace)
 
-	err := c.do("POST", url, body, nil)
+	err := c.do(ctx, "POST", url, body, nil)
 	if err == nil {
 		return nil
 	}
@@ -158,17 +158,17 @@ func (c *httpClient) ApplyRole(namespace string) error {
 	}
 
 	var existing rbacv1.Role
-	if err := c.do("GET", url+"/"+roleName, nil, &existing); err != nil {
+	if err := c.do(ctx, "GET", url+"/"+roleName, nil, &existing); err != nil {
 		return fmt.Errorf("get existing role: %w", err)
 	}
 	if existing.ResourceVersion == "" {
 		return fmt.Errorf("role metadata missing resourceVersion")
 	}
 	body.ResourceVersion = existing.ResourceVersion
-	return c.do("PUT", url+"/"+roleName, body, nil)
+	return c.do(ctx, "PUT", url+"/"+roleName, body, nil)
 }
 
-func (c *httpClient) CreateRoleBinding(namespace string) error {
+func (c *httpClient) CreateRoleBinding(ctx context.Context, namespace string) error {
 	body := &rbacv1.RoleBinding{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding"},
 		ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: namespace},
@@ -179,14 +179,14 @@ func (c *httpClient) CreateRoleBinding(namespace string) error {
 			Name:     roleName,
 		},
 	}
-	err := c.do("POST", fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/rolebindings", namespace), body, nil)
+	err := c.do(ctx, "POST", fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/rolebindings", namespace), body, nil)
 	if k8serrors.IsAlreadyExists(err) {
 		return nil
 	}
 	return err
 }
 
-func (c *httpClient) CreateImageBuilderBinding(namespace string) error {
+func (c *httpClient) CreateImageBuilderBinding(ctx context.Context, namespace string) error {
 	name := saName + "-image-builder"
 	body := &rbacv1.RoleBinding{
 		TypeMeta:   metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding"},
@@ -198,14 +198,14 @@ func (c *httpClient) CreateImageBuilderBinding(namespace string) error {
 			Name:     "system:image-builder",
 		},
 	}
-	err := c.do("POST", fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/rolebindings", namespace), body, nil)
+	err := c.do(ctx, "POST", fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/rolebindings", namespace), body, nil)
 	if k8serrors.IsAlreadyExists(err) {
 		return nil
 	}
 	return err
 }
 
-func (c *httpClient) RequestToken(namespace string) (string, error) {
+func (c *httpClient) RequestToken(ctx context.Context, namespace string) (string, error) {
 	expiry := c.tokenExpiry
 	body := &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
@@ -214,7 +214,7 @@ func (c *httpClient) RequestToken(namespace string) (string, error) {
 	}
 	var result authenticationv1.TokenRequest
 	path := fmt.Sprintf("/api/v1/namespaces/%s/serviceaccounts/%s/token", namespace, saName)
-	if err := c.do("POST", path, body, &result); err != nil {
+	if err := c.do(ctx, "POST", path, body, &result); err != nil {
 		return "", err
 	}
 	slog.Info("service account token issued", "namespace", namespace, "expires", result.Status.ExpirationTimestamp)

@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -32,7 +33,7 @@ var _ = Describe("GitHub SCM client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice", "avatar_url": "https://example.com/avatar"})
 			})
 
-			user, err := cl.GetUser()
+			user, err := cl.GetUser(context.Background())
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(user.Login).To(Equal("alice"))
@@ -45,7 +46,7 @@ var _ = Describe("GitHub SCM client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
 			})
 
-			_, err := cl.GetUser()
+			_, err := cl.GetUser(context.Background())
 
 			Expect(IsUnauthorized(err)).To(BeTrue())
 		})
@@ -56,7 +57,7 @@ var _ = Describe("GitHub SCM client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"message": "Internal Server Error"})
 			})
 
-			_, err := cl.GetUser()
+			_, err := cl.GetUser(context.Background())
 
 			Expect(err).To(HaveOccurred())
 			Expect(IsUnauthorized(err)).To(BeFalse())
@@ -83,7 +84,7 @@ var _ = Describe("GitHub SCM client", func() {
 				}
 			})
 
-			files, err := cl.GetFiles("alice", "my-func", "HEAD")
+			files, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(files).To(HaveLen(1))
@@ -97,7 +98,7 @@ var _ = Describe("GitHub SCM client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
 			})
 
-			_, err := cl.GetFiles("alice", "my-func", "HEAD")
+			_, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(IsUnauthorized(err)).To(BeTrue())
 		})
@@ -116,7 +117,7 @@ var _ = Describe("GitHub SCM client", func() {
 				}
 			})
 
-			_, err := cl.GetFiles("alice", "my-func", "HEAD")
+			_, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(err).To(HaveOccurred())
 		})
@@ -152,7 +153,7 @@ var _ = Describe("GitHub SCM client", func() {
 			})
 
 			files := []scm.FileEntry{{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"}}
-			err := cl.PushFiles("alice", "my-func", "main", "Update files", files)
+			err := cl.PushFiles(context.Background(), "alice", "my-func", "main", "Update files", files)
 
 			Expect(err).NotTo(HaveOccurred())
 			for _, op := range []string{"getRef", "getCommit", "createBlob", "createTree", "createCommit", "updateRef"} {
@@ -166,7 +167,7 @@ var _ = Describe("GitHub SCM client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
 			})
 
-			err := cl.PushFiles("alice", "my-func", "main", "msg", []scm.FileEntry{{Path: "f", Mode: "100644", Content: "x", Type: "blob"}})
+			err := cl.PushFiles(context.Background(), "alice", "my-func", "main", "msg", []scm.FileEntry{{Path: "f", Mode: "100644", Content: "x", Type: "blob"}})
 
 			Expect(err).To(HaveOccurred())
 		})
@@ -189,7 +190,7 @@ var _ = Describe("GitHub SCM client", func() {
 		It("creates the repo, sets the branch and topics", func() {
 			cl := newClient(repoHandler())
 
-			Expect(cl.InitRepo("alice", "my-func", "main", []string{"serverless-function"})).To(Succeed())
+			Expect(cl.InitRepo(context.Background(), "alice", "my-func", "main", []string{"serverless-function"})).To(Succeed())
 		})
 
 		It("renames the default branch when it differs from the requested branch", func() {
@@ -211,7 +212,7 @@ var _ = Describe("GitHub SCM client", func() {
 				}
 			})
 
-			Expect(cl.InitRepo("alice", "my-func", "develop", nil)).To(Succeed())
+			Expect(cl.InitRepo(context.Background(), "alice", "my-func", "develop", nil)).To(Succeed())
 			Expect(renameCalled).To(BeTrue())
 		})
 
@@ -223,7 +224,7 @@ var _ = Describe("GitHub SCM client", func() {
 				}
 			})
 
-			err := cl.InitRepo("alice", "my-func", "main", nil)
+			err := cl.InitRepo(context.Background(), "alice", "my-func", "main", nil)
 
 			Expect(err).To(HaveOccurred())
 			Expect(errors.Is(err, ErrRepoExists)).To(BeTrue())
@@ -237,7 +238,7 @@ var _ = Describe("GitHub SCM client", func() {
 				json.NewEncoder(w).Encode(map[string]string{"message": "internal server error"})
 			})
 
-			err := cl.StoreSecret("alice", "my-func", "KUBECONFIG", "value")
+			err := cl.StoreSecret(context.Background(), "alice", "my-func", "KUBECONFIG", "value")
 
 			Expect(err).To(HaveOccurred())
 		})
@@ -261,7 +262,7 @@ var _ = Describe("GitHub SCM client", func() {
 				}
 			})
 
-			Expect(cl.StoreSecret("alice", "my-func", "KUBECONFIG", "kubeconfig-value")).To(Succeed())
+			Expect(cl.StoreSecret(context.Background(), "alice", "my-func", "KUBECONFIG", "kubeconfig-value")).To(Succeed())
 			Expect(secretStored).To(BeTrue())
 		})
 	})

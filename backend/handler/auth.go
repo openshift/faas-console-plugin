@@ -14,7 +14,7 @@ func (h *Handlers) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := github.New(pat, h.githubBaseURL).GetUser()
+	user, err := github.New(pat, h.githubBaseURL).GetUser(r.Context())
 	if err != nil {
 		if github.IsUnauthorized(err) {
 			writeError(w, http.StatusUnauthorized, "invalid GitHub token")

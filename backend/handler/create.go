@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,7 +60,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.createFunction(req, pat, ocpToken); err != nil {
+	if err := h.createFunction(r.Context(), req, pat, ocpToken); err != nil {
 		switch {
 		case github.IsUnauthorized(err):
 			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
@@ -78,7 +79,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (h *Handlers) createFunction(req createRequest, pat, ocpToken string) error {
+func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, ocpToken string) error {
 	sourceFiles, err := scaffold.Generate(scaffold.Config{
 		Name:      req.Name,
 		Runtime:   req.Runtime,
@@ -112,27 +113,27 @@ func (h *Handlers) createFunction(req createRequest, pat, ocpToken string) error
 		return fmt.Errorf("%w: connect to cluster: %w", errUpstream, err)
 	}
 
-	kubeconfig, err := cluster.GenerateKubeconfig(cl, req.Namespace, h.k8sBaseURL, caCert)
+	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.k8sBaseURL, caCert)
 	if err != nil {
 		return fmt.Errorf("%w: provision cluster resources: %w", errUpstream, err)
 	}
 
 	gh := github.New(pat, h.githubBaseURL)
-	if err := gh.InitRepo(req.Owner, req.Repo, req.Branch, []string{"serverless-function"}); err != nil {
+	if err := gh.InitRepo(ctx, req.Owner, req.Repo, req.Branch, []string{"serverless-function"}); err != nil {
 		if github.IsUnauthorized(err) || errors.Is(err, github.ErrRepoExists) {
 			return err
 		}
 		slog.Error("failed to init repo", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: init repo: %w", errUpstream, err)
 	}
-	if err := gh.StoreSecret(req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
+	if err := gh.StoreSecret(ctx, req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
 		if github.IsUnauthorized(err) {
 			return err
 		}
 		slog.Error("failed to store CI secret", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: store secret: %w", errUpstream, err)
 	}
-	if err := gh.PushFiles(req.Owner, req.Repo, req.Branch, "Initialize Knative function project", files); err != nil {
+	if err := gh.PushFiles(ctx, req.Owner, req.Repo, req.Branch, "Initialize Knative function project", files); err != nil {
 		if github.IsUnauthorized(err) {
 			return err
 		}

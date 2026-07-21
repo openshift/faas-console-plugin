@@ -114,25 +114,25 @@ func (c *httpClient) do(ctx context.Context, method, path string, body, result a
 	return nil
 }
 
-func (c *httpClient) GetUser() (*scm.User, error) {
+func (c *httpClient) GetUser(ctx context.Context) (*scm.User, error) {
 	var raw struct {
 		Login     string `json:"login"`
 		AvatarURL string `json:"avatar_url"`
 	}
-	if err := c.do(context.Background(), "GET", "/user", nil, &raw); err != nil {
+	if err := c.do(ctx, "GET", "/user", nil, &raw); err != nil {
 		return nil, err
 	}
 	return &scm.User{Login: raw.Login, AvatarURL: raw.AvatarURL}, nil
 }
 
-func (c *httpClient) GetFiles(owner, repo, ref string) ([]scm.FileEntry, error) {
-	blobs, err := c.getTree(context.Background(), owner, repo, ref)
+func (c *httpClient) GetFiles(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
+	blobs, err := c.getTree(ctx, owner, repo, ref)
 	if err != nil {
 		return nil, err
 	}
 
 	entries := make([]scm.FileEntry, len(blobs))
-	g, ctx := errgroup.WithContext(context.Background())
+	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i, blob := range blobs {
 		i, blob := i, blob
@@ -151,8 +151,7 @@ func (c *httpClient) GetFiles(owner, repo, ref string) ([]scm.FileEntry, error) 
 	return entries, nil
 }
 
-func (c *httpClient) PushFiles(owner, repo, branch, message string, files []scm.FileEntry) error {
-	ctx := context.Background()
+func (c *httpClient) PushFiles(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 	headSHA, err := c.getRef(ctx, owner, repo, "heads/"+branch)
 	if err != nil {
 		return fmt.Errorf("get ref: %w", err)
@@ -176,8 +175,7 @@ func (c *httpClient) PushFiles(owner, repo, branch, message string, files []scm.
 	return c.updateRef(ctx, owner, repo, "heads/"+branch, commitSHA)
 }
 
-func (c *httpClient) InitRepo(owner, name, branch string, topics []string) error {
-	ctx := context.Background()
+func (c *httpClient) InitRepo(ctx context.Context, owner, name, branch string, topics []string) error {
 	if err := c.do(ctx, "POST", "/user/repos", map[string]any{"name": name, "auto_init": true}, nil); err != nil {
 		if isRepoExists(err) {
 			return fmt.Errorf("%w: %s/%s", ErrRepoExists, owner, name)
@@ -208,8 +206,7 @@ func (c *httpClient) InitRepo(owner, name, branch string, topics []string) error
 	return nil
 }
 
-func (c *httpClient) StoreSecret(owner, repo, name, value string) error {
-	ctx := context.Background()
+func (c *httpClient) StoreSecret(ctx context.Context, owner, repo, name, value string) error {
 	var pubKey struct {
 		KeyID string `json:"key_id"`
 		Key   string `json:"key"`
@@ -327,7 +324,7 @@ func (c *httpClient) updateRef(ctx context.Context, owner, repo, ref, sha string
 	return c.do(ctx, "PATCH", repoPath(owner, repo)+"/git/refs/"+ref, map[string]any{"sha": sha, "force": false}, nil)
 }
 
-func (c *httpClient) getTree(ctx context.Context, owner, repo, treeSha string) ([]treeBlob, error) {
+func (c *httpClient) getTree(ctx context.Context, owner, repo, refOrSHA string) ([]treeBlob, error) {
 	var result struct {
 		Tree []struct {
 			Path string `json:"path"`
@@ -337,7 +334,7 @@ func (c *httpClient) getTree(ctx context.Context, owner, repo, treeSha string) (
 		} `json:"tree"`
 		Truncated bool `json:"truncated"`
 	}
-	if err := c.do(ctx, "GET", repoPath(owner, repo)+"/git/trees/"+treeSha+"?recursive=1", nil, &result); err != nil {
+	if err := c.do(ctx, "GET", repoPath(owner, repo)+"/git/trees/"+refOrSHA+"?recursive=1", nil, &result); err != nil {
 		return nil, err
 	}
 	if result.Truncated {
