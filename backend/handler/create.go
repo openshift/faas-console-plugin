@@ -66,6 +66,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, github.ErrRepoExists):
 			writeError(w, http.StatusConflict, "repository already exists")
 		case errors.Is(err, errUpstream):
+			slog.Error("upstream service error", "err", err)
 			writeError(w, http.StatusBadGateway, "failed to reach upstream service")
 		default:
 			slog.Error("internal error creating function", "err", err)
@@ -111,7 +112,7 @@ func (h *Handlers) createFunction(req createRequest, pat, ocpToken string) error
 		return fmt.Errorf("%w: connect to cluster: %w", errUpstream, err)
 	}
 
-	kubeconfig, err := cluster.GenerateKubeconfig(cl, req.Namespace, caCert)
+	kubeconfig, err := cluster.GenerateKubeconfig(cl, req.Namespace, h.k8sBaseURL, caCert)
 	if err != nil {
 		return fmt.Errorf("%w: provision cluster resources: %w", errUpstream, err)
 	}

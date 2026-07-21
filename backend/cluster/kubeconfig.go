@@ -2,15 +2,33 @@ package cluster
 
 import (
 	"fmt"
+	"os"
 
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-func GenerateKubeconfig(client Client, namespace string, caCert []byte) (string, error) {
-	apiServerURL, err := client.GetExternalAPIURL()
+const inClusterSATokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+
+func resolveExternalAPIURL(baseURL string, caCert []byte) (string, error) {
+	if baseURL != "" {
+		return baseURL, nil
+	}
+	saToken, err := os.ReadFile(inClusterSATokenPath)
 	if err != nil {
-		return "", fmt.Errorf("get external API URL: %w", err)
+		return "", fmt.Errorf("read SA token: %w", err)
+	}
+	saClient, err := New(string(saToken), "", caCert, 0)
+	if err != nil {
+		return "", fmt.Errorf("create SA cluster client: %w", err)
+	}
+	return saClient.GetExternalAPIURL()
+}
+
+func GenerateKubeconfig(client Client, namespace, baseURL string, caCert []byte) (string, error) {
+	apiServerURL, err := resolveExternalAPIURL(baseURL, caCert)
+	if err != nil {
+		return "", fmt.Errorf("resolve external API URL: %w", err)
 	}
 
 	if err := client.CreateServiceAccount(namespace); err != nil {

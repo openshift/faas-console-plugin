@@ -7,14 +7,11 @@ import (
 	"strings"
 )
 
-// Handlers holds dependencies shared across all HTTP handlers.
-// It is the adapter layer: parse request, call core packages, write response.
-// No business logic lives here.
 type Handlers struct {
 	caPath        string
-	githubBaseURL string // empty → "https://api.github.com"; overridden in tests
-	k8sBaseURL    string // empty → derived from KUBERNETES_SERVICE_HOST/PORT; overridden in tests
-	saTokenExpiry int64  // 0 → cluster.DefaultTokenExpiry
+	githubBaseURL string
+	k8sBaseURL    string
+	saTokenExpiry int64
 }
 
 func New(caPath, k8sBaseURL string, saTokenExpiry int64) *Handlers {

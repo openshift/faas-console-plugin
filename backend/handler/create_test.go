@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,45 +27,47 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	}
 
 	It("provisions cluster resources and creates the GitHub repository", func() {
+		var mu sync.Mutex
 		calls := map[string]int{}
+		inc := func(key string) { mu.Lock(); calls[key]++; mu.Unlock() }
 
 		ghMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.Method == http.MethodPost && r.URL.Path == "/user/repos":
-				calls["createRepo"]++
+				inc("createRepo")
 				w.WriteHeader(http.StatusCreated)
 			case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/topics"):
-				calls["setTopics"]++
+				inc("setTopics")
 				json.NewEncoder(w).Encode(map[string][]string{"names": {"serverless-function"}})
 			case strings.Contains(r.URL.Path, "/git/ref/"):
-				calls["getRef"]++
+				inc("getRef")
 				json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": "headsha"}})
 			case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/git/commits/"):
-				calls["getCommit"]++
+				inc("getCommit")
 				json.NewEncoder(w).Encode(map[string]any{"sha": "headsha", "tree": map[string]string{"sha": "treesha"}})
 			case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/blobs"):
-				calls["createBlob"]++
+				inc("createBlob")
 				w.WriteHeader(http.StatusCreated)
 				json.NewEncoder(w).Encode(map[string]string{"sha": "blobsha"})
 			case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/trees"):
-				calls["createTree"]++
+				inc("createTree")
 				w.WriteHeader(http.StatusCreated)
 				json.NewEncoder(w).Encode(map[string]string{"sha": "newtreesha"})
 			case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/commits"):
-				calls["createCommit"]++
+				inc("createCommit")
 				w.WriteHeader(http.StatusCreated)
 				json.NewEncoder(w).Encode(map[string]string{"sha": "newcommitsha"})
 			case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/git/refs/"):
-				calls["updateRef"]++
+				inc("updateRef")
 				json.NewEncoder(w).Encode(map[string]string{})
 			case strings.Contains(r.URL.Path, "/actions/secrets/public-key"):
-				calls["getPublicKey"]++
+				inc("getPublicKey")
 				json.NewEncoder(w).Encode(map[string]string{"key_id": "kid123", "key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
 			case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/actions/secrets/"):
-				calls["storeSecret"]++
+				inc("storeSecret")
 				w.WriteHeader(http.StatusCreated)
 			case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/repos/"):
-				calls["getRepoInfo"]++
+				inc("getRepoInfo")
 				json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
 			default:
 				GinkgoWriter.Printf("unexpected GitHub %s %s\n", r.Method, r.URL.Path)
@@ -76,19 +79,18 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		k8sMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/apis/config.openshift.io/v1/infrastructures/cluster":
-				calls["getInfraURL"]++
 				json.NewEncoder(w).Encode(map[string]any{"status": map[string]string{"apiServerURL": "https://api.test-cluster.example.com:6443"}})
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
-				calls["k8s-sa"]++
+				inc("k8s-sa")
 				w.WriteHeader(http.StatusCreated)
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/roles"):
-				calls["k8s-role"]++
+				inc("k8s-role")
 				w.WriteHeader(http.StatusCreated)
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rolebindings"):
-				calls["k8s-rb"]++
+				inc("k8s-rb")
 				w.WriteHeader(http.StatusCreated)
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
-				calls["k8s-token"]++
+				inc("k8s-token")
 				json.NewEncoder(w).Encode(map[string]any{"status": map[string]string{"token": "sa-token"}})
 			default:
 				GinkgoWriter.Printf("unexpected K8s %s %s\n", r.Method, r.URL.Path)
@@ -105,7 +107,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		h.HandleFuncCreate(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusCreated), w.Body.String())
-		for _, op := range []string{"getInfraURL", "createRepo", "setTopics", "getRepoInfo",
+		for _, op := range []string{"createRepo", "setTopics", "getRepoInfo",
 			"getPublicKey", "storeSecret",
 			"getRef", "getCommit", "createTree", "createCommit", "updateRef",
 			"k8s-sa", "k8s-role", "k8s-token"} {

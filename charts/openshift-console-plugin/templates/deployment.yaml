@@ -20,6 +20,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      serviceAccountName: {{ template "openshift-console-plugin.name" . }}
       containers:
         - name: {{ template "openshift-console-plugin.name" . }}
           image: {{ required "Plugin image must be specified!" .Values.plugin.image }}

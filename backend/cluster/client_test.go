@@ -237,6 +237,20 @@ var _ = Describe("Kubernetes cluster client", func() {
 		})
 	})
 
+	Describe("resolveExternalAPIURL", func() {
+		It("returns baseURL directly when non-empty (dev mode)", func() {
+			url, err := resolveExternalAPIURL("https://api.example.com:6443", nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(url).To(Equal("https://api.example.com:6443"))
+		})
+
+		It("returns an error when the in-cluster SA token file is missing", func() {
+			_, err := resolveExternalAPIURL("", nil)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("read SA token"))
+		})
+	})
+
 	Describe("GenerateKubeconfig", func() {
 		const fakeAPIURL = "https://api.example.com:6443"
 
@@ -244,11 +258,6 @@ var _ = Describe("Kubernetes cluster client", func() {
 			calls := &map[string]int{}
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				switch {
-				case r.URL.Path == "/apis/config.openshift.io/v1/infrastructures/cluster":
-					(*calls)["infra"]++
-					json.NewEncoder(w).Encode(map[string]any{
-						"status": map[string]string{"apiServerURL": fakeAPIURL},
-					})
 				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
 					(*calls)["sa"]++
 					w.WriteHeader(http.StatusCreated)
@@ -271,10 +280,9 @@ var _ = Describe("Kubernetes cluster client", func() {
 		It("provisions RBAC and returns a valid kubeconfig", func() {
 			cl, calls := buildK8sMock()
 
-			kubeconfig, err := GenerateKubeconfig(cl, "default", nil)
+			kubeconfig, err := GenerateKubeconfig(cl, "default", fakeAPIURL, nil)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect((*calls)["infra"]).To(Equal(1))
 			Expect((*calls)["sa"]).To(Equal(1))
 			Expect((*calls)["role"]).To(Equal(1))
 			Expect((*calls)["rb"]).To(Equal(2))
@@ -293,7 +301,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 			cl, _ := buildK8sMock()
 			caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
 
-			kubeconfig, err := GenerateKubeconfig(cl, "default", caCert)
+			kubeconfig, err := GenerateKubeconfig(cl, "default", fakeAPIURL, caCert)
 
 			Expect(err).NotTo(HaveOccurred())
 			var parsed map[string]any
