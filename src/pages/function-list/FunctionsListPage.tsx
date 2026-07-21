@@ -21,7 +21,7 @@ import {
   ForgeConnectionContext,
   ForgeConnectionProvider,
 } from '../../common/context/ForgeConnectionProvider';
-import { ClusterFunction } from '../../common/services/cluster/ClusterFunction';
+import { ClusterFunction } from '../../common/services/types';
 import { useClusterService } from '../../common/services/cluster/useClusterService';
 import { SourceControlService } from '../../common/services/source-control/SourceControlService';
 import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';

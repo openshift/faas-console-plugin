@@ -1,3 +1,5 @@
+import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
+
 export const PAT_KEY = 'func-console-pat';
 export const USER_KEY = 'func-console-user';
 
@@ -44,3 +46,11 @@ export type FunctionStatus =
   | 'Error'
   | 'Unknown'
   | 'NotDeployed';
+
+export interface ClusterFunction {
+  readonly name: string;
+  readonly status: FunctionStatus;
+  readonly url: string | undefined;
+  readonly replicas: number;
+  readonly mainResource: K8sResourceCommon;
+}
