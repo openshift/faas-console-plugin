@@ -78,7 +78,7 @@ E2e tests use Playwright against a running cluster. Set `BRIDGE_GITHUB_PAT` in `
 
 ```shell
 yarn test:e2e              # all tests, headless
-yarn test:e2e:smoke        # smoke subset (runs on every push)
+yarn test:e2e:report       # open HTML report
 yarn test:e2e:headed       # visible browser
 yarn test:e2e:ui           # interactive UI mode
 ```

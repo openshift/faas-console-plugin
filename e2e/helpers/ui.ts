@@ -9,6 +9,13 @@ const LOADING_SELECTORS = [
 
 export async function waitForLoadingComplete(page: Page, timeoutMs = 30_000): Promise<void> {
   const combined = page.locator(LOADING_SELECTORS.join(', '));
+  // Two-phase wait: first give the spinner a moment to appear (prevents the
+  // hidden check from resolving instantly when no spinner is in the DOM yet),
+  // then wait for it to disappear, meaning loading is complete.
+  await combined
+    .first()
+    .waitFor({ state: 'visible', timeout: 1_000 })
+    .catch(() => {});
   await combined
     .first()
     .waitFor({ state: 'hidden', timeout: timeoutMs })

@@ -212,7 +212,6 @@ The GitHub mock (`e2e/mocks/github.ts`) is stateful. It maintains seed repos and
 |--------|---------|
 | `k8sHeaders(page)` | Get CSRF token headers for K8s API calls |
 | `ensureNamespace(page, name)` | Create namespace if it doesn't exist (waits for terminating namespaces) |
-| `ensureServerlessOperator(page)` | Install the Serverless operator if not present |
 | `simulateGitHubActionsDeploy(page, name, ns)` | Create a ksvc and patch the deployment label to simulate `func deploy` |
 | `ksvcApiPath(ns)` / `deploymentApiPath(ns)` | Build K8s API paths for Knative services and deployments |
 

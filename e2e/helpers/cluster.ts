@@ -20,7 +20,7 @@ export function deploymentApiPath(ns: string): string {
 // Auth
 // ---------------------------------------------------------------------------
 
-export async function getCSRFToken(page: Page): Promise<string> {
+async function getCSRFToken(page: Page): Promise<string> {
   const cookies = await page.context().cookies();
   const csrf = cookies.find((c) => c.name === 'csrf-token');
   return csrf?.value ?? '';
@@ -78,7 +78,7 @@ async function createResourceIfNotExists(
   }
 }
 
-export async function ensureServerlessOperator(page: Page): Promise<void> {
+async function ensureServerlessOperator(page: Page): Promise<void> {
   const headers = await k8sHeaders(page);
   const csvPath = `${K8S}/apis/operators.coreos.com/v1alpha1/namespaces/${SUBSCRIPTION_NS}/clusterserviceversions`;
 

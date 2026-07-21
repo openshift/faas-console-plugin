@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { Request } from '@playwright/test';
-import { navigateToCreatePage, navigateToFunctionsList } from '../../helpers/navigation';
+import { navigateToCreatePage } from '../../helpers/navigation';
 import { ensureNamespace, simulateGitHubActionsDeploy } from '../../helpers/cluster';
 
 const FUNC_NAME = 'test-func';
@@ -55,9 +55,7 @@ test.describe('Create go function', () => {
       await page.locator('#repo').fill(FUNC_NAME);
       await page.locator('#branch').fill(BRANCH);
       await page.locator('#name').fill(FUNC_NAME);
-
       await page.locator('#runtime').selectOption('go');
-
       await page.locator('#namespace').fill(NAMESPACE);
     });
 
@@ -89,12 +87,10 @@ test.describe('Create go function', () => {
     });
 
     await test.step('verify function shows as deployed in the UI', async () => {
-      await navigateToFunctionsList(page);
-
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
 
-      const row = grid.locator('tbody tr').filter({ hasText: FUNC_NAME });
+      const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
       await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText(/Running|ScaledToZero/)).toBeVisible({ timeout: 30_000 });
     });
