@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +11,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var _ = Describe("POST /api/v1/auth/login", func() {
+var _ = Describe("GET /api/v1/auth/user", func() {
 	var h *Handlers
 
 	BeforeEach(func() {
@@ -27,7 +26,8 @@ var _ = Describe("POST /api/v1/auth/login", func() {
 		DeferCleanup(mock.Close)
 		h.githubBaseURL = mock.URL
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"pat":"valid-pat"}`))
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
+		req.Header.Set("X-GitHub-Token", "valid-pat")
 		w := httptest.NewRecorder()
 		h.HandleAuthLogin(w, req)
 
@@ -45,27 +45,20 @@ var _ = Describe("POST /api/v1/auth/login", func() {
 		DeferCleanup(mock.Close)
 		h.githubBaseURL = mock.URL
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"pat":"bad-token"}`))
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
+		req.Header.Set("X-GitHub-Token", "bad-token")
 		w := httptest.NewRecorder()
 		h.HandleAuthLogin(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
-	It("rejects requests with a missing PAT", func() {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"pat":""}`))
+	It("rejects requests without an X-GitHub-Token header", func() {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
 		w := httptest.NewRecorder()
 		h.HandleAuthLogin(w, req)
 
-		Expect(w.Code).To(Equal(http.StatusBadRequest))
-	})
-
-	It("rejects malformed request bodies", func() {
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString("not-json"))
-		w := httptest.NewRecorder()
-		h.HandleAuthLogin(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusBadRequest))
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 502 when the GitHub API is unavailable", func() {
@@ -76,7 +69,8 @@ var _ = Describe("POST /api/v1/auth/login", func() {
 		DeferCleanup(mock.Close)
 		h.githubBaseURL = mock.URL
 
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewBufferString(`{"pat":"some-token"}`))
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
+		req.Header.Set("X-GitHub-Token", "some-token")
 		w := httptest.NewRecorder()
 		h.HandleAuthLogin(w, req)
 
