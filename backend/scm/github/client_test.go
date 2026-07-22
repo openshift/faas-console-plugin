@@ -53,6 +53,17 @@ var _ = Describe("GitHub SCM client", func() {
 			Expect(isUnauthorized(err)).To(BeTrue())
 		})
 
+		It("returns an unauthorized error when the token is forbidden (403)", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"message": "Forbidden"})
+			})
+
+			_, err := cl.GetUser(context.Background())
+
+			Expect(isUnauthorized(err)).To(BeTrue())
+		})
+
 		It("returns an error when the GitHub API is unavailable", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
@@ -103,6 +114,22 @@ var _ = Describe("GitHub SCM client", func() {
 			_, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(isUnauthorized(err)).To(BeTrue())
+		})
+
+		It("returns an error when the repository tree is truncated", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/git/trees/") {
+					json.NewEncoder(w).Encode(map[string]any{
+						"tree":      []map[string]any{{"path": "func.go", "mode": "100644", "type": "blob", "sha": "sha1"}},
+						"truncated": true,
+					})
+				}
+			})
+
+			_, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("truncated"))
 		})
 
 		It("propagates errors from individual blob fetches", func() {
@@ -218,6 +245,73 @@ var _ = Describe("GitHub SCM client", func() {
 			Expect(renameCalled).To(BeTrue())
 		})
 
+		It("returns an error when repo creation fails with a non-name-taken error", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/user/repos" {
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+				}
+			})
+
+			err := cl.InitRepo(context.Background(), "alice", "my-func", "main", nil)
+
+			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, scm.ErrRepoExists)).To(BeFalse())
+		})
+
+		It("returns an error when fetching repo info fails after creation", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/user/repos":
+					w.WriteHeader(http.StatusCreated)
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/repos/"):
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+				}
+			})
+
+			err := cl.InitRepo(context.Background(), "alice", "my-func", "main", nil)
+
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when renaming the default branch fails", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/user/repos":
+					w.WriteHeader(http.StatusCreated)
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/repos/"):
+					json.NewEncoder(w).Encode(map[string]string{"default_branch": "master"})
+				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/branches/master/rename"):
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+				}
+			})
+
+			err := cl.InitRepo(context.Background(), "alice", "my-func", "develop", nil)
+
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when setting topics fails", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/user/repos":
+					w.WriteHeader(http.StatusCreated)
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/repos/"):
+					json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
+				case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/topics"):
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+				}
+			})
+
+			err := cl.InitRepo(context.Background(), "alice", "my-func", "main", []string{"serverless-function"})
+
+			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, scm.ErrRepoExists)).To(BeFalse())
+		})
+
 		It("returns ErrRepoExists when GitHub reports the name is already taken", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodPost && r.URL.Path == "/user/repos" {
@@ -239,6 +333,26 @@ var _ = Describe("GitHub SCM client", func() {
 	})
 
 	Describe("StoreSecret", func() {
+		It("returns an error when storing the secret fails after the public key is fetched", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.Contains(r.URL.Path, "/actions/secrets/public-key"):
+					json.NewEncoder(w).Encode(map[string]string{
+						"key_id": "kid123",
+						"key":    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+					})
+				case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/actions/secrets/"):
+					w.WriteHeader(http.StatusInternalServerError)
+					json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+				}
+			})
+
+			err := cl.StoreSecret(context.Background(), "alice", "my-func", "KUBECONFIG", "value")
+
+			Expect(err).To(HaveOccurred())
+			Expect(isUnauthorized(err)).To(BeFalse())
+		})
+
 		It("returns an error when the public-key endpoint fails", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)

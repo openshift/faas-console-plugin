@@ -128,6 +128,120 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		})
 	})
 
+	It("returns 409 when the SCM repository already exists", func() {
+		ghMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/user/repos" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				json.NewEncoder(w).Encode(map[string]any{
+					"message": "Repository creation failed.",
+					"errors":  []map[string]string{{"resource": "Repository", "code": "custom", "field": "name", "message": "name already exists on this account"}},
+				})
+			}
+		}))
+		DeferCleanup(ghMock.Close)
+
+		k8sMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/roles"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rolebindings"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{"status": map[string]string{"token": "sa-token"}})
+			}
+		}))
+		DeferCleanup(k8sMock.Close)
+
+		withSCMMock(ghMock.URL, func() {
+			h := &Handlers{kubeHost: k8sMock.URL, externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
+			req.Header.Set("X-SCM-Token", "test-pat")
+			req.Header.Set("Authorization", "Bearer ocp-token")
+			w := httptest.NewRecorder()
+			h.HandleFuncCreate(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusConflict))
+		})
+	})
+
+	It("returns 502 when cluster provisioning fails", func() {
+		k8sMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]any{"reason": "Forbidden", "message": "forbidden"})
+		}))
+		DeferCleanup(k8sMock.Close)
+
+		withSCMMock("http://unused", func() {
+			h := &Handlers{kubeHost: k8sMock.URL, externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
+			req.Header.Set("X-SCM-Token", "test-pat")
+			req.Header.Set("Authorization", "Bearer ocp-token")
+			w := httptest.NewRecorder()
+			h.HandleFuncCreate(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+		})
+	})
+
+	It("returns 400 for a malformed request body", func() {
+		h := &Handlers{}
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBufferString("not json"))
+		req.Header.Set("X-SCM-Token", "test-pat")
+		req.Header.Set("Authorization", "Bearer ocp-token")
+		w := httptest.NewRecorder()
+		h.HandleFuncCreate(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("returns 401 when the SCM token is rejected mid-flow", func() {
+		ghMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost && r.URL.Path == "/user/repos" {
+				w.WriteHeader(http.StatusUnauthorized)
+				json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
+			}
+		}))
+		DeferCleanup(ghMock.Close)
+
+		k8sMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/roles"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rolebindings"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
+			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
+				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{"status": map[string]string{"token": "sa-token"}})
+			}
+		}))
+		DeferCleanup(k8sMock.Close)
+
+		withSCMMock(ghMock.URL, func() {
+			h := &Handlers{kubeHost: k8sMock.URL, externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
+			req.Header.Set("X-SCM-Token", "test-pat")
+			req.Header.Set("Authorization", "Bearer ocp-token")
+			w := httptest.NewRecorder()
+			h.HandleFuncCreate(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusUnauthorized))
+		})
+	})
+
 	It("rejects requests without an X-SCM-Token", func() {
 		h := &Handlers{}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
@@ -162,6 +276,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("invalid function name", createRequest{Name: "INVALID", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r"}),
 		Entry("unsupported runtime", createRequest{Name: "fn", Runtime: "ruby", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r"}),
 		Entry("invalid branch name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "bad branch!", Owner: "a", Repo: "r"}),
+		Entry("refs/ branch prefix", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "refs/heads/main", Owner: "a", Repo: "r"}),
 		Entry("invalid namespace", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "UPPER", Branch: "main", Owner: "a", Repo: "r"}),
 		Entry("missing registry", createRequest{Name: "fn", Runtime: "go", Registry: "", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r"}),
 		Entry("internal registry namespace mismatch", createRequest{Name: "fn", Runtime: "go", Registry: "image-registry.openshift-image-registry.svc:5000/default", Namespace: "test", Branch: "main", Owner: "a", Repo: "r"}),

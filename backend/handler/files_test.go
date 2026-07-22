@@ -204,6 +204,49 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
 
+	It("rejects requests with an empty branch", func() {
+		body, _ := json.Marshal(putFilesRequest{
+			Files:   []scm.FileEntry{{Path: "f.go", Mode: "100644", Content: "x", Type: "blob"}},
+			Message: "update",
+			Branch:  "",
+		})
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(body))
+		req.Header.Set("X-SCM-Token", "token")
+		req.SetPathValue("owner", "alice")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandlePutFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("rejects a malformed request body", func() {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBufferString("not json"))
+		req.Header.Set("X-SCM-Token", "token")
+		req.SetPathValue("owner", "alice")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandlePutFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+	})
+
+	It("rejects requests with a refs/ prefix in the branch name", func() {
+		body, _ := json.Marshal(putFilesRequest{
+			Files:   []scm.FileEntry{{Path: "f.go", Mode: "100644", Content: "x", Type: "blob"}},
+			Message: "update",
+			Branch:  "refs/heads/main",
+		})
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(body))
+		req.Header.Set("X-SCM-Token", "token")
+		req.SetPathValue("owner", "alice")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandlePutFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+	})
+
 	It("rejects requests without a commit message", func() {
 		body, _ := json.Marshal(putFilesRequest{Files: []scm.FileEntry{{Path: "f.go", Mode: "100644", Content: "x", Type: "blob"}}, Branch: "main"})
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(body))

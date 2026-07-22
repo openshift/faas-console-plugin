@@ -66,6 +66,15 @@ var _ = Describe("Generate", func() {
 		Entry("quarkus", "quarkus"),
 	)
 
+	It("returns an error for an unsupported SCM platform", func() {
+		_, err := Generate(Config{
+			Name: "my-func", Runtime: "go", Registry: "quay.io/myuser",
+			Namespace: "default", Branch: "main", SCM: scm.Platform("gitlab"),
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("unsupported SCM"))
+	})
+
 	Describe("CI workflow", func() {
 		It("targets the configured branch", func() {
 			files, err := Generate(Config{

@@ -2,54 +2,70 @@ package cluster
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.yaml.in/yaml/v3"
+
+	authenticationv1 "k8s.io/api/authentication/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
-var _ = Describe("GenerateKubeconfig", func() {
-	const fakeAPIURL = "https://api.example.com:6443"
+const fakeAPIURL = "https://api.example.com:6443"
 
-	buildK8sMock := func() (Client, *map[string]int) {
-		calls := &map[string]int{}
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch {
-			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
-				(*calls)["sa"]++
-				writeJSON(w, http.StatusCreated, map[string]any{})
-			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/roles"):
-				(*calls)["role"]++
-				writeJSON(w, http.StatusCreated, map[string]any{})
-			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rolebindings"):
-				(*calls)["rb"]++
-				writeJSON(w, http.StatusCreated, map[string]any{})
-			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
-				(*calls)["token"]++
-				writeJSON(w, http.StatusCreated, map[string]any{
-					"status": map[string]string{"token": "sa-token-value"},
-				})
-			}
-		}))
-		DeferCleanup(srv.Close)
-		cl, err := New(srv.URL, "test-token", nil)
-		Expect(err).NotTo(HaveOccurred())
-		return cl, calls
+// tokenReactor handles CreateToken subresource requests on serviceaccounts.
+func tokenReactor(token string) k8stesting.ReactionFunc {
+	return func(action k8stesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "token" {
+			return false, nil, nil
+		}
+		return true, &authenticationv1.TokenRequest{
+			Status: authenticationv1.TokenRequestStatus{
+				Token:               token,
+				ExpirationTimestamp: metav1.NewTime(metav1.Now().Time),
+			},
+		}, nil
 	}
+}
+
+// fullFakeClient returns a k8sClient backed by a fake clientset that succeeds
+// for all RBAC operations and issues the given token on TokenRequest.
+func fullFakeClient(token string) (*k8sClient, *fake.Clientset) {
+	cs := fake.NewSimpleClientset()
+	cs.PrependReactor("create", "serviceaccounts", tokenReactor(token))
+	return &k8sClient{clientset: cs}, cs
+}
+
+var _ = Describe("GenerateKubeconfig", func() {
 
 	It("provisions RBAC and returns a valid kubeconfig", func() {
-		cl, calls := buildK8sMock()
+		cl, cs := fullFakeClient("sa-token-value")
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect((*calls)["sa"]).To(Equal(1))
-		Expect((*calls)["role"]).To(Equal(1))
-		Expect((*calls)["rb"]).To(Equal(2))
-		Expect((*calls)["token"]).To(Equal(1))
+
+		// Verify all expected Kubernetes operations were performed.
+		var saCreated, roleCreated, rbCreated, tokenRequested int
+		for _, a := range cs.Actions() {
+			switch {
+			case a.GetVerb() == "create" && a.GetResource().Resource == "serviceaccounts" && a.GetSubresource() == "":
+				saCreated++
+			case a.GetVerb() == "create" && a.GetResource().Resource == "roles":
+				roleCreated++
+			case a.GetVerb() == "create" && a.GetResource().Resource == "rolebindings":
+				rbCreated++
+			case a.GetVerb() == "create" && a.GetSubresource() == "token":
+				tokenRequested++
+			}
+		}
+		Expect(saCreated).To(Equal(1))
+		Expect(roleCreated).To(Equal(1))
+		Expect(rbCreated).To(Equal(2))
+		Expect(tokenRequested).To(Equal(1))
 
 		var parsed map[string]any
 		Expect(yaml.Unmarshal([]byte(kubeconfig), &parsed)).To(Succeed())
@@ -61,7 +77,7 @@ var _ = Describe("GenerateKubeconfig", func() {
 	})
 
 	It("embeds the CA certificate when the cluster uses a private CA", func() {
-		cl, _ := buildK8sMock()
+		cl, _ := fullFakeClient("sa-token-value")
 		caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, caCert)
@@ -72,5 +88,90 @@ var _ = Describe("GenerateKubeconfig", func() {
 		clusters := parsed["clusters"].([]any)
 		cluster := clusters[0].(map[string]any)["cluster"].(map[string]any)
 		Expect(cluster).To(HaveKey("certificate-authority-data"))
+	})
+
+	It("returns an error when creating the service account fails", func() {
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			if action.GetSubresource() == "" {
+				return true, nil, forbiddenFor("serviceaccounts")
+			}
+			return false, nil, nil
+		})
+		cl := &k8sClient{clientset: cs}
+
+		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("create service account"))
+	})
+
+	It("returns an error when applying the role fails", func() {
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "roles", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, forbiddenFor("roles")
+		})
+		cl := &k8sClient{clientset: cs}
+
+		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("apply role"))
+	})
+
+	It("returns an error when creating the role binding fails", func() {
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, forbiddenFor("rolebindings")
+		})
+		cl := &k8sClient{clientset: cs}
+
+		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("create role binding"))
+	})
+
+	It("returns an error when creating the image builder binding fails", func() {
+		rbCount := 0
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			rbCount++
+			if rbCount == 1 {
+				return false, nil, nil
+			}
+			return true, nil, forbiddenFor("rolebindings")
+		})
+		cl := &k8sClient{clientset: cs}
+
+		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("image builder binding"))
+	})
+
+	It("returns an error when requesting the service account token fails", func() {
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			if action.GetSubresource() == "token" {
+				return true, nil, forbiddenFor("serviceaccounts")
+			}
+			return false, nil, nil
+		})
+		cl := &k8sClient{clientset: cs}
+
+		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("request token"))
+	})
+
+	It("returns an error when the external API server URL is empty", func() {
+		cl, _ := fullFakeClient("sa-token-value")
+
+		_, err := GenerateKubeconfig(context.Background(), cl, "default", "", nil)
+
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("API server URL is required"))
 	})
 })

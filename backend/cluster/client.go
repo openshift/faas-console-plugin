@@ -72,7 +72,7 @@ func New(host, token string, caCert []byte) (Client, error) {
 }
 
 type k8sClient struct {
-	clientset *kubernetes.Clientset
+	clientset kubernetes.Interface
 }
 
 func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) error {

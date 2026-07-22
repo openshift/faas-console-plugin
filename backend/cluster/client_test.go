@@ -2,73 +2,51 @@ package cluster
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	authenticationv1 "k8s.io/api/authentication/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
-func newClient(handler http.HandlerFunc) Client {
-	srv := httptest.NewServer(handler)
-	DeferCleanup(srv.Close)
-	cl, err := New(srv.URL, "test-token", nil)
-	Expect(err).NotTo(HaveOccurred())
-	return cl
-}
-
-func assertAuth(r *http.Request) {
-	Expect(r.Header.Get("Authorization")).To(Equal("Bearer test-token"))
-}
-
-// jsonOK writes a 200 JSON response (or the provided code) with Content-Type set.
-func writeJSON(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
-}
-
-func writeStatus(w http.ResponseWriter, code int, reason, message string) {
-	writeJSON(w, code, map[string]any{
-		"kind":    "Status",
-		"reason":  reason,
-		"message": message,
-		"code":    code,
-	})
+func forbiddenFor(resource string) error {
+	return k8serrors.NewForbidden(schema.GroupResource{Resource: resource}, "", nil)
 }
 
 var _ = Describe("Kubernetes cluster client", func() {
 
 	Describe("CreateServiceAccount", func() {
 		It("creates the service account in the namespace", func() {
-			called := false
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				defer GinkgoRecover()
-				assertAuth(r)
-				Expect(r.Method).To(Equal(http.MethodPost))
-				Expect(r.URL.Path).To(ContainSubstring("/serviceaccounts"))
-				called = true
-				writeJSON(w, http.StatusCreated, map[string]any{})
-			})
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
-			Expect(called).To(BeTrue())
+
+			_, err := cs.CoreV1().ServiceAccounts("default").Get(context.Background(), saName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
 		})
 
 		It("succeeds when the service account already exists", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				writeStatus(w, http.StatusConflict, "AlreadyExists", "already exists")
-			})
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
+			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
 
 			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
 		})
 
 		It("returns an error for non-conflict failures", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("serviceaccounts")
 			})
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.CreateServiceAccount(context.Background(), "default")).NotTo(Succeed())
 		})
@@ -76,99 +54,144 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 	Describe("ApplyRole", func() {
 		It("creates the role with the required permissions when it does not exist", func() {
-			var capturedResources []string
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodPost {
-					var body map[string]any
-					json.NewDecoder(r.Body).Decode(&body)
-					for _, rule := range body["rules"].([]any) {
-						for _, res := range rule.(map[string]any)["resources"].([]any) {
-							capturedResources = append(capturedResources, res.(string))
-						}
-					}
-					writeJSON(w, http.StatusCreated, map[string]any{})
-				}
-			})
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.ApplyRole(context.Background(), "default")).To(Succeed())
-			Expect(capturedResources).To(ContainElements("pods", "pods/exec", "services", "configmaps"))
+
+			role, err := cs.RbacV1().Roles("default").Get(context.Background(), roleName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			var resources []string
+			for _, rule := range role.Rules {
+				resources = append(resources, rule.Resources...)
+			}
+			Expect(resources).To(ContainElements("pods", "pods/exec", "services", "configmaps"))
 		})
 
 		It("updates the role when it already exists, forwarding the existing resourceVersion", func() {
-			var capturedResourceVersion string
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				switch r.Method {
-				case http.MethodPost:
-					writeStatus(w, http.StatusConflict, "AlreadyExists", "already exists")
-				case http.MethodGet:
-					writeJSON(w, http.StatusOK, map[string]any{
-						"metadata": map[string]string{"name": roleName, "resourceVersion": "42"},
-						"rules":    []any{},
-					})
-				case http.MethodPut:
-					var body map[string]any
-					json.NewDecoder(r.Body).Decode(&body)
-					if meta, ok := body["metadata"].(map[string]any); ok {
-						capturedResourceVersion, _ = meta["resourceVersion"].(string)
-					}
-					writeJSON(w, http.StatusOK, map[string]any{})
-				}
-			})
+			existing := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: "default", ResourceVersion: "42"},
+			}
+			cs := fake.NewSimpleClientset(existing)
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.ApplyRole(context.Background(), "default")).To(Succeed())
-			Expect(capturedResourceVersion).To(Equal("42"))
+
+			var capturedRV string
+			for _, a := range cs.Actions() {
+				if a.GetVerb() == "update" {
+					capturedRV = a.(k8stesting.UpdateAction).GetObject().(*rbacv1.Role).ResourceVersion
+				}
+			}
+			Expect(capturedRV).To(Equal("42"))
+		})
+
+		It("returns an error when role creation fails with a non-conflict error", func() {
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "roles", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("roles")
+			})
+			cl := &k8sClient{clientset: cs}
+
+			Expect(cl.ApplyRole(context.Background(), "default")).NotTo(Succeed())
+		})
+
+		It("returns an error when fetching the existing role fails", func() {
+			existing := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: "default", ResourceVersion: "1"},
+			}
+			cs := fake.NewSimpleClientset(existing)
+			cs.PrependReactor("get", "roles", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("roles")
+			})
+			cl := &k8sClient{clientset: cs}
+
+			Expect(cl.ApplyRole(context.Background(), "default")).NotTo(Succeed())
+		})
+
+		It("returns an error when the existing role has no resourceVersion", func() {
+			existing := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: "default"},
+			}
+			cs := fake.NewSimpleClientset(existing)
+			cl := &k8sClient{clientset: cs}
+
+			Expect(cl.ApplyRole(context.Background(), "default")).NotTo(Succeed())
+		})
+
+		It("returns an error when updating the existing role fails", func() {
+			existing := &rbacv1.Role{
+				ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: "default", ResourceVersion: "42"},
+			}
+			cs := fake.NewSimpleClientset(existing)
+			cs.PrependReactor("update", "roles", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("roles")
+			})
+			cl := &k8sClient{clientset: cs}
+
+			Expect(cl.ApplyRole(context.Background(), "default")).NotTo(Succeed())
 		})
 	})
 
 	Describe("CreateRoleBinding", func() {
-		It("sends a POST to the rolebindings endpoint", func() {
-			postCalled := false
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "rolebindings") {
-					postCalled = true
-				}
-				writeJSON(w, http.StatusCreated, map[string]any{})
-			})
+		It("binds the service account to the deployer role", func() {
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
-			Expect(postCalled).To(BeTrue())
+
+			rb, err := cs.RbacV1().RoleBindings("default").Get(context.Background(), roleName, metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rb.RoleRef.Kind).To(Equal("Role"))
+			Expect(rb.RoleRef.Name).To(Equal(roleName))
 		})
 
 		It("succeeds when the binding already exists", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				writeStatus(w, http.StatusConflict, "AlreadyExists", "already exists")
-			})
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
+			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
 
 			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
 		})
 
 		It("returns an error for non-conflict failures", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("rolebindings")
 			})
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.CreateRoleBinding(context.Background(), "default")).NotTo(Succeed())
 		})
 	})
 
 	Describe("CreateImageBuilderBinding", func() {
-		It("sends a POST to the rolebindings endpoint for the image-builder binding", func() {
-			postCalled := false
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "rolebindings") {
-					postCalled = true
-				}
-				writeJSON(w, http.StatusCreated, map[string]any{})
-			})
+		It("binds the service account to the image-builder cluster role", func() {
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).To(Succeed())
-			Expect(postCalled).To(BeTrue())
+
+			rb, err := cs.RbacV1().RoleBindings("default").Get(context.Background(), saName+"-image-builder", metav1.GetOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(rb.RoleRef.Kind).To(Equal("ClusterRole"))
+			Expect(rb.RoleRef.Name).To(Equal("system:image-builder"))
+		})
+
+		It("succeeds when the binding already exists", func() {
+			cs := fake.NewSimpleClientset()
+			cl := &k8sClient{clientset: cs}
+			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).To(Succeed())
+
+			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).To(Succeed())
 		})
 
 		It("returns an error for non-conflict failures", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("rolebindings")
 			})
+			cl := &k8sClient{clientset: cs}
 
 			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).NotTo(Succeed())
 		})
@@ -176,17 +199,19 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 	Describe("RequestToken", func() {
 		It("returns a bound service account token", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				defer GinkgoRecover()
-				assertAuth(r)
-				Expect(r.URL.Path).To(ContainSubstring("/token"))
-				writeJSON(w, http.StatusCreated, map[string]any{
-					"status": map[string]any{
-						"token":               "sa-token-value",
-						"expirationTimestamp": "2026-10-18T14:30:00Z",
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.GetSubresource() != "token" {
+					return false, nil, nil
+				}
+				return true, &authenticationv1.TokenRequest{
+					Status: authenticationv1.TokenRequestStatus{
+						Token:               "sa-token-value",
+						ExpirationTimestamp: metav1.NewTime(metav1.Now().Time),
 					},
-				})
+				}, nil
 			})
+			cl := &k8sClient{clientset: cs}
 
 			token, err := cl.RequestToken(context.Background(), "default")
 
@@ -195,14 +220,18 @@ var _ = Describe("Kubernetes cluster client", func() {
 		})
 
 		It("returns an error when the token endpoint is unavailable", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.GetSubresource() != "token" {
+					return false, nil, nil
+				}
+				return true, nil, forbiddenFor("serviceaccounts")
 			})
+			cl := &k8sClient{clientset: cs}
 
 			_, err := cl.RequestToken(context.Background(), "default")
 
 			Expect(err).To(HaveOccurred())
 		})
 	})
-
 })

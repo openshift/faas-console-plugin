@@ -278,33 +278,24 @@ test.describe('My feature', () => {
 
 ## Backend (Go)
 
-Ginkgo v2 + Gomega for specs. `net/http/httptest` for faking HTTP dependencies. No other third-party test libraries.
+Ginkgo v2 + Gomega for specs. No other third-party test libraries.
 
 ### Mock Strategy
 
-`httptest.NewServer` is the Go equivalent of MSW — a real local TCP server returning canned JSON. Use it for anything that makes an HTTP call (GitHub API, K8s API). Never mock at the interface level for network calls.
+Two strategies depending on the dependency:
+
+**`httptest.NewServer`** — for HTTP APIs we do not own (GitHub). A real local TCP server returns canned JSON. Exercises the full HTTP client stack including serialization and error mapping. Each test spins up its own inline server.
+
+**`fake.NewSimpleClientset`** — for Kubernetes. `k8s.io/client-go/kubernetes/fake` implements `kubernetes.Interface` without any HTTP. Use reactors to simulate errors and pre-populate objects to simulate existing state. This is the client-go idiomatic approach and avoids hand-rolled JSON mocks.
 
 Tests live in the same package as the code (`package cluster`, not `package cluster_test`) for white-box access. Each package has a `suite_test.go` that registers the Ginkgo runner.
 
 ### Spec pattern
 
-```go
-var _ = Describe("POST /api/v1/auth/login", func() {
-    It("validates the GitHub token and returns the user identity", func() {
-        srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
-        }))
-        DeferCleanup(srv.Close)
+Handler tests use `withSCMMock` to swap the SCM registry for a test server. Cluster tests inject `fake.NewSimpleClientset()` directly. Each test owns its own setup — no shared server instances.
 
-        h := &Handlers{githubBaseURL: srv.URL}
-        // ... act and assert
-        Expect(w.Code).To(Equal(http.StatusOK))
-        Expect(resp.Login).To(Equal("alice"))
-    })
-})
-```
+Use `DeferCleanup(mock.Close)` — not `defer`. For handlers that touch the cluster, set `kubeHost` on `Handlers` to a test server URL and `externalAPIServerURL` to a fake value.
 
-Use `DeferCleanup(srv.Close)` — not `defer`. For handlers, spin up one server per dependency (`githubBaseURL`, `k8sBaseURL`).
 
 ### Tests are use cases
 
