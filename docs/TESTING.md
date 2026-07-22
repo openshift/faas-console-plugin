@@ -273,9 +273,6 @@ test.describe('My feature', () => {
 });
 ```
 
-### Creating new e2e tests
-
-Use the `/e2e <feature-name>` slash command to scaffold tests. It reads the feature source code, proposes test cases, scaffolds the file, and debugs failures using Playwright MCP.
 
 ---
 
