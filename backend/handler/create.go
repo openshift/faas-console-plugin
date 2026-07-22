@@ -12,15 +12,16 @@ import (
 	"strings"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
+	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/scaffold"
-	"github.com/openshift/faas-console-plugin/backend/scm/github"
+	"github.com/openshift/faas-console-plugin/backend/scm"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 var (
-	validBranch     = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
-	validRuntimes   = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
-	validGitHubName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+	validBranch   = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
+	validRuntimes = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
+	validSCMName  = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 )
 
 type createRequest struct {
@@ -33,7 +34,7 @@ type createRequest struct {
 	Repo      string `json:"repo"`
 }
 
-// errUpstream marks errors that originated from an upstream API (GitHub, cluster)
+// errUpstream marks errors that originated from an upstream API (SCM, cluster)
 // so the handler can map them to 502 instead of 500.
 var errUpstream = errors.New("upstream error")
 
@@ -49,9 +50,9 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pat, ok := extractPAT(r)
+	pat, ok := extractSCMToken(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-GitHub-Token header is required")
+		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 	ocpToken, ok := extractOCPToken(r)
@@ -62,9 +63,9 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.createFunction(r.Context(), req, pat, ocpToken); err != nil {
 		switch {
-		case github.IsUnauthorized(err):
-			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
-		case errors.Is(err, github.ErrRepoExists):
+		case errors.Is(err, scm.ErrUnauthorized):
+			writeError(w, http.StatusUnauthorized, "invalid SCM token")
+		case errors.Is(err, scm.ErrRepoExists):
 			writeError(w, http.StatusConflict, "repository already exists")
 		case errors.Is(err, errUpstream):
 			slog.Error("upstream service error", "err", err)
@@ -80,25 +81,18 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, ocpToken string) error {
-	sourceFiles, err := scaffold.Generate(scaffold.Config{
-		Name:      req.Name,
-		Runtime:   req.Runtime,
-		Registry:  req.Registry,
-		Namespace: req.Namespace,
+	files, err := scaffold.Generate(scaffold.Config{
+		Name:             req.Name,
+		Runtime:          req.Runtime,
+		Registry:         req.Registry,
+		Namespace:        req.Namespace,
+		Branch:           req.Branch,
+		SCM:              scm.DefaultPlatform,
+		InternalRegistry: strings.HasPrefix(req.Registry, config.OCPInternalRegistry),
 	})
 	if err != nil {
 		return fmt.Errorf("generate scaffold: %w", err)
 	}
-
-	ciFiles, err := github.GenerateCIFiles(github.CIConfig{
-		Runtime:  req.Runtime,
-		Branch:   req.Branch,
-		Registry: req.Registry,
-	})
-	if err != nil {
-		return fmt.Errorf("generate CI workflow: %w", err)
-	}
-	files := append(sourceFiles, ciFiles...)
 
 	var caCert []byte
 	if h.caPath != "" {
@@ -118,23 +112,23 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		return fmt.Errorf("%w: provision cluster resources: %w", errUpstream, err)
 	}
 
-	gh := github.New(pat, h.githubBaseURL)
-	if err := gh.InitRepo(ctx, req.Owner, req.Repo, req.Branch, []string{"serverless-function"}); err != nil {
-		if github.IsUnauthorized(err) || errors.Is(err, github.ErrRepoExists) {
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	if err := client.InitRepo(ctx, req.Owner, req.Repo, req.Branch, []string{"serverless-function"}); err != nil {
+		if errors.Is(err, scm.ErrUnauthorized) || errors.Is(err, scm.ErrRepoExists) {
 			return err
 		}
 		slog.Error("failed to init repo", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: init repo: %w", errUpstream, err)
 	}
-	if err := gh.StoreSecret(ctx, req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
-		if github.IsUnauthorized(err) {
+	if err := client.StoreSecret(ctx, req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
+		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
 		}
 		slog.Error("failed to store CI secret", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: store secret: %w", errUpstream, err)
 	}
-	if err := gh.PushFiles(ctx, req.Owner, req.Repo, req.Branch, "Initialize Knative function project", files); err != nil {
-		if github.IsUnauthorized(err) {
+	if err := client.PushFiles(ctx, req.Owner, req.Repo, req.Branch, "Initialize Knative function project", files); err != nil {
+		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
 		}
 		slog.Error("failed to push files", "owner", req.Owner, "repo", req.Repo, "err", err)
@@ -159,16 +153,16 @@ func validateCreateRequest(req createRequest) error {
 	if req.Registry == "" {
 		return fmt.Errorf("registry is required")
 	}
-	if strings.HasPrefix(req.Registry, github.OCPInternalRegistry) {
-		expected := github.OCPInternalRegistry + req.Namespace
+	if strings.HasPrefix(req.Registry, config.OCPInternalRegistry) {
+		expected := config.OCPInternalRegistry + req.Namespace
 		if req.Registry != expected {
 			return fmt.Errorf("registry namespace must match deployment namespace: expected %q, got %q", expected, req.Registry)
 		}
 	}
-	if !validGitHubName.MatchString(req.Owner) {
+	if !validSCMName.MatchString(req.Owner) {
 		return fmt.Errorf("invalid owner")
 	}
-	if !validGitHubName.MatchString(req.Repo) {
+	if !validSCMName.MatchString(req.Repo) {
 		return fmt.Errorf("invalid repo name")
 	}
 	return nil

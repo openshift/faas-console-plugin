@@ -1,27 +1,30 @@
 package handler
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
-	"github.com/openshift/faas-console-plugin/backend/scm/github"
+	"github.com/openshift/faas-console-plugin/backend/config"
+	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
 func (h *Handlers) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractPAT(r)
+	pat, ok := extractSCMToken(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-GitHub-Token header is required")
+		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 
-	user, err := github.New(pat, h.githubBaseURL).GetUser(r.Context())
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	user, err := client.GetUser(r.Context())
 	if err != nil {
-		if github.IsUnauthorized(err) {
-			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
+		if errors.Is(err, scm.ErrUnauthorized) {
+			writeError(w, http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
-		slog.Error("failed to get GitHub user", "err", err)
-		writeError(w, http.StatusBadGateway, "failed to reach GitHub API")
+		slog.Error("failed to get SCM user", "err", err)
+		writeError(w, http.StatusBadGateway, "failed to reach SCM API")
 		return
 	}
 

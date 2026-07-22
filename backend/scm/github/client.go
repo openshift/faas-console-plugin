@@ -16,9 +16,11 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// New returns a scm.Client that authenticates with pat.
-// baseURL defaults to "https://api.github.com"; override in tests.
-func New(pat, baseURL string) scm.Client {
+func New(pat string) scm.Client {
+	return NewWithBaseURL(pat, "https://api.github.com")
+}
+
+func NewWithBaseURL(pat, baseURL string) scm.Client {
 	if baseURL == "" {
 		baseURL = "https://api.github.com"
 	}
@@ -47,14 +49,6 @@ type apiErrorDetail struct {
 
 func (e *apiError) Error() string {
 	return fmt.Sprintf("github API error %d: %s", e.StatusCode, e.Message)
-}
-
-// ErrRepoExists is returned by InitRepo when the repository already exists.
-var ErrRepoExists = errors.New("repository already exists")
-
-func IsUnauthorized(err error) bool {
-	var e *apiError
-	return errors.As(err, &e) && e.StatusCode == http.StatusUnauthorized
 }
 
 func isRepoExists(err error) bool {
@@ -103,6 +97,9 @@ func (c *httpClient) do(ctx context.Context, method, path string, body, result a
 		var apiErr apiError
 		apiErr.StatusCode = resp.StatusCode
 		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("%w: %w", scm.ErrUnauthorized, &apiErr)
+		}
 		return &apiErr
 	}
 
@@ -178,7 +175,7 @@ func (c *httpClient) PushFiles(ctx context.Context, owner, repo, branch, message
 func (c *httpClient) InitRepo(ctx context.Context, owner, name, branch string, topics []string) error {
 	if err := c.do(ctx, "POST", "/user/repos", map[string]any{"name": name, "auto_init": true}, nil); err != nil {
 		if isRepoExists(err) {
-			return fmt.Errorf("%w: %s/%s", ErrRepoExists, owner, name)
+			return fmt.Errorf("%w: %s/%s", scm.ErrRepoExists, owner, name)
 		}
 		return fmt.Errorf("create repo: %w", err)
 	}

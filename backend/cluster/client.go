@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	saName   = "func-github"
-	roleName = "func-github-deployer"
+	saName   = "func-scm"
+	roleName = "func-scm-deployer"
 )
 
 type Client interface {
@@ -35,7 +35,7 @@ type Client interface {
 }
 
 // DefaultTokenExpiry is the requested SA token lifetime in seconds. Matches the
-// previous frontend behaviour. Security concern: a long-lived token in a GitHub
+// previous frontend behaviour. Security concern: a long-lived token in an SCM
 // Actions secret increases exposure if leaked; shorter expiry is a follow-up.
 const DefaultTokenExpiry int64 = 365 * 24 * 60 * 60 // 1 year
 

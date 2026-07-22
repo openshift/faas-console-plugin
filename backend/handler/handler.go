@@ -9,7 +9,6 @@ import (
 
 type Handlers struct {
 	caPath        string
-	githubBaseURL string
 	k8sBaseURL    string
 	saTokenExpiry int64
 }
@@ -18,8 +17,8 @@ func New(caPath, k8sBaseURL string, saTokenExpiry int64) *Handlers {
 	return &Handlers{caPath: caPath, k8sBaseURL: k8sBaseURL, saTokenExpiry: saTokenExpiry}
 }
 
-func extractPAT(r *http.Request) (string, bool) {
-	v := r.Header.Get("X-GitHub-Token")
+func extractSCMToken(r *http.Request) (string, bool) {
+	v := r.Header.Get("X-SCM-Token")
 	return v, v != ""
 }
 

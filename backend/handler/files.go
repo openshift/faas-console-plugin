@@ -2,25 +2,26 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/scm"
-	"github.com/openshift/faas-console-plugin/backend/scm/github"
 )
 
 func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractPAT(r)
+	pat, ok := extractSCMToken(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-GitHub-Token header is required")
+		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 
 	owner := r.PathValue("owner")
 	name := r.PathValue("name")
 
-	if !validGitHubName.MatchString(owner) || !validGitHubName.MatchString(name) {
+	if !validSCMName.MatchString(owner) || !validSCMName.MatchString(name) {
 		writeError(w, http.StatusBadRequest, "invalid owner or repository name")
 		return
 	}
@@ -30,10 +31,11 @@ func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 		ref = "HEAD"
 	}
 
-	files, err := github.New(pat, h.githubBaseURL).GetFiles(r.Context(), owner, name, ref)
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	files, err := client.GetFiles(r.Context(), owner, name, ref)
 	if err != nil {
-		if github.IsUnauthorized(err) {
-			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
+		if errors.Is(err, scm.ErrUnauthorized) {
+			writeError(w, http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("failed to get files", "owner", owner, "repo", name, "ref", ref, "err", err)
@@ -51,16 +53,16 @@ type putFilesRequest struct {
 }
 
 func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractPAT(r)
+	pat, ok := extractSCMToken(r)
 	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-GitHub-Token header is required")
+		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
 
 	owner := r.PathValue("owner")
 	name := r.PathValue("name")
 
-	if !validGitHubName.MatchString(owner) || !validGitHubName.MatchString(name) {
+	if !validSCMName.MatchString(owner) || !validSCMName.MatchString(name) {
 		writeError(w, http.StatusBadRequest, "invalid owner or repository name")
 		return
 	}
@@ -88,9 +90,10 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := github.New(pat, h.githubBaseURL).PushFiles(r.Context(), owner, name, req.Branch, req.Message, req.Files); err != nil {
-		if github.IsUnauthorized(err) {
-			writeError(w, http.StatusUnauthorized, "invalid GitHub token")
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	if err := client.PushFiles(r.Context(), owner, name, req.Branch, req.Message, req.Files); err != nil {
+		if errors.Is(err, scm.ErrUnauthorized) {
+			writeError(w, http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("failed to push files", "owner", owner, "repo", name, "err", err)

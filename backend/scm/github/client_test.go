@@ -14,10 +14,12 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
+func isUnauthorized(err error) bool { return errors.Is(err, scm.ErrUnauthorized) }
+
 func newClient(handler http.HandlerFunc) scm.Client {
 	srv := httptest.NewServer(handler)
 	DeferCleanup(srv.Close)
-	return New("test-pat", srv.URL)
+	return NewWithBaseURL("test-pat", srv.URL)
 }
 
 func assertAuth(r *http.Request) {
@@ -48,7 +50,7 @@ var _ = Describe("GitHub SCM client", func() {
 
 			_, err := cl.GetUser(context.Background())
 
-			Expect(IsUnauthorized(err)).To(BeTrue())
+			Expect(isUnauthorized(err)).To(BeTrue())
 		})
 
 		It("returns an error when the GitHub API is unavailable", func() {
@@ -60,7 +62,7 @@ var _ = Describe("GitHub SCM client", func() {
 			_, err := cl.GetUser(context.Background())
 
 			Expect(err).To(HaveOccurred())
-			Expect(IsUnauthorized(err)).To(BeFalse())
+			Expect(isUnauthorized(err)).To(BeFalse())
 		})
 	})
 
@@ -100,7 +102,7 @@ var _ = Describe("GitHub SCM client", func() {
 
 			_, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
-			Expect(IsUnauthorized(err)).To(BeTrue())
+			Expect(isUnauthorized(err)).To(BeTrue())
 		})
 
 		It("propagates errors from individual blob fetches", func() {
@@ -227,7 +229,7 @@ var _ = Describe("GitHub SCM client", func() {
 			err := cl.InitRepo(context.Background(), "alice", "my-func", "main", nil)
 
 			Expect(err).To(HaveOccurred())
-			Expect(errors.Is(err, ErrRepoExists)).To(BeTrue())
+			Expect(errors.Is(err, scm.ErrRepoExists)).To(BeTrue())
 		})
 	})
 

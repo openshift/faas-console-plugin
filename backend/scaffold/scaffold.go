@@ -1,5 +1,3 @@
-// Package scaffold generates the initial file tree for a new Knative function.
-// Decoupled from HTTP and SCM so the functions operator can adopt it directly.
 package scaffold
 
 import (
@@ -13,10 +11,13 @@ import (
 )
 
 type Config struct {
-	Name      string
-	Runtime   string
-	Registry  string
-	Namespace string
+	Name             string
+	Runtime          string
+	Registry         string
+	Namespace        string
+	Branch           string
+	SCM              scm.Platform
+	InternalRegistry bool // when true, CI skips external registry login
 }
 
 func Generate(cfg Config) ([]scm.FileEntry, error) {
@@ -37,6 +38,14 @@ func Generate(cfg Config) ([]scm.FileEntry, error) {
 		Template:  "http",
 	}); err != nil {
 		return nil, fmt.Errorf("init function: %w", err)
+	}
+
+	if gen, ok := ciGenerators[cfg.SCM]; ok {
+		if err := gen(root, cfg); err != nil {
+			return nil, err
+		}
+	} else if cfg.SCM != "" {
+		return nil, fmt.Errorf("unsupported SCM: %q", cfg.SCM)
 	}
 
 	return scm.CollectFiles(root)

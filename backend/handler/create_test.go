@@ -99,25 +99,27 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		}))
 		DeferCleanup(k8sMock.Close)
 
-		h := &Handlers{githubBaseURL: ghMock.URL, k8sBaseURL: k8sMock.URL}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-GitHub-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
-		w := httptest.NewRecorder()
-		h.HandleFuncCreate(w, req)
+		withSCMMock(ghMock.URL, func() {
+			h := &Handlers{k8sBaseURL: k8sMock.URL}
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
+			req.Header.Set("X-SCM-Token", "test-pat")
+			req.Header.Set("Authorization", "Bearer ocp-token")
+			w := httptest.NewRecorder()
+			h.HandleFuncCreate(w, req)
 
-		Expect(w.Code).To(Equal(http.StatusCreated), w.Body.String())
-		for _, op := range []string{"createRepo", "setTopics", "getRepoInfo",
-			"getPublicKey", "storeSecret",
-			"getRef", "getCommit", "createTree", "createCommit", "updateRef",
-			"k8s-sa", "k8s-role", "k8s-token"} {
-			Expect(calls[op]).NotTo(BeZero(), "operation %q was not called", op)
-		}
-		Expect(calls["k8s-rb"]).To(Equal(2))
-		Expect(calls["createBlob"]).NotTo(BeZero())
+			Expect(w.Code).To(Equal(http.StatusCreated), w.Body.String())
+			for _, op := range []string{"createRepo", "setTopics", "getRepoInfo",
+				"getPublicKey", "storeSecret",
+				"getRef", "getCommit", "createTree", "createCommit", "updateRef",
+				"k8s-sa", "k8s-role", "k8s-token"} {
+				Expect(calls[op]).NotTo(BeZero(), "operation %q was not called", op)
+			}
+			Expect(calls["k8s-rb"]).To(Equal(2))
+			Expect(calls["createBlob"]).NotTo(BeZero())
+		})
 	})
 
-	It("rejects requests without an X-GitHub-Token", func() {
+	It("rejects requests without an X-SCM-Token", func() {
 		h := &Handlers{}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		req.Header.Set("Authorization", "Bearer ocp-token")
@@ -130,7 +132,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	It("rejects requests without an Authorization header", func() {
 		h := &Handlers{}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-GitHub-Token", "pat")
+		req.Header.Set("X-SCM-Token", "pat")
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 
@@ -142,7 +144,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			h := &Handlers{}
 			body, _ := json.Marshal(req)
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(body))
-			r.Header.Set("X-GitHub-Token", "pat")
+			r.Header.Set("X-SCM-Token", "pat")
 			r.Header.Set("Authorization", "Bearer ocp-token")
 			w := httptest.NewRecorder()
 			h.HandleFuncCreate(w, r)
