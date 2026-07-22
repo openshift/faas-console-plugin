@@ -29,7 +29,6 @@ Optional: add screenshots or screen recordings for UI changes.
 ## Additional Info
 
 Optional: add context that helps the reviewer, for example:
-- New scripts, slash commands, or skills
 - Important setup changes
 - Complex feature explanations
 - Reasoning for high impact design decisions
