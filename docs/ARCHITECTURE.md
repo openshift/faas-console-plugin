@@ -77,3 +77,63 @@ Within a file, put the exported component at the top, then its hook below, then 
 - Error handling through ErrorProvider/addError pattern
 - Shared utilities in `common/utils/`, not hand-rolled per component
 - Services consumed through hooks, never imported directly
+
+---
+
+## Backend (Go)
+
+### Stack
+
+Go + `net/http` standard library. Key dependencies:
+
+| Dependency | Role |
+|---|---|
+| `k8s.io/client-go` | Kubernetes API client (SA, RBAC, TokenRequest, kubeconfig) |
+| `google/go-github/v72` | GitHub API client |
+| `knative.dev/func` | Function scaffold generation |
+| `onsi/ginkgo` + `onsi/gomega` | Test framework |
+
+### Packages
+
+| Package | Responsibility |
+|---|---|
+| `cluster` | Kubernetes operations: service account, RBAC provisioning, TokenRequest, kubeconfig generation |
+| `handler` | HTTP handlers: input validation, orchestration, error mapping |
+| `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
+| `scm/github` | go-github implementation of `scm.Client` |
+| `scaffold` | Function scaffold generation via knative/func and CI file generation |
+| `config` | Package-level wiring vars (`SCMRegistry`, constants) |
+
+### Dependency Rules
+
+- `handler` imports `cluster`, `scm`, `scaffold`, `config` — never the reverse
+- `cluster` has no knowledge of SCM or scaffold
+- `scm` has no knowledge of cluster or scaffold
+- `scaffold` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
+- `config` is imported by `handler` and `main` only — it is the wiring layer
+
+### Key Decisions
+
+**Cluster host resolution: explicit parameter via `--kube-host` flag**
+`cluster.New(host, token, caCert)` accepts the API server URL as an explicit parameter. Empty host triggers `rest.InClusterConfig()` (production pods). In dev, `init.sh` passes `--kube-host $KUBE_API_SERVER` to the backend binary; in tests, it is passed directly to `cluster.New`. Env var injection (`KUBERNETES_SERVICE_HOST`) was explicitly rejected as it abuses a Kubernetes-standardized variable and creates hidden ambient state.
+
+**External API URL resolved at Helm install time**
+The URL embedded in generated kubeconfigs (`externalAPIServerURL`) comes from the Infrastructure CR (`config.openshift.io/v1/Infrastructure/cluster`) via Helm `lookup` at install time, injected as `--external-api-server-url`. It is not fetched at runtime. This eliminates the need for a `ClusterRole` to query the Infrastructure CR from within the pod.
+
+**SCM is abstracted behind a registry**
+`scm.Registry` maps `scm.Platform` → `scm.ClientFactory`. The active registry lives at `config.SCMRegistry`, a package-level var that tests swap out via `withSCMMock`. Handlers never reference a concrete SCM client type. The platform is currently resolved statically (`scm.DefaultPlatform = GitHub`), but the registry is designed to support dynamic platform selection — the handler can later derive the platform from the request body or header without changes to the registry or client implementations.
+
+**Handler error mapping**
+`createFunction` wraps upstream failures explicitly:
+
+| Error | HTTP status |
+|---|---|
+| `scm.ErrUnauthorized` | 401 |
+| `scm.ErrRepoExists` | 409 |
+| `errUpstream` (cluster or SCM failure) | 502 |
+| validation failure | 400 |
+| internal error | 500 |
+
+
+**Handlers are stateless**
+`Handlers` holds only static config (`caPath`, `kubeHost`, `externalAPIServerURL`). Every request creates its own cluster client authenticated with the caller's OCP bearer token — there is no shared connection or session.
