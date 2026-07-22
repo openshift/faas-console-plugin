@@ -5,11 +5,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
+
+var validGitRef = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`)
 
 func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 	pat, ok := extractSCMToken(r)
@@ -29,6 +32,10 @@ func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 	ref := r.URL.Query().Get("ref")
 	if ref == "" {
 		ref = "HEAD"
+	}
+	if !validGitRef.MatchString(ref) {
+		writeError(w, http.StatusBadRequest, "invalid ref")
+		return
 	}
 
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)

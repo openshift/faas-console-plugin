@@ -90,6 +90,17 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 		})
 	})
 
+	It("rejects requests with an invalid ref parameter", func() {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/alice/my-func/files?ref=HEAD%3Fevil%3D1", nil)
+		req.Header.Set("X-SCM-Token", "test-pat")
+		req.SetPathValue("owner", "alice")
+		req.SetPathValue("name", "my-func")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleGetFiles(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+	})
+
 	It("returns 401 when the GitHub token is invalid", func() {
 		mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)

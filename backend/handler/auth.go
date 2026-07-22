@@ -9,7 +9,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-func (h *Handlers) HandleAuthLogin(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 	pat, ok := extractSCMToken(r)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")

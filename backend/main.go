@@ -42,7 +42,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/function/create", handleFuncCreate)
 	mux.Handle("GET /api/cluster/ca", &clusterCAHandler{CAPath: *caPath})
-	mux.HandleFunc("GET /api/v1/auth/user", h.HandleAuthLogin)
+	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
 	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
 	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
 	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)

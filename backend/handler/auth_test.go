@@ -22,7 +22,7 @@ var _ = Describe("GET /api/v1/auth/user", func() {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
 			req.Header.Set("X-SCM-Token", "valid-pat")
 			w := httptest.NewRecorder()
-			(&Handlers{}).HandleAuthLogin(w, req)
+			(&Handlers{}).HandleGetUser(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusOK))
 			var resp scm.User
@@ -42,7 +42,7 @@ var _ = Describe("GET /api/v1/auth/user", func() {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
 			req.Header.Set("X-SCM-Token", "bad-token")
 			w := httptest.NewRecorder()
-			(&Handlers{}).HandleAuthLogin(w, req)
+			(&Handlers{}).HandleGetUser(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusUnauthorized))
 		})
@@ -51,7 +51,7 @@ var _ = Describe("GET /api/v1/auth/user", func() {
 	It("rejects requests without an X-SCM-Token header", func() {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleAuthLogin(w, req)
+		(&Handlers{}).HandleGetUser(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
@@ -66,7 +66,7 @@ var _ = Describe("GET /api/v1/auth/user", func() {
 			req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/user", nil)
 			req.Header.Set("X-SCM-Token", "some-token")
 			w := httptest.NewRecorder()
-			(&Handlers{}).HandleAuthLogin(w, req)
+			(&Handlers{}).HandleGetUser(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusBadGateway))
 		})
