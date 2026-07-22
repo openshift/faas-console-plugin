@@ -55,10 +55,9 @@ test.describe('Delete function', () => {
     await test.step('verify function is removed from cluster', async () => {
       const headers = await k8sHeaders(page);
 
-      const ksvcRes = await page.request.get(
-        `${ksvcApiPath(NAMESPACE)}/${PRESEEDED_FUNC_NAME}`,
-        { headers },
-      );
+      const ksvcRes = await page.request.get(`${ksvcApiPath(NAMESPACE)}/${PRESEEDED_FUNC_NAME}`, {
+        headers,
+      });
       expect(ksvcRes.status()).toBe(404);
 
       const depRes = await page.request.get(
