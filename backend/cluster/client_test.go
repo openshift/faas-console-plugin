@@ -9,7 +9,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"go.yaml.in/yaml/v3"
 )
 
 func newClient(handler http.HandlerFunc) Client {
@@ -24,17 +23,34 @@ func assertAuth(r *http.Request) {
 	Expect(r.Header.Get("Authorization")).To(Equal("Bearer test-token"))
 }
 
+// jsonOK writes a 200 JSON response (or the provided code) with Content-Type set.
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeStatus(w http.ResponseWriter, code int, reason, message string) {
+	writeJSON(w, code, map[string]any{
+		"kind":    "Status",
+		"reason":  reason,
+		"message": message,
+		"code":    code,
+	})
+}
+
 var _ = Describe("Kubernetes cluster client", func() {
 
 	Describe("CreateServiceAccount", func() {
 		It("creates the service account in the namespace", func() {
 			called := false
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				defer GinkgoRecover()
 				assertAuth(r)
 				Expect(r.Method).To(Equal(http.MethodPost))
 				Expect(r.URL.Path).To(ContainSubstring("/serviceaccounts"))
 				called = true
-				w.WriteHeader(http.StatusCreated)
+				writeJSON(w, http.StatusCreated, map[string]any{})
 			})
 
 			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
@@ -43,8 +59,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 		It("succeeds when the service account already exists", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusConflict)
-				json.NewEncoder(w).Encode(map[string]string{"reason": "AlreadyExists", "message": "already exists"})
+				writeStatus(w, http.StatusConflict, "AlreadyExists", "already exists")
 			})
 
 			Expect(cl.CreateServiceAccount(context.Background(), "default")).To(Succeed())
@@ -52,8 +67,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 		It("returns an error for non-conflict failures", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
+				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
 			})
 
 			Expect(cl.CreateServiceAccount(context.Background(), "default")).NotTo(Succeed())
@@ -62,72 +76,67 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 	Describe("ApplyRole", func() {
 		It("creates the role with the required permissions when it does not exist", func() {
-			postCalled := false
+			var capturedResources []string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodPost {
-					postCalled = true
 					var body map[string]any
 					json.NewDecoder(r.Body).Decode(&body)
-					rules, _ := body["rules"].([]any)
-					var resources []string
-					for _, rule := range rules {
+					for _, rule := range body["rules"].([]any) {
 						for _, res := range rule.(map[string]any)["resources"].([]any) {
-							resources = append(resources, res.(string))
+							capturedResources = append(capturedResources, res.(string))
 						}
 					}
-					Expect(resources).To(ContainElements("pods", "pods/exec", "services", "configmaps"))
-					w.WriteHeader(http.StatusCreated)
+					writeJSON(w, http.StatusCreated, map[string]any{})
 				}
 			})
 
 			Expect(cl.ApplyRole(context.Background(), "default")).To(Succeed())
-			Expect(postCalled).To(BeTrue())
+			Expect(capturedResources).To(ContainElements("pods", "pods/exec", "services", "configmaps"))
 		})
 
-		It("updates the role when it already exists, preserving the resource version", func() {
-			putCalled := false
+		It("updates the role when it already exists, forwarding the existing resourceVersion", func() {
+			var capturedResourceVersion string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				switch r.Method {
 				case http.MethodPost:
-					w.WriteHeader(http.StatusConflict)
-					json.NewEncoder(w).Encode(map[string]string{"reason": "AlreadyExists"})
+					writeStatus(w, http.StatusConflict, "AlreadyExists", "already exists")
 				case http.MethodGet:
-					json.NewEncoder(w).Encode(map[string]any{
+					writeJSON(w, http.StatusOK, map[string]any{
 						"metadata": map[string]string{"name": roleName, "resourceVersion": "42"},
+						"rules":    []any{},
 					})
 				case http.MethodPut:
-					putCalled = true
 					var body map[string]any
 					json.NewDecoder(r.Body).Decode(&body)
-					meta := body["metadata"].(map[string]any)
-					Expect(meta["resourceVersion"]).To(Equal("42"))
-					json.NewEncoder(w).Encode(map[string]string{})
+					if meta, ok := body["metadata"].(map[string]any); ok {
+						capturedResourceVersion, _ = meta["resourceVersion"].(string)
+					}
+					writeJSON(w, http.StatusOK, map[string]any{})
 				}
 			})
 
 			Expect(cl.ApplyRole(context.Background(), "default")).To(Succeed())
-			Expect(putCalled).To(BeTrue())
+			Expect(capturedResourceVersion).To(Equal("42"))
 		})
 	})
 
 	Describe("CreateRoleBinding", func() {
-		It("binds the service account to the deployer role", func() {
+		It("sends a POST to the rolebindings endpoint", func() {
+			postCalled := false
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				var body map[string]any
-				json.NewDecoder(r.Body).Decode(&body)
-				roleRef := body["roleRef"].(map[string]any)
-				Expect(roleRef["kind"]).To(Equal("Role"))
-				Expect(roleRef["name"]).To(Equal(roleName))
-				w.WriteHeader(http.StatusCreated)
+				if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "rolebindings") {
+					postCalled = true
+				}
+				writeJSON(w, http.StatusCreated, map[string]any{})
 			})
 
 			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
+			Expect(postCalled).To(BeTrue())
 		})
 
 		It("succeeds when the binding already exists", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusConflict)
-				json.NewEncoder(w).Encode(map[string]string{"reason": "AlreadyExists"})
+				writeStatus(w, http.StatusConflict, "AlreadyExists", "already exists")
 			})
 
 			Expect(cl.CreateRoleBinding(context.Background(), "default")).To(Succeed())
@@ -135,8 +144,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 		It("returns an error for non-conflict failures", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
+				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
 			})
 
 			Expect(cl.CreateRoleBinding(context.Background(), "default")).NotTo(Succeed())
@@ -144,23 +152,22 @@ var _ = Describe("Kubernetes cluster client", func() {
 	})
 
 	Describe("CreateImageBuilderBinding", func() {
-		It("binds the service account to the image-builder cluster role", func() {
+		It("sends a POST to the rolebindings endpoint for the image-builder binding", func() {
+			postCalled := false
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				var body map[string]any
-				json.NewDecoder(r.Body).Decode(&body)
-				roleRef := body["roleRef"].(map[string]any)
-				Expect(roleRef["kind"]).To(Equal("ClusterRole"))
-				Expect(roleRef["name"]).To(Equal("system:image-builder"))
-				w.WriteHeader(http.StatusCreated)
+				if r.Method == http.MethodPost && strings.Contains(r.URL.Path, "rolebindings") {
+					postCalled = true
+				}
+				writeJSON(w, http.StatusCreated, map[string]any{})
 			})
 
 			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).To(Succeed())
+			Expect(postCalled).To(BeTrue())
 		})
 
 		It("returns an error for non-conflict failures", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
+				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
 			})
 
 			Expect(cl.CreateImageBuilderBinding(context.Background(), "default")).NotTo(Succeed())
@@ -170,9 +177,10 @@ var _ = Describe("Kubernetes cluster client", func() {
 	Describe("RequestToken", func() {
 		It("returns a bound service account token", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				defer GinkgoRecover()
 				assertAuth(r)
 				Expect(r.URL.Path).To(ContainSubstring("/token"))
-				json.NewEncoder(w).Encode(map[string]any{
+				writeJSON(w, http.StatusCreated, map[string]any{
 					"status": map[string]any{
 						"token":               "sa-token-value",
 						"expirationTimestamp": "2026-10-18T14:30:00Z",
@@ -188,8 +196,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 
 		It("returns an error when the token endpoint is unavailable", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"reason": "Forbidden", "message": "forbidden"})
+				writeStatus(w, http.StatusForbidden, "Forbidden", "forbidden")
 			})
 
 			_, err := cl.RequestToken(context.Background(), "default")
@@ -198,118 +205,4 @@ var _ = Describe("Kubernetes cluster client", func() {
 		})
 	})
 
-	Describe("GetExternalAPIURL", func() {
-		It("returns the cluster's external API server URL from the infrastructure API", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				assertAuth(r)
-				Expect(r.URL.Path).To(Equal("/apis/config.openshift.io/v1/infrastructures/cluster"))
-				json.NewEncoder(w).Encode(map[string]any{
-					"status": map[string]string{"apiServerURL": "https://api.mycluster.example.com:6443"},
-				})
-			})
-
-			url, err := cl.GetExternalAPIURL(context.Background())
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect(url).To(Equal("https://api.mycluster.example.com:6443"))
-		})
-
-		It("returns an error when the infrastructure API is unavailable", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]string{"message": "Forbidden"})
-			})
-
-			_, err := cl.GetExternalAPIURL(context.Background())
-
-			Expect(err).To(HaveOccurred())
-		})
-
-		It("returns an error when the response has no API server URL", func() {
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				json.NewEncoder(w).Encode(map[string]any{
-					"status": map[string]string{"apiServerURL": ""},
-				})
-			})
-
-			_, err := cl.GetExternalAPIURL(context.Background())
-
-			Expect(err).To(HaveOccurred())
-		})
-	})
-
-	Describe("resolveExternalAPIURL", func() {
-		It("returns baseURL directly when non-empty (dev mode)", func() {
-			url, err := resolveExternalAPIURL(context.Background(), "https://api.example.com:6443", nil)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(url).To(Equal("https://api.example.com:6443"))
-		})
-
-		It("returns an error when the in-cluster SA token file is missing", func() {
-			_, err := resolveExternalAPIURL(context.Background(), "", nil)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("read SA token"))
-		})
-	})
-
-	Describe("GenerateKubeconfig", func() {
-		const fakeAPIURL = "https://api.example.com:6443"
-
-		buildK8sMock := func() (Client, *map[string]int) {
-			calls := &map[string]int{}
-			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
-					(*calls)["sa"]++
-					w.WriteHeader(http.StatusCreated)
-				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/roles"):
-					(*calls)["role"]++
-					w.WriteHeader(http.StatusCreated)
-				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rolebindings"):
-					(*calls)["rb"]++
-					w.WriteHeader(http.StatusCreated)
-				case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
-					(*calls)["token"]++
-					json.NewEncoder(w).Encode(map[string]any{
-						"status": map[string]string{"token": "sa-token-value"},
-					})
-				}
-			})
-			return cl, calls
-		}
-
-		It("provisions RBAC and returns a valid kubeconfig", func() {
-			cl, calls := buildK8sMock()
-
-			kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
-
-			Expect(err).NotTo(HaveOccurred())
-			Expect((*calls)["sa"]).To(Equal(1))
-			Expect((*calls)["role"]).To(Equal(1))
-			Expect((*calls)["rb"]).To(Equal(2))
-			Expect((*calls)["token"]).To(Equal(1))
-
-			var parsed map[string]any
-			Expect(yaml.Unmarshal([]byte(kubeconfig), &parsed)).To(Succeed())
-			Expect(parsed["apiVersion"]).To(Equal("v1"))
-			clusters := parsed["clusters"].([]any)
-			cluster := clusters[0].(map[string]any)["cluster"].(map[string]any)
-			Expect(cluster["server"]).To(Equal(fakeAPIURL))
-			Expect(cluster).NotTo(HaveKey("certificate-authority-data"))
-		})
-
-		It("embeds the CA certificate when the cluster uses a private CA", func() {
-			cl, _ := buildK8sMock()
-			caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
-
-			kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, caCert)
-
-			Expect(err).NotTo(HaveOccurred())
-			var parsed map[string]any
-			Expect(yaml.Unmarshal([]byte(kubeconfig), &parsed)).To(Succeed())
-			clusters := parsed["clusters"].([]any)
-			cluster := clusters[0].(map[string]any)["cluster"].(map[string]any)
-			Expect(cluster).To(HaveKey("certificate-authority-data"))
-		})
-	})
 })

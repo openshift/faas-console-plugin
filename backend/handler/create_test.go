@@ -77,20 +77,29 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		DeferCleanup(ghMock.Close)
 
 		k8sMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
 			switch {
 			case r.URL.Path == "/apis/config.openshift.io/v1/infrastructures/cluster":
-				json.NewEncoder(w).Encode(map[string]any{"status": map[string]string{"apiServerURL": "https://api.test-cluster.example.com:6443"}})
+				json.NewEncoder(w).Encode(map[string]any{
+					"apiVersion": "config.openshift.io/v1",
+					"kind":       "Infrastructure",
+					"status":     map[string]string{"apiServerURL": "https://api.test-cluster.example.com:6443"},
+				})
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
 				inc("k8s-sa")
 				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/roles"):
 				inc("k8s-role")
 				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/rolebindings"):
 				inc("k8s-rb")
 				w.WriteHeader(http.StatusCreated)
+				json.NewEncoder(w).Encode(map[string]any{})
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
 				inc("k8s-token")
+				w.WriteHeader(http.StatusCreated)
 				json.NewEncoder(w).Encode(map[string]any{"status": map[string]string{"token": "sa-token"}})
 			default:
 				GinkgoWriter.Printf("unexpected K8s %s %s\n", r.Method, r.URL.Path)

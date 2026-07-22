@@ -1,15 +1,9 @@
 package cluster
 
 import (
-	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -18,6 +12,8 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 const (
@@ -25,8 +21,8 @@ const (
 	roleName = "func-scm-deployer"
 )
 
+
 type Client interface {
-	GetExternalAPIURL(ctx context.Context) (string, error)
 	CreateServiceAccount(ctx context.Context, namespace string) error
 	ApplyRole(ctx context.Context, namespace string) error
 	CreateRoleBinding(ctx context.Context, namespace string) error
@@ -49,128 +45,80 @@ func New(token, baseURL string, caCert []byte, tokenExpiry int64) (Client, error
 		baseURL = fmt.Sprintf("https://%s:%s", host, port)
 	}
 
-	transport := &http.Transport{}
+	cfg := &rest.Config{
+		Host:        baseURL,
+		BearerToken: token,
+		ContentConfig: rest.ContentConfig{
+			ContentType:        "application/json",
+			AcceptContentTypes: "application/json",
+		},
+	}
 	if len(caCert) > 0 {
-		pool := x509.NewCertPool()
-		if !pool.AppendCertsFromPEM(caCert) {
-			return nil, fmt.Errorf("failed to parse CA certificate")
-		}
-		transport.TLSClientConfig = &tls.Config{RootCAs: pool}
+		cfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
 	}
 
 	if tokenExpiry == 0 {
 		tokenExpiry = DefaultTokenExpiry
 	}
-	return &httpClient{
-		token:       token,
-		baseURL:     baseURL,
-		client:      &http.Client{Transport: transport, Timeout: 30 * time.Second},
-		tokenExpiry: tokenExpiry,
-	}, nil
+
+	httpClient, err := rest.HTTPClientFor(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create http client: %w", err)
+	}
+	httpClient.Timeout = 30 * time.Second
+
+	clientset, err := kubernetes.NewForConfigAndClient(cfg, httpClient)
+	if err != nil {
+		return nil, fmt.Errorf("create kubernetes client: %w", err)
+	}
+	return &k8sClient{clientset: clientset, tokenExpiry: tokenExpiry}, nil
 }
 
-type httpClient struct {
-	token       string
-	baseURL     string
-	client      *http.Client
+type k8sClient struct {
+	clientset   *kubernetes.Clientset
 	tokenExpiry int64
 }
 
-func (c *httpClient) do(ctx context.Context, method, path string, body, result any) error {
-	var bodyReader io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
-		}
-		bodyReader = bytes.NewReader(data)
+func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) error {
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: namespace},
 	}
-
-	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	_, err := c.clientset.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, metav1.CreateOptions{})
+	if k8serrors.IsAlreadyExists(err) {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var status metav1.Status
-		_ = json.NewDecoder(resp.Body).Decode(&status)
-		if status.Code == 0 {
-			status.Code = int32(resp.StatusCode)
-		}
-		return &k8serrors.StatusError{ErrStatus: status}
-	}
-
-	if result != nil && resp.StatusCode != http.StatusNoContent {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
+		return fmt.Errorf("create service account: %w", err)
 	}
 	return nil
 }
 
-func (c *httpClient) GetExternalAPIURL(ctx context.Context) (string, error) {
-	var result struct {
-		Status struct {
-			APIServerURL string `json:"apiServerURL"`
-		} `json:"status"`
-	}
-	if err := c.do(ctx, "GET", "/apis/config.openshift.io/v1/infrastructures/cluster", nil, &result); err != nil {
-		return "", fmt.Errorf("get infrastructure: %w", err)
-	}
-	if result.Status.APIServerURL == "" {
-		return "", fmt.Errorf("infrastructure API returned empty apiServerURL")
-	}
-	return result.Status.APIServerURL, nil
-}
-
-func (c *httpClient) CreateServiceAccount(ctx context.Context, namespace string) error {
-	body := &corev1.ServiceAccount{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
-		ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: namespace},
-	}
-	err := c.do(ctx, "POST", fmt.Sprintf("/api/v1/namespaces/%s/serviceaccounts", namespace), body, nil)
-	if k8serrors.IsAlreadyExists(err) {
-		return nil
-	}
-	return err
-}
-
-func (c *httpClient) ApplyRole(ctx context.Context, namespace string) error {
-	url := fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/roles", namespace)
+func (c *k8sClient) ApplyRole(ctx context.Context, namespace string) error {
 	body := roleBody(namespace)
-
-	err := c.do(ctx, "POST", url, body, nil)
+	_, err := c.clientset.RbacV1().Roles(namespace).Create(ctx, body, metav1.CreateOptions{})
 	if err == nil {
 		return nil
 	}
 	if !k8serrors.IsAlreadyExists(err) {
-		return err
+		return fmt.Errorf("create role: %w", err)
 	}
 
-	var existing rbacv1.Role
-	if err := c.do(ctx, "GET", url+"/"+roleName, nil, &existing); err != nil {
+	existing, err := c.clientset.RbacV1().Roles(namespace).Get(ctx, roleName, metav1.GetOptions{})
+	if err != nil {
 		return fmt.Errorf("get existing role: %w", err)
 	}
 	if existing.ResourceVersion == "" {
 		return fmt.Errorf("role metadata missing resourceVersion")
 	}
 	body.ResourceVersion = existing.ResourceVersion
-	return c.do(ctx, "PUT", url+"/"+roleName, body, nil)
+	if _, err = c.clientset.RbacV1().Roles(namespace).Update(ctx, body, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update role: %w", err)
+	}
+	return nil
 }
 
-func (c *httpClient) CreateRoleBinding(ctx context.Context, namespace string) error {
-	body := &rbacv1.RoleBinding{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding"},
+func (c *k8sClient) CreateRoleBinding(ctx context.Context, namespace string) error {
+	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: namespace},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: saName, Namespace: namespace}},
 		RoleRef: rbacv1.RoleRef{
@@ -179,17 +127,19 @@ func (c *httpClient) CreateRoleBinding(ctx context.Context, namespace string) er
 			Name:     roleName,
 		},
 	}
-	err := c.do(ctx, "POST", fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/rolebindings", namespace), body, nil)
+	_, err := c.clientset.RbacV1().RoleBindings(namespace).Create(ctx, rb, metav1.CreateOptions{})
 	if k8serrors.IsAlreadyExists(err) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("create role binding: %w", err)
+	}
+	return nil
 }
 
-func (c *httpClient) CreateImageBuilderBinding(ctx context.Context, namespace string) error {
+func (c *k8sClient) CreateImageBuilderBinding(ctx context.Context, namespace string) error {
 	name := saName + "-image-builder"
-	body := &rbacv1.RoleBinding{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "RoleBinding"},
+	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: saName, Namespace: namespace}},
 		RoleRef: rbacv1.RoleRef{
@@ -198,24 +148,25 @@ func (c *httpClient) CreateImageBuilderBinding(ctx context.Context, namespace st
 			Name:     "system:image-builder",
 		},
 	}
-	err := c.do(ctx, "POST", fmt.Sprintf("/apis/rbac.authorization.k8s.io/v1/namespaces/%s/rolebindings", namespace), body, nil)
+	_, err := c.clientset.RbacV1().RoleBindings(namespace).Create(ctx, rb, metav1.CreateOptions{})
 	if k8serrors.IsAlreadyExists(err) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("create image builder binding: %w", err)
+	}
+	return nil
 }
 
-func (c *httpClient) RequestToken(ctx context.Context, namespace string) (string, error) {
+func (c *k8sClient) RequestToken(ctx context.Context, namespace string) (string, error) {
 	expiry := c.tokenExpiry
-	body := &authenticationv1.TokenRequest{
+	result, err := c.clientset.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, saName, &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
 			ExpirationSeconds: &expiry,
 		},
-	}
-	var result authenticationv1.TokenRequest
-	path := fmt.Sprintf("/api/v1/namespaces/%s/serviceaccounts/%s/token", namespace, saName)
-	if err := c.do(ctx, "POST", path, body, &result); err != nil {
-		return "", err
+	}, metav1.CreateOptions{})
+	if err != nil {
+		return "", fmt.Errorf("request token: %w", err)
 	}
 	slog.Info("service account token issued", "namespace", namespace, "expires", result.Status.ExpirationTimestamp)
 	return result.Status.Token, nil
@@ -224,7 +175,6 @@ func (c *httpClient) RequestToken(ctx context.Context, namespace string) (string
 func roleBody(namespace string) *rbacv1.Role {
 	allVerbs := []string{"get", "list", "watch", "create", "update", "patch", "delete"}
 	return &rbacv1.Role{
-		TypeMeta:   metav1.TypeMeta{APIVersion: "rbac.authorization.k8s.io/v1", Kind: "Role"},
 		ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: namespace},
 		Rules: []rbacv1.PolicyRule{
 			{
