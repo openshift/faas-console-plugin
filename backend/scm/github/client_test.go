@@ -222,7 +222,12 @@ var _ = Describe("GitHub SCM client", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == http.MethodPost && r.URL.Path == "/user/repos" {
 					w.WriteHeader(http.StatusUnprocessableEntity)
-					json.NewEncoder(w).Encode(map[string]string{"message": "name already exists on this account"})
+					json.NewEncoder(w).Encode(map[string]any{
+						"message": "Repository creation failed.",
+						"errors": []map[string]string{
+							{"resource": "Repository", "code": "custom", "field": "name", "message": "name already exists on this account"},
+						},
+					})
 				}
 			})
 
