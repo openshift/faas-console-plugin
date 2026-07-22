@@ -55,7 +55,7 @@ Create a pull request using the project's PR template and conventions.
 
 6. **Draft the PR** -- analyze ALL commits and the full diff, then draft:
    - **Title:** `<JIRA-ID>: <Sentence>`. Include the Jira issue key from the branch name. Capitalize the first word. Do not end with a period. No type prefix (conventional commit types belong in commit messages, not PR titles). No em dashes.
-   - **Body:** Fill in the PR template. Replace the placeholder bullets with a concise summary of what changed and why. Do not add a separate Jira reference in the body since the Jira ID is already in the title. Remove HTML comments from the filled-in template.
+   - **Body:** Fill in the PR template. Replace the placeholder bullets with a concise summary of what changed and why. Remove HTML comments from the filled-in template. Include a Jira ticket reference at the bottom using GitHub-style linking: `Fixes [SRVOCF-XXX](https://redhat.atlassian.net/browse/SRVOCF-XXX)` (or `Closes` / `Relates to` as appropriate).
 
 7. **Show for approval** -- display the full draft (title + body) and ask the user to confirm or request changes. Do NOT create the PR until approved.
 

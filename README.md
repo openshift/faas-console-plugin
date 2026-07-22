@@ -30,6 +30,16 @@ Check out the **[Github page](https://github.com/openshift/faas-console-plugin)*
 | [Jira Epic](docs/templates/jira-epic-template.md) | Template for creating Jira epics |
 | [Jira Story](docs/templates/jira-story-template.md) | Template for creating Jira stories |
 
+### Slash Commands
+
+| Command | Description |
+|---------|-------------|
+| `/create-pr` | Run pre-checks, review, and create a PR |
+| `/e2e` | Scaffold and debug Playwright e2e tests |
+| `/init-session` | Run startup sequence and pick a Jira story |
+| `/scrutinise` | Critically review your own output |
+| `/session-commit` | Stage changes and commit |
+
 ## Deployment on cluster
 
 ### Prerequisites
@@ -74,6 +84,7 @@ Available image tags are listed in the [container registry](https://github.com/f
 - [Docker](https://www.docker.com) or [podman 3.2.0+](https://podman.io)
 - An [OpenShift cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
+- [gh](https://cli.github.com/) CLI
 - [inotify-tools](https://github.com/inotify-tools/inotify-tools) (optional, enables Go backend auto-recompile on file changes)
 - [Superpowers](https://github.com/obra/superpowers) (optional, enables your coding agents to brainstorm, write plans, use tdd, etc.)
 - [Jira CLI](https://github.com/ankitpokhrel/jira-cli/wiki/Installation) (optional, enables your coding agent to read Jira tickets)

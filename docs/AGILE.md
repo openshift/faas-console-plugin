@@ -69,7 +69,7 @@ The rest of the team reviews refined stories in Jira and leaves comments.
 **Optional Refinement Slot** (weekly, 45 min)
 
 - Intended for open questions from async refinement requiring face-to-face discussion.
-- The meeting itself is optional, but attendance is not. If it happens, everyone joins.
+- The meeting itself is optional. When there is nothing to discuss the team is not expected to attend.
 - The PM is invited when their input is needed.
 - The facilitator cancels it if there is nothing to discuss.
 
@@ -90,6 +90,7 @@ The facilitator checks the following for each engineer during the weekly sync:
 - Status of stories in refinement up to date?
 - Questions/comments on stories in refinement answered?
 - Does the story have the correct parent epic?
+- Is iteration number added to story? (e.g. PIXAA Sprint 291.)
 
 ## Facilitator Duties
 
@@ -104,4 +105,3 @@ During rotation:
 
 - Open a draft PR early to reserve the PR number and signal work in progress
 - Follow the PR template at `.github/pull_request_template.md`
-- See [WORKFLOW.md](WORKFLOW.md) for PR title format and branching conventions

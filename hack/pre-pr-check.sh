@@ -36,7 +36,7 @@ printf 'branch: %s\n' "$BRANCH"
 header "Working tree"
 if [[ -n $(git status --porcelain) ]]; then
   git status --short
-  fail "Uncommitted changes. Run /session-commit first."
+  fail "Uncommitted changes. Run '/commit <JIRA-TICKET>' first."
 else
   printf 'clean\n'
 fi
@@ -57,18 +57,13 @@ git fetch "$REMOTE" master --quiet
 if ! git merge-base --is-ancestor "$REMOTE/master" HEAD 2>/dev/null; then
   fail "Branch is behind $REMOTE/master. Rebase first."
 fi
-MARKER='<<<<<<<'
-CONFLICTS=$(git merge-tree "$(git merge-base "$REMOTE/master" HEAD)" "$REMOTE/master" HEAD 2>/dev/null | grep -c "^${MARKER}" || true)
-if [[ "$CONFLICTS" -gt 0 ]]; then
-  fail "Merge conflicts with $REMOTE/master. Resolve first."
-fi
-printf 'up to date, no conflicts\n'
+printf 'up to date\n'
 
 # --- Jira issue ---
 header "Jira issue"
-ISSUE_KEY="${BRANCH%%--*}"
-if [[ "$ISSUE_KEY" == "$BRANCH" || -z "$ISSUE_KEY" ]]; then
-  fail "No Jira issue key found in branch name. Branch must start with <ISSUE-KEY>--"
+ISSUE_KEY=$(printf '%s' "$BRANCH" | grep -oE '^[A-Z]+-[0-9]+' || true)
+if [[ -z "$ISSUE_KEY" ]]; then
+  fail "No Jira issue key found in branch name. Branch must start with <ISSUE-KEY>-"
 fi
 printf 'key: %s\n' "$ISSUE_KEY"
 
