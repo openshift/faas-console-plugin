@@ -93,7 +93,7 @@ Here is a good example from a [commit to the Bitcoin core](https://github.com/bi
 2. New added features and fixes are more important than other types like refactoring, etc.
 3. Draft a commit message following all seven rules
 4. Use conventional commits spec
-5. MODE and TICKET are: !`./hack/parse-commit-args.sh $@`
+5. MODE and TICKET are: !`./hack/parse-commit-args.sh $ARGUMENTS`
    - If TICKET is NOT `none`, add "Issue <ticket>" at the bottom of the message
    - If MODE is `dry-run`, show the final message and ask for confirmation before committing
    - If MODE is `commit`, commit and show `git log --oneline -1` to confirm
