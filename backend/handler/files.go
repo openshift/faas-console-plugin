@@ -12,7 +12,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var validGitRef = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`)
+var validGitRef = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
 
 func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 	pat, ok := extractSCMToken(r)

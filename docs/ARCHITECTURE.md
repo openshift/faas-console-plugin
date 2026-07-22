@@ -136,4 +136,4 @@ The URL embedded in generated kubeconfigs (`externalAPIServerURL`) comes from th
 
 
 **Handlers are stateless**
-`Handlers` holds only static config (`caPath`, `kubeHost`, `externalAPIServerURL`). Every request creates its own cluster client authenticated with the caller's OCP bearer token — there is no shared connection or session.
+`Handlers` holds only static config. Every request creates its own cluster client authenticated with the caller's OCP bearer token — there is no shared connection or session.

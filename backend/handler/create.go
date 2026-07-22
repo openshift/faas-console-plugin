@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 
@@ -94,22 +93,14 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		return fmt.Errorf("generate scaffold: %w", err)
 	}
 
-	var caCert []byte
-	if h.caPath != "" {
-		caCert, err = os.ReadFile(h.caPath)
-		if err != nil {
-			return fmt.Errorf("read CA certificate %q: %w", h.caPath, err)
-		}
+	cl, err := cluster.New(h.kubeHost, ocpToken, h.caCert)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("connect to cluster: %w", err))
 	}
 
-	cl, err := cluster.New(h.kubeHost, ocpToken, caCert)
+	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.externalAPIServerURL, h.caCert)
 	if err != nil {
-		return fmt.Errorf("%w: connect to cluster: %w", errUpstream, err)
-	}
-
-	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.externalAPIServerURL, caCert)
-	if err != nil {
-		return fmt.Errorf("%w: provision cluster resources: %w", errUpstream, err)
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("provision cluster resources: %w", err))
 	}
 
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
@@ -118,21 +109,21 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 			return err
 		}
 		slog.Error("failed to init repo", "owner", req.Owner, "repo", req.Repo, "err", err)
-		return fmt.Errorf("%w: init repo: %w", errUpstream, err)
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("init repo: %w", err))
 	}
 	if err := client.StoreSecret(ctx, req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
 		}
 		slog.Error("failed to store CI secret", "owner", req.Owner, "repo", req.Repo, "err", err)
-		return fmt.Errorf("%w: store secret: %w", errUpstream, err)
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store secret: %w", err))
 	}
 	if err := client.PushFiles(ctx, req.Owner, req.Repo, req.Branch, "Initialize Knative function project", files); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
 		}
 		slog.Error("failed to push files", "owner", req.Owner, "repo", req.Repo, "err", err)
-		return fmt.Errorf("%w: push files: %w", errUpstream, err)
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("push files: %w", err))
 	}
 	return nil
 }

@@ -37,7 +37,10 @@ func main() {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
 	}
 
-	h := handler.New(*caPath, *kubeHost, *kubeAPIServer)
+	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/function/create", handleFuncCreate)
@@ -88,6 +91,12 @@ func main() {
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("panic: %v", rec)
+				jsonError(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
 		next.ServeHTTP(w, r)
 	})
 }

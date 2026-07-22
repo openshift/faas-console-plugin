@@ -2,19 +2,29 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 )
 
 type Handlers struct {
-	caPath               string
+	caCert               []byte // cluster CA certificate, read once at startup
 	kubeHost             string // API server URL for dev/test; empty uses in-cluster config
 	externalAPIServerURL string // external URL embedded in generated kubeconfigs
 }
 
-func New(caPath, kubeHost, externalAPIServerURL string) *Handlers {
-	return &Handlers{caPath: caPath, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL}
+func New(caPath, kubeHost, externalAPIServerURL string) (*Handlers, error) {
+	var caCert []byte
+	if caPath != "" {
+		var err error
+		caCert, err = os.ReadFile(caPath)
+		if err != nil {
+			return nil, fmt.Errorf("read CA certificate %q: %w", caPath, err)
+		}
+	}
+	return &Handlers{caCert: caCert, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL}, nil
 }
 
 func extractSCMToken(r *http.Request) (string, bool) {

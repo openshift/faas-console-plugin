@@ -79,12 +79,6 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		k8sMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			switch {
-			case r.URL.Path == "/apis/config.openshift.io/v1/infrastructures/cluster":
-				json.NewEncoder(w).Encode(map[string]any{
-					"apiVersion": "config.openshift.io/v1",
-					"kind":       "Infrastructure",
-					"status":     map[string]string{"apiServerURL": "https://api.test-cluster.example.com:6443"},
-				})
 			case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/serviceaccounts"):
 				inc("k8s-sa")
 				w.WriteHeader(http.StatusCreated)

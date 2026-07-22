@@ -3,8 +3,8 @@
 {{- if and $infra $infra.status }}
   {{- $apiServerURL = (index $infra.status "apiServerURL" | default $apiServerURL) }}
 {{- end }}
-{{- if not $apiServerURL }}
-  {{- fail "Could not resolve cluster API server URL: set plugin.apiServerURL or ensure the Infrastructure CR exists" }}
+{{- if and $infra (not $apiServerURL) }}
+  {{- fail "Infrastructure CR exists but apiServerURL is empty; set plugin.apiServerURL to override" }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment
@@ -28,7 +28,6 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ template "openshift-console-plugin.name" . }}
       containers:
         - name: {{ template "openshift-console-plugin.name" . }}
           image: {{ required "Plugin image must be specified!" .Values.plugin.image }}
