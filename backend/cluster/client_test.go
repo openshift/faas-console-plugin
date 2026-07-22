@@ -14,7 +14,7 @@ import (
 func newClient(handler http.HandlerFunc) Client {
 	srv := httptest.NewServer(handler)
 	DeferCleanup(srv.Close)
-	cl, err := New("test-token", srv.URL, nil, 0)
+	cl, err := New(srv.URL, "test-token", nil)
 	Expect(err).NotTo(HaveOccurred())
 	return cl
 }

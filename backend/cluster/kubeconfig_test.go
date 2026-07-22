@@ -35,7 +35,7 @@ var _ = Describe("GenerateKubeconfig", func() {
 			}
 		}))
 		DeferCleanup(srv.Close)
-		cl, err := New("test-token", srv.URL, nil, 0)
+		cl, err := New(srv.URL, "test-token", nil)
 		Expect(err).NotTo(HaveOccurred())
 		return cl, calls
 	}

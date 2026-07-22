@@ -8,13 +8,13 @@ import (
 )
 
 type Handlers struct {
-	caPath        string
-	k8sBaseURL    string
-	saTokenExpiry int64
+	caPath               string
+	kubeHost             string // API server URL for dev/test; empty uses in-cluster config
+	externalAPIServerURL string // external URL embedded in generated kubeconfigs
 }
 
-func New(caPath, k8sBaseURL string, saTokenExpiry int64) *Handlers {
-	return &Handlers{caPath: caPath, k8sBaseURL: k8sBaseURL, saTokenExpiry: saTokenExpiry}
+func New(caPath, kubeHost, externalAPIServerURL string) *Handlers {
+	return &Handlers{caPath: caPath, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL}
 }
 
 func extractSCMToken(r *http.Request) (string, bool) {

@@ -109,7 +109,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		DeferCleanup(k8sMock.Close)
 
 		withSCMMock(ghMock.URL, func() {
-			h := &Handlers{k8sBaseURL: k8sMock.URL}
+			h := &Handlers{kubeHost: k8sMock.URL, externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
 			req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 			req.Header.Set("X-SCM-Token", "test-pat")
 			req.Header.Set("Authorization", "Bearer ocp-token")

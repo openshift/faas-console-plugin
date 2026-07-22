@@ -8,10 +8,9 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
-func GenerateKubeconfig(ctx context.Context, client Client, namespace, baseURL string, caCert []byte) (string, error) {
-	apiServerURL, err := resolveExternalAPIURL(ctx, baseURL, caCert)
-	if err != nil {
-		return "", fmt.Errorf("resolve external API URL: %w", err)
+func GenerateKubeconfig(ctx context.Context, client Client, namespace, externalAPIServerURL string, caCert []byte) (string, error) {
+	if externalAPIServerURL == "" {
+		return "", fmt.Errorf("API server URL is required")
 	}
 
 	if err := client.CreateServiceAccount(ctx, namespace); err != nil {
@@ -32,7 +31,7 @@ func GenerateKubeconfig(ctx context.Context, client Client, namespace, baseURL s
 		return "", fmt.Errorf("request token: %w", err)
 	}
 
-	return buildKubeconfig(apiServerURL, token, namespace, caCert)
+	return buildKubeconfig(externalAPIServerURL, token, namespace, caCert)
 }
 
 func buildKubeconfig(server, token, namespace string, caCert []byte) (string, error) {

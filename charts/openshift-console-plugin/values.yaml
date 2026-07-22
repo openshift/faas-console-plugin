@@ -3,6 +3,7 @@ plugin:
   name: ""
   description: ""
   image: ""
+  apiServerURL: ""
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   replicas: 2

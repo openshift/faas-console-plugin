@@ -102,12 +102,12 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		}
 	}
 
-	cl, err := cluster.New(ocpToken, h.k8sBaseURL, caCert, h.saTokenExpiry)
+	cl, err := cluster.New(h.kubeHost, ocpToken, caCert)
 	if err != nil {
 		return fmt.Errorf("%w: connect to cluster: %w", errUpstream, err)
 	}
 
-	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.k8sBaseURL, caCert)
+	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.externalAPIServerURL, caCert)
 	if err != nil {
 		return fmt.Errorf("%w: provision cluster resources: %w", errUpstream, err)
 	}

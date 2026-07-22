@@ -1,3 +1,11 @@
+{{- $apiServerURL := .Values.plugin.apiServerURL | default "" }}
+{{- $infra := lookup "config.openshift.io/v1" "Infrastructure" "" "cluster" }}
+{{- if and $infra $infra.status }}
+  {{- $apiServerURL = (index $infra.status "apiServerURL" | default $apiServerURL) }}
+{{- end }}
+{{- if not $apiServerURL }}
+  {{- fail "Could not resolve cluster API server URL: set plugin.apiServerURL or ensure the Infrastructure CR exists" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +37,7 @@ spec:
               protocol: TCP
           args:
             - "--https-port={{ .Values.plugin.port }}"
+            - "--external-api-server-url={{ $apiServerURL }}"
           imagePullPolicy: {{ .Values.plugin.imagePullPolicy }}
           {{- if and (.Values.plugin.securityContext.enabled) (.Values.plugin.containerSecurityContext) }}
           securityContext: {{ tpl (toYaml (omit .Values.plugin.containerSecurityContext "enabled")) $ | nindent 12 }}

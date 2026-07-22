@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -21,7 +20,6 @@ const (
 	roleName = "func-scm-deployer"
 )
 
-
 type Client interface {
 	CreateServiceAccount(ctx context.Context, namespace string) error
 	ApplyRole(ctx context.Context, namespace string) error
@@ -35,30 +33,29 @@ type Client interface {
 // Actions secret increases exposure if leaked; shorter expiry is a follow-up.
 const DefaultTokenExpiry int64 = 365 * 24 * 60 * 60 // 1 year
 
-func New(token, baseURL string, caCert []byte, tokenExpiry int64) (Client, error) {
-	if baseURL == "" {
-		host := os.Getenv("KUBERNETES_SERVICE_HOST")
-		port := os.Getenv("KUBERNETES_SERVICE_PORT")
-		if host == "" || port == "" {
-			return nil, fmt.Errorf("KUBERNETES_SERVICE_HOST or KUBERNETES_SERVICE_PORT not set")
+// New creates a cluster client authenticated with token.
+// When host is non-empty (dev/test) it is used as the API server URL directly.
+// When host is empty the standard in-cluster config is used (pod env vars + SA files).
+func New(host, token string, caCert []byte) (Client, error) {
+	var cfg *rest.Config
+	var err error
+
+	if host != "" {
+		cfg = &rest.Config{Host: host, BearerToken: token}
+		if len(caCert) > 0 {
+			cfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
 		}
-		baseURL = fmt.Sprintf("https://%s:%s", host, port)
+	} else {
+		cfg, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("in-cluster config: %w", err)
+		}
+		cfg.BearerToken = token
+		cfg.BearerTokenFile = ""
 	}
-
-	cfg := &rest.Config{
-		Host:        baseURL,
-		BearerToken: token,
-		ContentConfig: rest.ContentConfig{
-			ContentType:        "application/json",
-			AcceptContentTypes: "application/json",
-		},
-	}
-	if len(caCert) > 0 {
-		cfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
-	}
-
-	if tokenExpiry == 0 {
-		tokenExpiry = DefaultTokenExpiry
+	cfg.ContentConfig = rest.ContentConfig{
+		ContentType:        "application/json",
+		AcceptContentTypes: "application/json",
 	}
 
 	httpClient, err := rest.HTTPClientFor(cfg)
@@ -71,12 +68,11 @@ func New(token, baseURL string, caCert []byte, tokenExpiry int64) (Client, error
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
-	return &k8sClient{clientset: clientset, tokenExpiry: tokenExpiry}, nil
+	return &k8sClient{clientset: clientset}, nil
 }
 
 type k8sClient struct {
-	clientset   *kubernetes.Clientset
-	tokenExpiry int64
+	clientset *kubernetes.Clientset
 }
 
 func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) error {
@@ -159,7 +155,7 @@ func (c *k8sClient) CreateImageBuilderBinding(ctx context.Context, namespace str
 }
 
 func (c *k8sClient) RequestToken(ctx context.Context, namespace string) (string, error) {
-	expiry := c.tokenExpiry
+	expiry := DefaultTokenExpiry
 	result, err := c.clientset.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, saName, &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
 			ExpirationSeconds: &expiry,
