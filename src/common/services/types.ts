@@ -50,7 +50,7 @@ export type FunctionStatus =
 export interface ClusterFunction {
   readonly name: string;
   readonly status: FunctionStatus;
-  readonly url: string | undefined;
+  readonly url: string;
   readonly replicas: number;
   readonly mainResource: K8sResourceCommon;
 }

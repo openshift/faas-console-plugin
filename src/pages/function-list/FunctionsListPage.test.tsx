@@ -36,7 +36,7 @@ vi.mock('./components/FunctionTable', () => ({
         <span data-testid="fn-name">{f.name}</span>
         <span data-testid="fn-status">{f.status}</span>
         <span data-testid="fn-replicas">{f.replicas}</span>
-        <span data-testid="fn-url">{f.url ?? ''}</span>
+        <span data-testid="fn-url">{f.url}</span>
       </div>
     )),
 }));

@@ -235,6 +235,7 @@ function newItem(
     namespace,
     runtime,
     status: 'NotDeployed' as const,
+    url: '',
     replicas: 0,
   };
 }

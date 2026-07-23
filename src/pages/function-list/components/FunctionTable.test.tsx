@@ -50,6 +50,7 @@ const mockFunctions: FunctionTableItem[] = [
     repoName: 'idle-func',
     runtime: 'node',
     status: 'NotDeployed',
+    url: '',
     replicas: 0,
     namespace: '',
   },
@@ -137,6 +138,7 @@ describe('FunctionTable', () => {
       repoName: 'my-repo',
       runtime: 'node',
       status: 'Running',
+      url: '',
       replicas: 1,
       namespace: 'demo',
     };

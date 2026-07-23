@@ -18,7 +18,7 @@ export interface FunctionTableItem {
   repoName: string;
   runtime: string;
   status: FunctionStatus;
-  url?: string;
+  url: string;
   replicas: number;
   namespace: string;
   mainResource?: K8sResourceCommon;

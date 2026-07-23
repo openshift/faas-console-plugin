@@ -70,7 +70,7 @@ function TestConsumer({ functionNames = [] }: { functionNames?: string[] }) {
         <div key={fn.name} data-testid={fn.name}>
           <span data-testid="name">{fn.name}</span>
           <span data-testid="status">{fn.status}</span>
-          <span data-testid="url">{fn.url ?? ''}</span>
+          <span data-testid="url">{fn.url}</span>
           <span data-testid="replicas">{fn.replicas}</span>
           <span data-testid="has-resource">{String(!!fn.mainResource)}</span>
         </div>

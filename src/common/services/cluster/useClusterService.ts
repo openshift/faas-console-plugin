@@ -82,7 +82,7 @@ function listKnativeClusterFunctions(
       {
         name,
         status: deriveKnativeStatus(ksvc, deployment),
-        url: ksvc.status?.url,
+        url: ksvc.status?.url ?? '',
         replicas: deployment?.status?.readyReplicas ?? 0,
         mainResource: ksvc,
       },
