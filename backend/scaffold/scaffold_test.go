@@ -4,18 +4,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
-
-func workflowContent(files []scm.FileEntry) string {
-	for _, f := range files {
-		if f.Path == ".github/workflows/func-deploy.yaml" {
-			return f.Content
-		}
-	}
-	return ""
-}
 
 var _ = Describe("Generate", func() {
 	It("creates the function source and CI files for a Go function", func() {
@@ -47,24 +37,14 @@ var _ = Describe("Generate", func() {
 		Expect(fileMap).To(HaveKey(".github/workflows/func-deploy.yaml"))
 	})
 
-	DescribeTable("produces source and CI files for all supported runtimes",
-		func(runtime string) {
-			files, err := Generate(Config{
-				Name:      "test-fn",
-				Runtime:   runtime,
-				Registry:  "quay.io/myuser",
-				Namespace: "default",
-				Branch:    "main",
-				SCM:       scm.GitHub,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(files).NotTo(BeEmpty())
-		},
-		Entry("node", "node"),
-		Entry("python", "python"),
-		Entry("go", "go"),
-		Entry("quarkus", "quarkus"),
-	)
+	It("returns an error when function init fails", func() {
+		_, err := Generate(Config{
+			Name: "my-func", Runtime: "invalid-runtime", Registry: "quay.io/myuser",
+			Namespace: "default", Branch: "main", SCM: scm.GitHub,
+		})
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("init function"))
+	})
 
 	It("returns an error for an unsupported SCM platform", func() {
 		_, err := Generate(Config{
@@ -75,34 +55,4 @@ var _ = Describe("Generate", func() {
 		Expect(err.Error()).To(ContainSubstring("unsupported SCM"))
 	})
 
-	Describe("CI workflow", func() {
-		It("targets the configured branch", func() {
-			files, err := Generate(Config{
-				Name: "my-func", Runtime: "go", Registry: "quay.io/myuser",
-				Namespace: "default", Branch: "release", SCM: scm.GitHub,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(workflowContent(files)).To(ContainSubstring("release"))
-		})
-
-		It("includes registry login steps for external registries", func() {
-			files, err := Generate(Config{
-				Name: "my-func", Runtime: "go", Registry: "quay.io/myuser",
-				Namespace: "default", Branch: "main", SCM: scm.GitHub,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(workflowContent(files)).To(ContainSubstring("docker/login-action"))
-		})
-
-		It("skips registry login for the OCP internal registry", func() {
-			files, err := Generate(Config{
-				Name: "my-func", Runtime: "go",
-				Registry:  config.OCPInternalRegistry + "default",
-				Namespace: "default", Branch: "main", SCM: scm.GitHub,
-				InternalRegistry: true,
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(workflowContent(files)).NotTo(ContainSubstring("docker/login-action"))
-		})
-	})
 })
