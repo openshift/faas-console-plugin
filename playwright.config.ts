@@ -8,6 +8,7 @@ if (existsSync('.env')) {
 const baseURL = process.env.BRIDGE_BASE_ADDRESS || 'http://localhost:9000';
 
 export default defineConfig({
+  globalSetup: './e2e/global-setup.ts',
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -26,6 +27,7 @@ export default defineConfig({
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
     actionTimeout: 15_000,
+    ignoreHTTPSErrors: true,
   },
   timeout: 60_000,
   projects: [
