@@ -45,6 +45,11 @@ for i in $(seq 1 60); do
     echo "ConsolePlugin CR found."
     break
   fi
+  if [ "$i" -eq 60 ]; then
+    echo "Error: ConsolePlugin CR did not appear within 120s."
+    oc get all -n "${PLUGIN_NAMESPACE}"
+    exit 1
+  fi
   sleep 2
 done
 
