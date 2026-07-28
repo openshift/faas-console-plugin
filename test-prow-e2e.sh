@@ -28,6 +28,11 @@ export BRIDGE_BASE_ADDRESS
 
 echo "Console URL: ${BRIDGE_BASE_ADDRESS}"
 
+if [[ -z "${PLUGIN_PULL_SPEC:-}" ]]; then
+  echo "Error: PLUGIN_PULL_SPEC is not set. It should be injected by ci-operator as a dependency."
+  exit 1
+fi
+
 # --- Deploy plugin ---
 oc new-project "${PLUGIN_NAMESPACE}" || oc project "${PLUGIN_NAMESPACE}"
 

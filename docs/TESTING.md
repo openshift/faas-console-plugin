@@ -252,7 +252,7 @@ Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwrigh
 
 ## CI E2e (Prow)
 
-E2e tests also run in CI via Prow/ci-operator against an ephemeral OCP cluster on AWS. This is separate from the GitHub Actions pipeline (which handles lint, unit tests, and image build).
+E2e tests also run in CI via Prow/ci-operator against an ephemeral OCP cluster on AWS.
 
 ### How it works
 

@@ -5,10 +5,10 @@
 #
 # Prerequisites:
 #   - oc login to a cluster with Serverless operator installed
-#   - Plugin image built and accessible (or provide PLUGIN_PULL_SPEC)
+#   - podman or docker (to build the plugin image, unless PLUGIN_PULL_SPEC is set)
 #
 # Usage:
-#   ./hack/test-e2e-local.sh                          # uses latest ghcr image
+#   ./hack/test-e2e-local.sh                          # builds image from local source
 #   PLUGIN_PULL_SPEC=my-image:tag ./hack/test-e2e-local.sh  # custom image
 #
 
@@ -27,7 +27,17 @@ if ! command -v helm &>/dev/null; then
   exit 1
 fi
 
-PLUGIN_PULL_SPEC="${PLUGIN_PULL_SPEC:-ghcr.io/openshift/faas-console-plugin:latest}"
+if [[ -z "${PLUGIN_PULL_SPEC:-}" ]]; then
+  CONTAINER_ENGINE="${CONTAINER_ENGINE:-$(command -v podman || command -v docker)}"
+  if [[ -z "${CONTAINER_ENGINE}" ]]; then
+    echo "Error: no container engine found. Install podman or docker, or set PLUGIN_PULL_SPEC."
+    exit 1
+  fi
+  PLUGIN_PULL_SPEC="localhost/faas-console-plugin:latest"
+  echo "Building plugin image with ${CONTAINER_ENGINE}..."
+  "${CONTAINER_ENGINE}" build -t "${PLUGIN_PULL_SPEC}" .
+fi
+
 BRIDGE_BASE_ADDRESS="$(oc get consoles.config.openshift.io cluster -o jsonpath='{.status.consoleURL}')"
 
 echo "Cluster API:    $(oc whoami --show-server)"
