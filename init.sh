@@ -95,6 +95,7 @@ build_pages() {
   helm template "$plugin_name" charts/openshift-console-plugin \
     -n "$plugin_name" \
     --set "plugin.image=ghcr.io/functions-dev/${plugin_name}:latest" \
+    --set "plugin.apiServerURL=$KUBE_API_SERVER" \
     > backend/static/plugin.yaml
   cp pages/index.html backend/static/index.html
 }
@@ -105,13 +106,18 @@ extract_cluster_ca() {
   oc get cm kube-root-ca.crt -n default -o jsonpath='{.data.ca\.crt}' > "$CA_FILE"
 }
 
+resolve_kube_api_server() {
+  echo "Resolving cluster API server URL..."
+  KUBE_API_SERVER=$(oc whoami --show-server)
+}
+
 start_backend() {
   build_pages
   echo "Building Go backend..."
   (cd backend && go build -buildvcs=false -o ../bin/backend .)
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
   echo "Starting Go backend..."
-  ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" >>"$LOG_DIR/backend.log" 2>&1 &
+  ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
@@ -142,7 +148,7 @@ start_backend_watcher() {
 
       if $build_ok; then
         mv bin/backend-tmp bin/backend
-        ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" >>"$LOG_DIR/backend.log" 2>&1 &
+        ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
       else
@@ -251,6 +257,7 @@ main() {
   stop_dev
   write_dev_env
   extract_cluster_ca
+  resolve_kube_api_server
   trap 'stop_dev' EXIT
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"

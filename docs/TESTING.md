@@ -4,6 +4,8 @@
 
 Red/green/refactor TDD — **one test at a time**:
 
+> This applies to both frontend and backend. The tools differ; the discipline does not.
+
 1. Write one test case (red)
 2. Write the minimum implementation to make it pass (green)
 3. Refactor if needed
@@ -269,4 +271,69 @@ test.describe('My feature', () => {
     });
   });
 });
+```
+
+
+---
+
+## Backend (Go)
+
+Ginkgo v2 + Gomega for specs. No other third-party test libraries.
+
+### Test Double Terminology
+
+Not every test double is a mock. Use the correct term for what the double does:
+
+| Term | Purpose | Naming convention | Example |
+|------|---------|-------------------|---------|
+| **Stub** | Returns canned responses, no behaviour verification | `scmStub`, `clusterStub` | `&scmStub{getUser: func(...) { return &scm.User{...}, nil }}` |
+| **Mock** | Asserts expectations inside the handler | `mock` | Test double with inline `Expect(...)` |
+| **Spy** | Records calls for later assertion | `callsSpy` | `map[string]int{}` tracking which operations ran |
+| **Helper** | Records a call into a spy | `recordCall` | `func(key string) { callsSpy[key]++ }` |
+
+### Test Double Strategy
+
+Two strategies depending on the package under test:
+
+**Interface-level stubs** (handler tests) - `scmStub` and `clusterStub` implement `scm.Client` and `cluster.Client` with function fields. Each test sets only the fields it exercises; unset fields return happy-path defaults. `withSCMStub` swaps `config.SCMRegistry` and `withClusterStub` swaps `newClusterClient` for the duration of the test. No `httptest.NewServer`, no real HTTP client stack - handler tests verify request parsing, error mapping, and response codes only.
+
+**`fake.NewSimpleClientset`** (cluster package tests) - `k8s.io/client-go/kubernetes/fake` implements `kubernetes.Interface` without any HTTP. Use reactors to simulate errors and pre-populate objects to simulate existing state. This is the client-go idiomatic approach.
+
+Tests live in the same package as the code (`package handler`, `package cluster`) for white-box access. Each package has a `suite_test.go` that registers the Ginkgo runner.
+
+### Spec pattern
+
+Handler tests call `withSCMStub(&scmStub{...})` and `withClusterStub(&clusterStub{...})` to inject interface-level stubs. Cluster tests inject `fake.NewSimpleClientset()` directly. Each test owns its own setup - no shared state.
+
+Use `DeferCleanup` for teardown, not `defer`.
+
+
+### Tests are use cases
+
+Each `It(...)` describes a behaviour from the caller's perspective. The description says **what the system does**, not which function was called.
+
+```
+// Bad — method-focused
+It("TestCreateBlob_HappyPath")
+
+// Good — use case
+It("commits all files to the branch")
+```
+
+Use `DescribeTable` / `Entry` for validation and error variants to keep them concise.
+
+### Rules
+
+- `It(...)` descriptions are use cases, not method names
+- Every use case needs at minimum: the success path + the main failure path
+- Test behaviour, not call counts
+- Keep fake servers inline — no shared mock fixtures
+- **Assert at the test level, not inside stubs.** Stubs return canned data. They must not contain `Expect` calls or spy booleans. Capture request data into variables and assert on them in the `It(...)` body.
+- **Success tests: assert the return AND the final request data.** For multi-step operations (e.g., getRef -> getCommit -> createBlob -> createTree -> createCommit -> updateRef), don't assert that each step was called. The stub already ensures that: if a step is skipped, later steps won't receive the data they need and the call will fail. Assert that the return is not an error, then verify what the last request received, which is the accumulation of all prior operations. This avoids coupling tests to the full implementation while still capturing what matters.
+- **Error tests: one test per endpoint.** Each test fails a single endpoint and verifies the error propagates correctly with the right wrapping message.
+
+### Running
+
+```bash
+make test-backend
 ```

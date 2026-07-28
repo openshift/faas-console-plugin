@@ -11,6 +11,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+
+	"github.com/openshift/faas-console-plugin/backend/handler"
 )
 
 //go:embed static/*
@@ -22,19 +24,34 @@ func main() {
 	certFile := flag.String("cert", "/var/cert/tls.crt", "TLS certificate file")
 	keyFile := flag.String("key", "/var/cert/tls.key", "TLS key file")
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
+	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
+	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
 	flag.Parse()
+
+	if *kubeAPIServer == "" {
+		log.Fatal("--external-api-server-url is required")
+	}
 
 	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
 	}
 
+	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/function/create", handleFuncCreate)
 	mux.Handle("GET /api/cluster/ca", &clusterCAHandler{CAPath: *caPath})
+	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
+	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
+	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
+	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
-	handler := loggingMiddleware(mux)
+	muxHandler := loggingMiddleware(mux)
 
 	_, certErr := os.Stat(*certFile)
 	_, keyErr := os.Stat(*keyFile)
@@ -45,7 +62,7 @@ func main() {
 				log.Fatal(err)
 			}
 			log.Printf("Listening on http://%s", ln.Addr())
-			log.Fatal(http.Serve(ln, handler))
+			log.Fatal(http.Serve(ln, muxHandler))
 		}()
 
 		cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
@@ -60,20 +77,26 @@ func main() {
 			Certificates: []tls.Certificate{cert},
 		})
 		log.Printf("Listening on https://%s", ln.Addr())
-		log.Fatal(http.Serve(tlsLn, handler))
+		log.Fatal(http.Serve(tlsLn, muxHandler))
 	} else {
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpPort))
 		if err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("TLS certificate not found, listening on http://%s", ln.Addr())
-		log.Fatal(http.Serve(ln, handler))
+		log.Fatal(http.Serve(ln, muxHandler))
 	}
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("panic: %v", rec)
+				jsonError(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
 		next.ServeHTTP(w, r)
 	})
 }
@@ -84,7 +107,7 @@ func jsonError(w http.ResponseWriter, msg string, code int) {
 	json.NewEncoder(w).Encode(map[string]string{"message": msg})
 }
 
-func jsonOK(w http.ResponseWriter, v interface{}) {
+func jsonOK(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)
 }

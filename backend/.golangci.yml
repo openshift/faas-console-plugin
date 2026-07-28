@@ -1,0 +1,49 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - bodyclose       # HTTP response body must be closed
+    - errcheck        # unhandled errors
+    - govet           # go vet checks
+    - ineffassign     # detect ineffectual assignments
+    - misspell        # common spelling mistakes
+    - noctx           # HTTP requests should carry a context
+    - staticcheck     # broad static analysis
+    - unused          # unused code
+    - wrapcheck       # errors from external packages should be wrapped
+
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -ST1000   # package comment not required
+      dot-import-whitelist:
+        - github.com/onsi/ginkgo/v2
+        - github.com/onsi/gomega
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/openshift/faas-console-plugin/backend/*
+
+  exclusions:
+    rules:
+      # Deferred Close/RemoveAll errors are idiomatic Go - unrecoverable in defer
+      - linters: [errcheck]
+        text: "Error return value of `(.*\\.Close|os\\.RemoveAll)` is not checked"
+
+      # Test files: relax errcheck and wrapcheck
+      - linters: [errcheck, wrapcheck]
+        path: _test\.go
+
+      # Pre-existing code not being changed in this PR
+      - linters: [errcheck, noctx]
+        path: (main\.go|main_test\.go|cluster_ca\.go|cmd/.*)
+
+      # func_create.go is legacy code scheduled for removal in a follow-up PR
+      - linters: [errcheck, noctx, wrapcheck]
+        path: func_create\.go
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
