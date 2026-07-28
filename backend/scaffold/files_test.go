@@ -1,4 +1,4 @@
-package scm
+package scaffold
 
 import (
 	"os"
@@ -6,14 +6,16 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var _ = Describe("CollectFiles", func() {
+var _ = Describe("collectFiles", func() {
 	It("returns regular files with mode 100644", func() {
 		dir := GinkgoT().TempDir()
 		Expect(os.WriteFile(filepath.Join(dir, "hello.go"), []byte("package main"), 0644)).To(Succeed())
 
-		files, err := CollectFiles(dir)
+		files, err := collectFiles(dir)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(files).To(HaveLen(1))
@@ -27,7 +29,7 @@ var _ = Describe("CollectFiles", func() {
 		dir := GinkgoT().TempDir()
 		Expect(os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh"), 0755)).To(Succeed())
 
-		files, err := CollectFiles(dir)
+		files, err := collectFiles(dir)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(files).To(HaveLen(1))
@@ -40,10 +42,10 @@ var _ = Describe("CollectFiles", func() {
 		Expect(os.WriteFile(target, []byte("package main"), 0644)).To(Succeed())
 		Expect(os.Symlink(target, filepath.Join(dir, "link.go"))).To(Succeed())
 
-		files, err := CollectFiles(dir)
+		files, err := collectFiles(dir)
 
 		Expect(err).NotTo(HaveOccurred())
-		var link *FileEntry
+		var link *scm.FileEntry
 		for i := range files {
 			if files[i].Path == "link.go" {
 				link = &files[i]
@@ -59,7 +61,7 @@ var _ = Describe("CollectFiles", func() {
 		Expect(os.Mkdir(subdir, 0755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(subdir, "nested.go"), []byte("package sub"), 0644)).To(Succeed())
 
-		files, err := CollectFiles(dir)
+		files, err := collectFiles(dir)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(files).To(HaveLen(1))
@@ -72,14 +74,14 @@ var _ = Describe("CollectFiles", func() {
 		Expect(os.MkdirAll(nested, 0755)).To(Succeed())
 		Expect(os.WriteFile(filepath.Join(nested, "file.go"), []byte("x"), 0644)).To(Succeed())
 
-		files, err := CollectFiles(dir)
+		files, err := collectFiles(dir)
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(files[0].Path).To(Equal(filepath.Join("a", "b", "file.go")))
 	})
 
 	It("returns an error when the root does not exist", func() {
-		_, err := CollectFiles("/nonexistent/path/that/cannot/exist")
+		_, err := collectFiles("/nonexistent/path/that/cannot/exist")
 
 		Expect(err).To(HaveOccurred())
 	})

@@ -48,5 +48,5 @@ func Generate(cfg Config) ([]scm.FileEntry, error) {
 		return nil, fmt.Errorf("unsupported SCM: %q", cfg.SCM)
 	}
 
-	return scm.CollectFiles(root)
+	return collectFiles(root)
 }

@@ -91,7 +91,6 @@ func (c *ghClient) GetFiles(ctx context.Context, owner, repo, ref string) ([]scm
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i, blob := range blobs {
-		i, blob := i, blob
 		g.Go(func() error {
 			b, _, err := c.client.Git.GetBlob(ctx, owner, repo, blob.GetSHA())
 			if err != nil {
@@ -163,7 +162,6 @@ func (c *ghClient) createBlobs(ctx context.Context, owner, repo string, files []
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i, f := range files {
-		i, f := i, f
 		g.Go(func() error {
 			blob, _, err := c.client.Git.CreateBlob(ctx, owner, repo, &ghlib.Blob{
 				Content:  new(f.Content),

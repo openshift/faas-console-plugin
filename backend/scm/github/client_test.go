@@ -22,22 +22,21 @@ func newClient(handler http.HandlerFunc) scm.Client {
 	return NewWithBaseURL("test-pat", srv.URL)
 }
 
-func assertAuth(r *http.Request) {
-	Expect(r.Header.Get("Authorization")).To(Equal("Bearer test-pat"))
-}
 
 var _ = Describe("GitHub SCM client", func() {
 
 	Describe("GetUser", func() {
 		It("returns the authenticated user's identity", func() {
+			var authHeader string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				assertAuth(r)
+				authHeader = r.Header.Get("Authorization")
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice", "avatar_url": "https://example.com/avatar"})
 			})
 
 			user, err := cl.GetUser(context.Background())
 
 			Expect(err).NotTo(HaveOccurred())
+			Expect(authHeader).To(Equal("Bearer test-pat"))
 			Expect(user.Login).To(Equal("alice"))
 			Expect(user.AvatarURL).To(Equal("https://example.com/avatar"))
 		})
@@ -79,10 +78,11 @@ var _ = Describe("GitHub SCM client", func() {
 
 	Describe("GetFiles", func() {
 		It("returns all blob files from the repository, excluding directory entries", func() {
+			var authHeader, treeQuery string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				assertAuth(r)
+				authHeader = r.Header.Get("Authorization")
 				if strings.Contains(r.URL.Path, "/git/trees/") {
-					Expect(r.URL.RawQuery).To(ContainSubstring("recursive=1"))
+					treeQuery = r.URL.RawQuery
 					json.NewEncoder(w).Encode(map[string]any{
 						"tree": []map[string]any{
 							{"path": "func.go", "mode": "100644", "type": "blob", "sha": "sha1"},
@@ -100,6 +100,8 @@ var _ = Describe("GitHub SCM client", func() {
 			files, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(err).NotTo(HaveOccurred())
+			Expect(authHeader).To(Equal("Bearer test-pat"))
+			Expect(treeQuery).To(ContainSubstring("recursive=1"))
 			Expect(files).To(HaveLen(1))
 			Expect(files[0].Path).To(Equal("func.go"))
 			Expect(files[0].Content).To(Equal("hello"))
@@ -150,65 +152,197 @@ var _ = Describe("GitHub SCM client", func() {
 
 			Expect(err).To(HaveOccurred())
 		})
-	})
 
-	Describe("PushFiles", func() {
-		It("commits all files to the branch", func() {
-			calls := map[string]int{}
+		It("returns raw content when the blob encoding is not base64", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				switch {
-				case strings.Contains(r.URL.Path, "/git/ref/"):
-					calls["getRef"]++
-					json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": "headsha"}})
-				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/git/commits/"):
-					calls["getCommit"]++
-					json.NewEncoder(w).Encode(map[string]any{"sha": "headsha", "tree": map[string]string{"sha": "treesha"}})
-				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/blobs"):
-					calls["createBlob"]++
-					w.WriteHeader(http.StatusCreated)
-					json.NewEncoder(w).Encode(map[string]string{"sha": "blobsha"})
-				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/trees"):
-					calls["createTree"]++
-					w.WriteHeader(http.StatusCreated)
-					json.NewEncoder(w).Encode(map[string]string{"sha": "newtreesha"})
-				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/commits"):
-					calls["createCommit"]++
-					w.WriteHeader(http.StatusCreated)
-					json.NewEncoder(w).Encode(map[string]string{"sha": "newcommitsha"})
-				case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/git/refs/"):
-					calls["updateRef"]++
-					json.NewEncoder(w).Encode(map[string]string{})
+				if strings.Contains(r.URL.Path, "/git/trees/") {
+					json.NewEncoder(w).Encode(map[string]any{
+						"tree": []map[string]any{
+							{"path": "func.go", "mode": "100644", "type": "blob", "sha": "sha1"},
+						},
+					})
+				} else {
+					json.NewEncoder(w).Encode(map[string]string{
+						"content":  "package main",
+						"encoding": "utf-8",
+					})
 				}
 			})
 
-			files := []scm.FileEntry{{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"}}
-			err := cl.PushFiles(context.Background(), "alice", "my-func", "main", "Update files", files)
+			files, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(err).NotTo(HaveOccurred())
-			for _, op := range []string{"getRef", "getCommit", "createBlob", "createTree", "createCommit", "updateRef"} {
-				Expect(calls[op]).To(Equal(1), "expected %q to be called once", op)
-			}
+			Expect(files).To(HaveLen(1))
+			Expect(files[0].Content).To(Equal("package main"))
 		})
 
-		It("propagates errors from upstream Git API calls", func() {
+		It("strips line breaks from base64 content before decoding", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+				if strings.Contains(r.URL.Path, "/git/trees/") {
+					json.NewEncoder(w).Encode(map[string]any{
+						"tree": []map[string]any{
+							{"path": "func.go", "mode": "100644", "type": "blob", "sha": "sha1"},
+						},
+					})
+				} else {
+					json.NewEncoder(w).Encode(map[string]string{
+						"content":  "aGVs\nbG8=\n",
+						"encoding": "base64",
+					})
+				}
 			})
 
-			err := cl.PushFiles(context.Background(), "alice", "my-func", "main", "msg", []scm.FileEntry{{Path: "f", Mode: "100644", Content: "x", Type: "blob"}})
+			files, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(files).To(HaveLen(1))
+			Expect(files[0].Content).To(Equal("hello"))
+		})
+
+		It("returns an error when base64 content is corrupted", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/git/trees/") {
+					json.NewEncoder(w).Encode(map[string]any{
+						"tree": []map[string]any{
+							{"path": "func.go", "mode": "100644", "type": "blob", "sha": "sha1"},
+						},
+					})
+				} else {
+					json.NewEncoder(w).Encode(map[string]string{
+						"content":  "!!!not-valid-base64!!!",
+						"encoding": "base64",
+					})
+				}
+			})
+
+			_, err := cl.GetFiles(context.Background(), "alice", "my-func", "HEAD")
 
 			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("decode blob"))
+		})
+	})
+
+	Describe("PushFiles", func() {
+		type updateRefBody struct {
+			SHA   string `json:"sha"`
+			Force bool   `json:"force"`
+		}
+
+		pushStub := func(failAt string, lastRequest *updateRefBody) http.HandlerFunc {
+			return func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.Contains(r.URL.Path, "/git/ref/"):
+					if failAt == "getRef" {
+						w.WriteHeader(http.StatusInternalServerError)
+						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+						return
+					}
+					json.NewEncoder(w).Encode(map[string]any{"object": map[string]string{"sha": "headsha"}})
+				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/git/commits/"):
+					if failAt == "getCommit" {
+						w.WriteHeader(http.StatusInternalServerError)
+						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+						return
+					}
+					json.NewEncoder(w).Encode(map[string]any{"sha": "headsha", "tree": map[string]string{"sha": "treesha"}})
+				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/blobs"):
+					if failAt == "createBlob" {
+						w.WriteHeader(http.StatusInternalServerError)
+						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+						return
+					}
+					w.WriteHeader(http.StatusCreated)
+					json.NewEncoder(w).Encode(map[string]string{"sha": "blobsha"})
+				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/trees"):
+					if failAt == "createTree" {
+						w.WriteHeader(http.StatusInternalServerError)
+						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+						return
+					}
+					w.WriteHeader(http.StatusCreated)
+					json.NewEncoder(w).Encode(map[string]string{"sha": "newtreesha"})
+				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/commits"):
+					if failAt == "createCommit" {
+						w.WriteHeader(http.StatusInternalServerError)
+						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+						return
+					}
+					w.WriteHeader(http.StatusCreated)
+					json.NewEncoder(w).Encode(map[string]string{"sha": "newcommitsha"})
+				case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/git/refs/"):
+					if failAt == "updateRef" {
+						w.WriteHeader(http.StatusInternalServerError)
+						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+						return
+					}
+					if lastRequest != nil {
+						json.NewDecoder(r.Body).Decode(lastRequest)
+					}
+					json.NewEncoder(w).Encode(map[string]string{})
+				}
+			}
+		}
+
+		pushFiles := func(cl scm.Client) error {
+			files := []scm.FileEntry{{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"}}
+			return cl.PushFiles(context.Background(), "alice", "my-func", "main", "Update files", files)
+		}
+
+		It("commits all files and updates the ref to the new commit SHA", func() {
+			var refUpdate updateRefBody
+			cl := newClient(pushStub("", &refUpdate))
+
+			Expect(pushFiles(cl)).To(Succeed())
+			Expect(refUpdate.SHA).To(Equal("newcommitsha"))
+		})
+
+		It("returns an error when getting the branch ref fails", func() {
+			err := pushFiles(newClient(pushStub("getRef", nil)))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("get ref"))
+		})
+
+		It("returns an error when getting the head commit fails", func() {
+			err := pushFiles(newClient(pushStub("getCommit", nil)))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("get commit"))
+		})
+
+		It("returns an error when creating a blob fails", func() {
+			err := pushFiles(newClient(pushStub("createBlob", nil)))
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("returns an error when creating the tree fails", func() {
+			err := pushFiles(newClient(pushStub("createTree", nil)))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("create tree"))
+		})
+
+		It("returns an error when creating the commit fails", func() {
+			err := pushFiles(newClient(pushStub("createCommit", nil)))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("create commit"))
+		})
+
+		It("returns an error when updating the ref fails", func() {
+			err := pushFiles(newClient(pushStub("updateRef", nil)))
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("update ref"))
 		})
 	})
 
 	Describe("InitRepo", func() {
-		repoHandler := func() http.HandlerFunc {
+		repoStub := func(topicsBody *map[string][]string) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case r.Method == http.MethodPost && r.URL.Path == "/user/repos":
 					w.WriteHeader(http.StatusCreated)
 				case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/topics"):
+					if topicsBody != nil {
+						*topicsBody = map[string][]string{}
+						json.NewDecoder(r.Body).Decode(topicsBody)
+					}
 					json.NewEncoder(w).Encode(map[string][]string{"names": {"serverless-function"}})
 				case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/repos/"):
 					json.NewEncoder(w).Encode(map[string]string{"default_branch": "main"})
@@ -217,20 +351,21 @@ var _ = Describe("GitHub SCM client", func() {
 		}
 
 		It("creates the repo, sets the branch and topics", func() {
-			cl := newClient(repoHandler())
+			var topicsBody map[string][]string
+			cl := newClient(repoStub(&topicsBody))
 
 			Expect(cl.InitRepo(context.Background(), "alice", "my-func", "main", []string{"serverless-function"})).To(Succeed())
+			Expect(topicsBody).NotTo(BeNil())
+			Expect(topicsBody["names"]).To(ConsistOf("serverless-function"))
 		})
 
 		It("renames the default branch when it differs from the requested branch", func() {
-			renameCalled := false
+			var renameBody map[string]string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/branches/master/rename"):
-					renameCalled = true
-					var body map[string]string
-					json.NewDecoder(r.Body).Decode(&body)
-					Expect(body["new_name"]).To(Equal("develop"))
+					renameBody = map[string]string{}
+					json.NewDecoder(r.Body).Decode(&renameBody)
 					json.NewEncoder(w).Encode(map[string]string{})
 				case r.Method == http.MethodPost && r.URL.Path == "/user/repos":
 					w.WriteHeader(http.StatusCreated)
@@ -242,7 +377,8 @@ var _ = Describe("GitHub SCM client", func() {
 			})
 
 			Expect(cl.InitRepo(context.Background(), "alice", "my-func", "develop", nil)).To(Succeed())
-			Expect(renameCalled).To(BeTrue())
+			Expect(renameBody).NotTo(BeNil())
+			Expect(renameBody["new_name"]).To(Equal("develop"))
 		})
 
 		It("returns an error when repo creation fails with a non-name-taken error", func() {
@@ -364,8 +500,40 @@ var _ = Describe("GitHub SCM client", func() {
 			Expect(err).To(HaveOccurred())
 		})
 
+		It("returns an error when the public key is invalid base64", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/actions/secrets/public-key") {
+					json.NewEncoder(w).Encode(map[string]string{
+						"key_id": "kid123",
+						"key":    "not-valid-base64!!!",
+					})
+				}
+			})
+
+			err := cl.StoreSecret(context.Background(), "alice", "my-func", "KUBECONFIG", "value")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("encrypt secret"))
+		})
+
+		It("returns an error when the public key is not 32 bytes", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if strings.Contains(r.URL.Path, "/actions/secrets/public-key") {
+					json.NewEncoder(w).Encode(map[string]string{
+						"key_id": "kid123",
+						"key":    "dG9vc2hvcnQ=",
+					})
+				}
+			})
+
+			err := cl.StoreSecret(context.Background(), "alice", "my-func", "KUBECONFIG", "value")
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("32 bytes"))
+		})
+
 		It("encrypts the value and stores it as a GitHub Actions secret", func() {
-			secretStored := false
+			var secretBody map[string]string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.Contains(r.URL.Path, "/actions/secrets/public-key"):
@@ -374,17 +542,16 @@ var _ = Describe("GitHub SCM client", func() {
 						"key":    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
 					})
 				case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/actions/secrets/KUBECONFIG"):
-					secretStored = true
-					var body map[string]string
-					json.NewDecoder(r.Body).Decode(&body)
-					Expect(body["key_id"]).To(Equal("kid123"))
-					Expect(body["encrypted_value"]).NotTo(BeEmpty())
+					secretBody = map[string]string{}
+					json.NewDecoder(r.Body).Decode(&secretBody)
 					w.WriteHeader(http.StatusCreated)
 				}
 			})
 
 			Expect(cl.StoreSecret(context.Background(), "alice", "my-func", "KUBECONFIG", "kubeconfig-value")).To(Succeed())
-			Expect(secretStored).To(BeTrue())
+			Expect(secretBody).NotTo(BeNil())
+			Expect(secretBody["key_id"]).To(Equal("kid123"))
+			Expect(secretBody["encrypted_value"]).NotTo(BeEmpty())
 		})
 	})
 })

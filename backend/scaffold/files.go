@@ -1,16 +1,16 @@
-package scm
+package scaffold
 
 import (
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-// CollectFiles walks root and returns every file as a FileEntry.
-// Mode is set per Git conventions: "100644" regular, "100755" executable, "120000" symlink.
-func CollectFiles(root string) ([]FileEntry, error) {
-	var files []FileEntry
+func collectFiles(root string) ([]scm.FileEntry, error) {
+	var files []scm.FileEntry
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
@@ -34,7 +34,7 @@ func CollectFiles(root string) ([]FileEntry, error) {
 		if info.Mode()&os.ModeSymlink != 0 {
 			mode = "120000"
 		}
-		files = append(files, FileEntry{Path: relPath, Mode: mode, Content: string(content), Type: "blob"})
+		files = append(files, scm.FileEntry{Path: relPath, Mode: mode, Content: string(content), Type: "blob"})
 		return nil
 	})
 	if err != nil {

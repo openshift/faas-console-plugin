@@ -18,9 +18,11 @@ import (
 )
 
 var (
-	validBranch   = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
-	validRuntimes = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
-	validSCMName  = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+	validBranch      = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
+	validRuntimes    = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
+	validSCMName     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+	newClusterClient = cluster.New
+	generateScaffold = scaffold.Generate
 )
 
 type createRequest struct {
@@ -80,7 +82,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, ocpToken string) error {
-	files, err := scaffold.Generate(scaffold.Config{
+	files, err := generateScaffold(scaffold.Config{
 		Name:             req.Name,
 		Runtime:          req.Runtime,
 		Registry:         req.Registry,
@@ -93,7 +95,7 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		return fmt.Errorf("generate scaffold: %w", err)
 	}
 
-	cl, err := cluster.New(h.kubeHost, ocpToken, h.caCert)
+	cl, err := newClusterClient(h.kubeHost, ocpToken, h.caCert)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("connect to cluster: %w", err))
 	}

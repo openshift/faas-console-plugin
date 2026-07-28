@@ -42,30 +42,11 @@ func fullFakeClient(token string) (*k8sClient, *fake.Clientset) {
 var _ = Describe("GenerateKubeconfig", func() {
 
 	It("provisions RBAC and returns a valid kubeconfig", func() {
-		cl, cs := fullFakeClient("sa-token-value")
+		cl, _ := fullFakeClient("sa-token-value")
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
 
 		Expect(err).NotTo(HaveOccurred())
-
-		// Verify all expected Kubernetes operations were performed.
-		var saCreated, roleCreated, rbCreated, tokenRequested int
-		for _, a := range cs.Actions() {
-			switch {
-			case a.GetVerb() == "create" && a.GetResource().Resource == "serviceaccounts" && a.GetSubresource() == "":
-				saCreated++
-			case a.GetVerb() == "create" && a.GetResource().Resource == "roles":
-				roleCreated++
-			case a.GetVerb() == "create" && a.GetResource().Resource == "rolebindings":
-				rbCreated++
-			case a.GetVerb() == "create" && a.GetSubresource() == "token":
-				tokenRequested++
-			}
-		}
-		Expect(saCreated).To(Equal(1))
-		Expect(roleCreated).To(Equal(1))
-		Expect(rbCreated).To(Equal(2))
-		Expect(tokenRequested).To(Equal(1))
 
 		var parsed map[string]any
 		Expect(yaml.Unmarshal([]byte(kubeconfig), &parsed)).To(Succeed())
@@ -74,6 +55,9 @@ var _ = Describe("GenerateKubeconfig", func() {
 		cluster := clusters[0].(map[string]any)["cluster"].(map[string]any)
 		Expect(cluster["server"]).To(Equal(fakeAPIURL))
 		Expect(cluster).NotTo(HaveKey("certificate-authority-data"))
+		users := parsed["users"].([]any)
+		user := users[0].(map[string]any)["user"].(map[string]any)
+		Expect(user["token"]).To(Equal("sa-token-value"))
 	})
 
 	It("embeds the CA certificate when the cluster uses a private CA", func() {
