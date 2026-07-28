@@ -386,6 +386,83 @@ describe('CreateFunctionForm', () => {
     expect(screen.getByRole('button', { name: /Create/ })).toBeDisabled();
   });
 
+  it('re-enables Create button when env var row is cleared', async () => {
+    const user = userEvent.setup();
+
+    const { container } = renderWithContext(<CreateFunctionForm {...defaultProps} />);
+
+    await user.type(screen.getByRole('textbox', { name: /Repository/ }), 'my-repo');
+    await user.type(screen.getByRole('textbox', { name: /Branch/ }), 'main');
+    await user.type(screen.getByRole('textbox', { name: /^Name$/ }), 'my-func');
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'default');
+
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+    const envNameInput = container.querySelector('#env-name-0');
+    const envValueInput = container.querySelector('#env-value-0');
+    if (!envNameInput || !envValueInput) throw new Error('Env var inputs not found');
+
+    await user.type(envNameInput, 'MY_VAR');
+    await user.type(envValueInput, 'my-value');
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create/ })).not.toBeDisabled();
+    });
+
+    await user.clear(envNameInput);
+    await user.clear(envValueInput);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Create/ })).not.toBeDisabled();
+    });
+  });
+
+  it('shows Name is required error when value is filled but name is empty', async () => {
+    const user = userEvent.setup();
+
+    renderWithContext(<CreateFunctionForm {...defaultProps} />);
+
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+    const envSection = screen.getByRole('group', { name: /Environment Variables/ });
+    const envValueInput = within(envSection).getByRole('textbox', { name: /^Value$/ });
+
+    await user.type(envValueInput, 'some-value');
+
+    expect(screen.getByText('Name is required')).toBeInTheDocument();
+  });
+
+  it('resets resource env var selections when namespace changes', async () => {
+    const user = userEvent.setup();
+
+    const secrets: K8sKeyedResource[] = [{ name: 'my-secret', keys: ['key1'] }];
+    const { container } = renderWithContext(
+      <CreateFunctionForm {...defaultProps} secrets={secrets} />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'ns-a');
+
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+    const secretNameInput = container.querySelector('#secret-name-0');
+    const secretResourceSelect = container.querySelector(
+      '#secret-resource-0',
+    ) as HTMLSelectElement | null;
+    if (!secretNameInput || !secretResourceSelect)
+      throw new Error('Secret env var inputs not found');
+
+    await user.type(secretNameInput, 'DB_PASS');
+    await user.selectOptions(secretResourceSelect, 'my-secret');
+
+    expect(secretResourceSelect.value).toBe('my-secret');
+
+    const nsInput = screen.getByRole('textbox', { name: /Namespace/ });
+    await user.clear(nsInput);
+    await user.type(nsInput, 'ns-b');
+
+    expect(secretResourceSelect.value).toBe('');
+  });
+
   it('does not flag empty names as duplicates', async () => {
     const user = userEvent.setup();
 

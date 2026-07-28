@@ -145,27 +145,33 @@ function toEnvVars(
   configMaps: ResourceEnvVar[],
 ): EnvVar[] | undefined {
   const result = [
-    ...plain.map((e) => ({
-      name: e.name,
-      source: 'value' as const,
-      value: e.value,
-      resourceName: '',
-      resourceKey: '',
-    })),
-    ...secrets.map((e) => ({
-      name: e.name,
-      source: 'secret' as const,
-      value: '',
-      resourceName: e.resourceName,
-      resourceKey: e.resourceKey,
-    })),
-    ...configMaps.map((e) => ({
-      name: e.name,
-      source: 'configMap' as const,
-      value: '',
-      resourceName: e.resourceName,
-      resourceKey: e.resourceKey,
-    })),
+    ...plain
+      .filter((e) => e.name && e.value)
+      .map((e) => ({
+        name: e.name,
+        source: 'value' as const,
+        value: e.value,
+        resourceName: '',
+        resourceKey: '',
+      })),
+    ...secrets
+      .filter((e) => e.name && e.resourceName && e.resourceKey)
+      .map((e) => ({
+        name: e.name,
+        source: 'secret' as const,
+        value: '',
+        resourceName: e.resourceName,
+        resourceKey: e.resourceKey,
+      })),
+    ...configMaps
+      .filter((e) => e.name && e.resourceName && e.resourceKey)
+      .map((e) => ({
+        name: e.name,
+        source: 'configMap' as const,
+        value: '',
+        resourceName: e.resourceName,
+        resourceKey: e.resourceKey,
+      })),
   ];
   return result.length > 0 ? result : undefined;
 }

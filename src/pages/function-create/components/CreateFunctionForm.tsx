@@ -185,6 +185,16 @@ function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
       const next = { ...prev, [key]: value };
       if (key === 'namespace') {
         next.registry = OCP_INTERNAL_REGISTRY + value;
+        next.secretEnvVars = next.secretEnvVars.map((e) => ({
+          ...e,
+          resourceName: '',
+          resourceKey: '',
+        }));
+        next.configMapEnvVars = next.configMapEnvVars.map((e) => ({
+          ...e,
+          resourceName: '',
+          resourceKey: '',
+        }));
       }
       return next;
     });
@@ -330,14 +340,17 @@ function useEnvVarSection(
   const duplicates = findDuplicateEnvVarNames([...plainNames, ...secretNames, ...configMapNames]);
 
   const isValid = (() => {
-    const allEnvVars = [...plainEnvVars, ...secretEnvVars, ...configMapEnvVars];
-    if (allEnvVars.length === 0) return true;
+    const filledPlain = plainEnvVars.filter((e) => e.name || e.value);
+    const filledResource = [...secretEnvVars, ...configMapEnvVars].filter(
+      (e) => e.name || e.resourceName || e.resourceKey,
+    );
+    if (filledPlain.length === 0 && filledResource.length === 0) return true;
     if (duplicates.size > 0) return false;
 
-    const plainValid = plainEnvVars.every(
+    const plainValid = filledPlain.every(
       (e) => e.name && validateEnvVarName(e.name) === null && e.value.trim() !== '',
     );
-    const resourceValid = [...secretEnvVars, ...configMapEnvVars].every(
+    const resourceValid = filledResource.every(
       (e) =>
         e.name &&
         validateEnvVarName(e.name) === null &&
@@ -355,9 +368,21 @@ function useEnvVarSection(
     expanded,
     expand,
     close,
-    plainNameErrors: getNameError(plainNames, duplicates),
-    secretNameErrors: getNameError(secretNames, duplicates),
-    configMapNameErrors: getNameError(configMapNames, duplicates),
+    plainNameErrors: getNameError(
+      plainNames,
+      duplicates,
+      plainEnvVars.map((e) => Boolean(e.value)),
+    ),
+    secretNameErrors: getNameError(
+      secretNames,
+      duplicates,
+      secretEnvVars.map((e) => Boolean(e.resourceName || e.resourceKey)),
+    ),
+    configMapNameErrors: getNameError(
+      configMapNames,
+      duplicates,
+      configMapEnvVars.map((e) => Boolean(e.resourceName || e.resourceKey)),
+    ),
   };
 }
 
@@ -382,10 +407,11 @@ function findDuplicateEnvVarNames(names: string[]): Set<string> {
   return duplicates;
 }
 
-function getNameError(names: string[], duplicates: Set<string>) {
-  return names.map((name) => {
+function getNameError(names: string[], duplicates: Set<string>, hasContent: boolean[]) {
+  return names.map((name, i) => {
     if (duplicates.has(name)) return 'Duplicate name';
     if (name) return validateEnvVarName(name);
+    if (hasContent[i]) return 'Name is required';
     return null;
   });
 }
