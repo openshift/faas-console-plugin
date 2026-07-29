@@ -468,6 +468,45 @@ var _ = Describe("GitHub SCM client", func() {
 		})
 	})
 
+	Describe("DeleteRepo", func() {
+		It("deletes the repository", func() {
+			var deletedPath string
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/repos/") {
+					deletedPath = r.URL.Path
+					w.WriteHeader(http.StatusNoContent)
+				}
+			})
+
+			Expect(cl.DeleteRepo(context.Background(), "alice", "my-func")).To(Succeed())
+			Expect(deletedPath).To(ContainSubstring("/repos/alice/my-func"))
+		})
+
+		It("returns an unauthorized error when the token lacks delete permission", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"message": "Must have admin rights"})
+			})
+
+			err := cl.DeleteRepo(context.Background(), "alice", "my-func")
+
+			Expect(err).To(HaveOccurred())
+			Expect(isUnauthorized(err)).To(BeTrue())
+		})
+
+		It("returns an error when the GitHub API fails", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+			})
+
+			err := cl.DeleteRepo(context.Background(), "alice", "my-func")
+
+			Expect(err).To(HaveOccurred())
+			Expect(isUnauthorized(err)).To(BeFalse())
+		})
+	})
+
 	Describe("StoreSecret", func() {
 		It("returns an error when storing the secret fails after the public key is fetched", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {

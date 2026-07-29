@@ -211,4 +211,282 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("missing owner", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "", Repo: "r"}),
 		Entry("missing repo", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: ""}),
 	)
+
+	Describe("rollback on failure", func() {
+		It("rolls back cluster resources when GenerateKubeconfig fails", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					deleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&clusterStub{
+					requestToken: func(ctx context.Context, namespace string) (string, error) {
+						return "", errors.New("token endpoint unavailable")
+					},
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+			Expect(calls).To(HaveKey("deleteServiceAccount"))
+			Expect(calls).To(HaveKey("deleteRole"))
+			Expect(calls).To(HaveKey("deleteRoleBinding"))
+			Expect(calls).To(HaveKey("deleteImageBuilderBinding"))
+			Expect(calls).NotTo(HaveKey("deleteRepo"))
+		})
+
+		It("rolls back cluster resources when InitRepo fails", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+						return errors.New("github down")
+					},
+					deleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&clusterStub{
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+			Expect(calls).To(HaveKey("deleteServiceAccount"))
+			Expect(calls).To(HaveKey("deleteRole"))
+			Expect(calls).To(HaveKey("deleteRoleBinding"))
+			Expect(calls).To(HaveKey("deleteImageBuilderBinding"))
+			Expect(calls).NotTo(HaveKey("deleteRepo"))
+		})
+
+		It("rolls back cluster resources and repo when StoreSecret fails", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					storeSecret: func(ctx context.Context, owner, repo, name, value string) error {
+						return errors.New("github down")
+					},
+					deleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&clusterStub{
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+			Expect(calls).To(HaveKey("deleteServiceAccount"))
+			Expect(calls).To(HaveKey("deleteRole"))
+			Expect(calls).To(HaveKey("deleteRoleBinding"))
+			Expect(calls).To(HaveKey("deleteImageBuilderBinding"))
+			Expect(calls).To(HaveKey("deleteRepo"))
+		})
+
+		It("rolls back cluster resources and repo when PushFiles fails", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+						return errors.New("github down")
+					},
+					deleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&clusterStub{
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+			Expect(calls).To(HaveKey("deleteServiceAccount"))
+			Expect(calls).To(HaveKey("deleteRole"))
+			Expect(calls).To(HaveKey("deleteRoleBinding"))
+			Expect(calls).To(HaveKey("deleteImageBuilderBinding"))
+			Expect(calls).To(HaveKey("deleteRepo"))
+		})
+
+		It("does not roll back when all steps succeed", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					deleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&clusterStub{
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusCreated))
+			Expect(calls).To(BeEmpty())
+		})
+
+		It("does not roll back pre-existing cluster resources", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+						return errors.New("github down")
+					},
+					deleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&clusterStub{
+					createServiceAccount: func(ctx context.Context, namespace string) (bool, error) {
+						return false, nil
+					},
+					applyRole: func(ctx context.Context, namespace string) (bool, error) {
+						return false, nil
+					},
+					createRoleBinding: func(ctx context.Context, namespace string) (bool, error) {
+						return false, nil
+					},
+					createImageBuilderBinding: func(ctx context.Context, namespace string) (bool, error) {
+						return false, nil
+					},
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+			Expect(calls).NotTo(HaveKey("deleteServiceAccount"))
+			Expect(calls).NotTo(HaveKey("deleteRole"))
+			Expect(calls).NotTo(HaveKey("deleteRoleBinding"))
+			Expect(calls).NotTo(HaveKey("deleteImageBuilderBinding"))
+			Expect(calls).NotTo(HaveKey("deleteRepo"))
+		})
+
+		It("returns the original error when rollback also fails", func() {
+			w := doCreate(func() {
+				withSCMStub(&scmStub{
+					initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+						return errors.New("github down")
+					},
+				})
+				withClusterStub(&clusterStub{
+					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+						return errors.New("rollback failed")
+					},
+					deleteRole: func(ctx context.Context, namespace string) error {
+						return errors.New("rollback failed")
+					},
+					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+						return errors.New("rollback failed")
+					},
+					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						return errors.New("rollback failed")
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+		})
+	})
 })

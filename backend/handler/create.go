@@ -81,7 +81,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, ocpToken string) error {
+func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, ocpToken string) (retErr error) {
 	files, err := generateScaffold(scaffold.Config{
 		Name:             req.Name,
 		Runtime:          req.Runtime,
@@ -100,9 +100,19 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("connect to cluster: %w", err))
 	}
 
-	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.externalAPIServerURL, h.caCert)
+	provisioned, err := cluster.ProvisionRBAC(ctx, cl, req.Namespace)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("provision cluster resources: %w", err))
+	}
+	defer func() {
+		if retErr != nil {
+			cluster.RollbackProvisionedRBAC(context.Background(), cl, req.Namespace, provisioned)
+		}
+	}()
+
+	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.externalAPIServerURL, h.caCert)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("generate kubeconfig: %w", err))
 	}
 
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
@@ -113,6 +123,14 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		slog.Error("failed to init repo", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("init repo: %w", err))
 	}
+	defer func() {
+		if retErr != nil {
+			if err := client.DeleteRepo(context.Background(), req.Owner, req.Repo); err != nil {
+				slog.Warn("rollback: failed to delete repo", "owner", req.Owner, "repo", req.Repo, "err", err)
+			}
+		}
+	}()
+
 	if err := client.StoreSecret(ctx, req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
