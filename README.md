@@ -29,6 +29,7 @@ Check out the **[Github page](https://github.com/openshift/faas-console-plugin)*
 | [PR Template](.github/pull_request_template.md) | Pull request description format |
 | [Jira Epic](docs/templates/jira-epic-template.md) | Template for creating Jira epics |
 | [Jira Story](docs/templates/jira-story-template.md) | Template for creating Jira stories |
+| [Jira Bug](docs/templates/jira-bug-template.md) | Template for filing Jira bugs |
 
 ### Slash Commands
 

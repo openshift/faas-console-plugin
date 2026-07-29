@@ -24,6 +24,7 @@ AGENTS.override.md
 .claude/pr/*
 .mcp*
 .tmp
+.pi-subagents
 
 # Editors
 *.code-workspace

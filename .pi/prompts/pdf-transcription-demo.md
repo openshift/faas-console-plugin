@@ -1,0 +1,1 @@
+../../.claude/commands/pdf-transcription-demo.md

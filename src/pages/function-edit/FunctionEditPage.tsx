@@ -90,6 +90,15 @@ function FunctionEditPageContent() {
                 </EmptyState>
               }
               isLanguageLabelVisible
+              editorProps={{
+                beforeMount: (monaco) => {
+                  // SRVOCF-1007: the OCP console does not bundle Monaco's TS worker.
+                  // Disable all worker-dependent features for JS/TS so the missing
+                  // worker is never requested. Monarch syntax highlighting is unaffected.
+                  monaco.languages.typescript.javascriptDefaults.setModeConfiguration({});
+                  monaco.languages.typescript.typescriptDefaults.setModeConfiguration({});
+                },
+              }}
             />
           </SidebarContent>
         </Sidebar>

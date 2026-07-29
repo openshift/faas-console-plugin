@@ -13,6 +13,8 @@ Red/green/refactor TDD — **one test at a time**:
 
 Do NOT write all test cases first and then implement everything at once.
 
+**Bug fixes require a regression test.** Add a unit test that reproduces the bug, or an e2e test if the bug is not testable at the unit level.
+
 ## Test Layers
 
 | Layer | Tool | Scope |
@@ -324,7 +326,6 @@ test.describe('My feature', () => {
   });
 });
 ```
-
 
 ---
 

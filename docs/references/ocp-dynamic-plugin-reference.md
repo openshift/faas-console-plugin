@@ -208,3 +208,35 @@ return <h1>{t('Hello, World!')}</h1>;
 1. Module federation requires exact module mapping: `exposedModules` must match `$codeRef` values
 2. No webpack HMR for extensions: changes to `console-extensions.json` require restart
 3. React 17, not 18: matches console's React version
+
+## Plugin Inventory
+
+[OCP Dynamic Plugin Inventory](https://docs.google.com/spreadsheets/d/1wcCdc1s4ewzxtUJ42VdRhAJ9wFA8UwoTajGSftrr5fM/edit?gid=0#gid=0)
+
+| Plugin | Repo | Description |
+|--------|------|-------------|
+| Console Plugin Template | [openshift/console-plugin-template](https://github.com/openshift/console-plugin-template) | Starter template for OCP dynamic plugins |
+| Console Demo Plugin | [openshift/console (demo)](https://github.com/openshift/console/tree/main/dynamic-demo-plugin) | SDK feature testing and reference |
+| KubeVirt | [kubevirt-ui/kubevirt-plugin](https://github.com/kubevirt-ui/kubevirt-plugin) | Virtual machine management UI |
+| Forklift | [kubev2v/forklift-console-plugin](https://github.com/kubev2v/forklift-console-plugin) | VM migration from other platforms to KubeVirt |
+| Monitoring | [openshift/monitoring-plugin](https://github.com/openshift/monitoring-plugin) | Prometheus monitoring dashboards and alerts |
+| Logging | [openshift/logging-view-plugin](https://github.com/openshift/logging-view-plugin) | Log viewing and querying |
+| Distributed Tracing | [openshift/distributed-tracing-console-plugin](https://github.com/openshift/distributed-tracing-console-plugin) | Distributed tracing with Tempo/Jaeger |
+| Console Dashboards | [openshift/console-dashboards-plugin](https://github.com/openshift/console-dashboards-plugin) | Custom dashboard support for OCP console |
+| Troubleshooting Panel | [openshift/troubleshooting-panel-console-plugin](https://github.com/openshift/troubleshooting-panel-console-plugin) | Guided troubleshooting for cluster issues |
+| Networking | [openshift/networking-console-plugin](https://github.com/openshift/networking-console-plugin) | Network policies, routes, and services |
+| Network Observability | [netobserv/network-observability-console-plugin](https://github.com/netobserv/network-observability-console-plugin) | Network traffic flow visualization |
+| OpenShift Pipelines | [openshift-pipelines/console-plugin](https://github.com/openshift-pipelines/console-plugin) | Tekton pipeline builder and viewer |
+| OpenShift GitOps | [redhat-developer/gitops-console-plugin](https://github.com/redhat-developer/gitops-console-plugin) | ArgoCD/GitOps application status |
+| OpenShift Data Foundation | [red-hat-storage/odf-console](https://github.com/red-hat-storage/odf-console) | Ceph/NooBaa storage management |
+| Service Mesh (Kiali) | [kiali/openshift-servicemesh-plugin](https://github.com/kiali/openshift-servicemesh-plugin) | Istio service mesh observability |
+| ACM / MCE | [stolostron/console](https://github.com/stolostron/console) | Advanced Cluster Management multi-cluster UI |
+| Cluster Templates | [stolostron/cluster-templates-operator](https://github.com/stolostron/cluster-templates-operator) | Cluster provisioning templates |
+| Crane (Migration) | [migtools/crane-ui-plugin](https://github.com/migtools/crane-ui-plugin) | Application migration toolkit |
+| NMState | [nmstate/nmstate-console-plugin](https://github.com/nmstate/nmstate-console-plugin) | Declarative node network configuration |
+| Console Telemetry | [christianvogt/console-telemetry-plugin](https://github.com/christianvogt/console-telemetry-plugin) | Usage telemetry collection for console |
+| Lightspeed | [openshift/lightspeed-console](https://github.com/openshift/lightspeed-console) | AI assistant for OpenShift |
+| Cryostat | [cryostatio/cryostat-openshift-console-plugin](https://github.com/cryostatio/cryostat-openshift-console-plugin) | JFR profiling and recording management |
+| Node Remediation | [medik8s/node-remediation-console](https://github.com/medik8s/node-remediation-console) | Automated node health check and remediation |
+| Skupper | [bartoval/skupper-site-console](https://github.com/bartoval/skupper-site-console) | Multi-cluster service connectivity |
+| Kuadrant | [Kuadrant/kuadrant-console-plugin](https://github.com/Kuadrant/kuadrant-console-plugin) | API gateway policies (rate limiting, auth) |
