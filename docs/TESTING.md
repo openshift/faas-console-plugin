@@ -192,10 +192,9 @@ e2e/
 
 Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. The fixture automatically installs the GitHub API mock and injects a placeholder PAT into sessionStorage before each test.
 
-The GitHub mock (`e2e/mocks/github.ts`) is stateful. It maintains seed repos and tracks dynamically created repos through the full `createRepoWithSecret` flow. It exports two constants used by tests:
+The GitHub mock (`e2e/mocks/github.ts`) is stateful. It maintains seed repos and tracks dynamically created repos through the full `createRepoWithSecret` flow. It exports one constant used by tests:
 
-- `EXISTING_FUNC_NAME` ('test-func'): a seed repo, used by delete tests
-- `NEW_FUNC_NAME` ('new-test-func'): used by create tests
+- `PRESEEDED_FUNC_NAME` ('preseeded-test-func'): a seed repo, used by list, edit, and delete tests
 
 ### Helpers
 
@@ -310,7 +309,7 @@ In local dev, `simulateGitHubActionsDeploy()` calls `ensureServerlessOperator()`
 ```typescript
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
-import { EXISTING_FUNC_NAME as FUNC_NAME } from '../../mocks/github';
+import { PRESEEDED_FUNC_NAME as FUNC_NAME } from '../../mocks/github';
 
 test.describe('My feature', () => {
   test('user does something', async ({ page }) => {
