@@ -275,8 +275,9 @@ The ci-operator job config lives in the `openshift/release` repo at `ci-operator
 
 | Job | Type | What it runs |
 |-----|------|-------------|
-| `frontend` | Container test (no cluster) | `yarn lint && yarn test` |
-| `e2e-aws` | Cluster test (required) | `test-prow-e2e.sh` against an ephemeral OCP cluster |
+| `lint` | Container test (no cluster) | `yarn install --immutable && yarn run lint && yarn run build` |
+| `unit` | Container test (no cluster) | `yarn install --immutable && yarn run test` |
+| `e2e-aws` | Cluster test | `test-prow-e2e.sh` against an ephemeral OCP cluster |
 
 ### Local vs CI differences
 

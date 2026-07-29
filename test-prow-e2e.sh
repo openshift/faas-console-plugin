@@ -64,7 +64,7 @@ oc patch consoles.operator.openshift.io cluster \
   --patch='[{"op":"add","path":"/spec/plugins/-","value":"'"${PLUGIN_NAME}"'"}]'
 
 echo "Restarting console pods to pick up the plugin..."
-oc delete pods -n openshift-console -l app=console
+oc rollout restart deployment/console -n openshift-console
 oc rollout status deployment/console -n openshift-console --timeout=300s
 
 # --- Install deps and run tests ---
