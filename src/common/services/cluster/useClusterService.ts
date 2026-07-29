@@ -93,8 +93,7 @@ export function useClusterService(
   const secrets = useMemo(() => toKeyedResources(rawSecrets), [rawSecrets]);
   const configMaps = useMemo(() => toKeyedResources(rawConfigMaps), [rawConfigMaps]);
 
-  let loaded = knLoaded && depLoaded;
-  if (namespace) loaded = loaded && secretLoaded && cmLoaded;
+  const loaded = knLoaded && depLoaded && (!namespace || (secretLoaded && cmLoaded));
 
   return {
     functions,

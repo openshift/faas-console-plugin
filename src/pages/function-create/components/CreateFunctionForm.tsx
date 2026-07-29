@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useState } from 'react';
 import {
   ActionGroup,
   Button,
@@ -73,8 +73,7 @@ export function CreateFunctionForm({
   isSubmitting,
 }: CreateFunctionFormProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { fields, setField, setEnvVars, setEnvVarsValid, isValid } =
-    useCreateFunctionForm(onNamespaceChange);
+  const { fields, setField, setEnvVars, isValid } = useCreateFunctionForm(onNamespaceChange);
 
   return (
     <Form
@@ -145,7 +144,6 @@ export function CreateFunctionForm({
         configMapEnvVars={fields.configMapEnvVars}
         namespace={fields.namespace}
         onEnvVarChange={setEnvVars}
-        onValidChange={setEnvVarsValid}
       />
       <ActionGroup>
         <Button
@@ -178,8 +176,6 @@ function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
     secretEnvVars: [],
     configMapEnvVars: [],
   });
-  const [envVarsValid, setEnvVarsValid] = useState(true);
-
   const setField = (key: keyof CreateFunctionFormData, value: string) => {
     setFields((prev) => {
       const next = { ...prev, [key]: value };
@@ -214,14 +210,13 @@ function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
     fields.name &&
     fields.registry &&
     fields.namespace &&
-    envVarsValid,
+    areEnvVarsValid(fields.plainEnvVars, fields.secretEnvVars, fields.configMapEnvVars),
   );
 
   return {
     fields,
     setField,
     setEnvVars,
-    setEnvVarsValid,
     isValid,
   };
 }
@@ -234,7 +229,6 @@ interface EnvVarSectionProps {
   configMaps: K8sKeyedResource[];
   namespace: string;
   onEnvVarChange: (field: EnvVarField, vars: PlainEnvVar[] | ResourceEnvVar[]) => void;
-  onValidChange: (valid: boolean) => void;
 }
 
 export function EnvVarSection({
@@ -245,11 +239,10 @@ export function EnvVarSection({
   configMaps,
   namespace,
   onEnvVarChange,
-  onValidChange,
 }: EnvVarSectionProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
   const { expanded, expand, close, plainNameErrors, secretNameErrors, configMapNameErrors } =
-    useEnvVarSection(plainEnvVars, secretEnvVars, configMapEnvVars, onValidChange);
+    useEnvVarSection(plainEnvVars, secretEnvVars, configMapEnvVars);
 
   return (
     <FormSection title={t('Environment Variables')}>
@@ -328,7 +321,6 @@ function useEnvVarSection(
   plainEnvVars: PlainEnvVar[],
   secretEnvVars: ResourceEnvVar[],
   configMapEnvVars: ResourceEnvVar[],
-  onValidChange: (valid: boolean) => void,
 ) {
   const [expanded, setExpanded] = useState(false);
   const expand = () => setExpanded(true);
@@ -338,31 +330,6 @@ function useEnvVarSection(
   const secretNames = secretEnvVars.map((e) => e.name);
   const configMapNames = configMapEnvVars.map((e) => e.name);
   const duplicates = findDuplicateEnvVarNames([...plainNames, ...secretNames, ...configMapNames]);
-
-  const isValid = (() => {
-    const filledPlain = plainEnvVars.filter((e) => e.name || e.value);
-    const filledResource = [...secretEnvVars, ...configMapEnvVars].filter(
-      (e) => e.name || e.resourceName || e.resourceKey,
-    );
-    if (filledPlain.length === 0 && filledResource.length === 0) return true;
-    if (duplicates.size > 0) return false;
-
-    const plainValid = filledPlain.every(
-      (e) => e.name && validateEnvVarName(e.name) === null && e.value.trim() !== '',
-    );
-    const resourceValid = filledResource.every(
-      (e) =>
-        e.name &&
-        validateEnvVarName(e.name) === null &&
-        e.resourceName.trim() !== '' &&
-        e.resourceKey.trim() !== '',
-    );
-    return plainValid && resourceValid;
-  })();
-
-  useEffect(() => {
-    onValidChange(isValid);
-  }, [isValid, onValidChange]);
 
   return {
     expanded,
@@ -384,6 +351,37 @@ function useEnvVarSection(
       configMapEnvVars.map((e) => Boolean(e.resourceName || e.resourceKey)),
     ),
   };
+}
+
+function areEnvVarsValid(
+  plainEnvVars: PlainEnvVar[],
+  secretEnvVars: ResourceEnvVar[],
+  configMapEnvVars: ResourceEnvVar[],
+): boolean {
+  const filledPlain = plainEnvVars.filter((e) => e.name || e.value);
+  const filledResource = [...secretEnvVars, ...configMapEnvVars].filter(
+    (e) => e.name || e.resourceName || e.resourceKey,
+  );
+  if (filledPlain.length === 0 && filledResource.length === 0) return true;
+
+  const allNames = [
+    ...plainEnvVars.map((e) => e.name),
+    ...secretEnvVars.map((e) => e.name),
+    ...configMapEnvVars.map((e) => e.name),
+  ];
+  if (findDuplicateEnvVarNames(allNames).size > 0) return false;
+
+  const plainValid = filledPlain.every(
+    (e) => e.name && validateEnvVarName(e.name) === null && e.value.trim() !== '',
+  );
+  const resourceValid = filledResource.every(
+    (e) =>
+      e.name &&
+      validateEnvVarName(e.name) === null &&
+      e.resourceName.trim() !== '' &&
+      e.resourceKey.trim() !== '',
+  );
+  return plainValid && resourceValid;
 }
 
 function validateEnvVarName(name: string): string | null {
