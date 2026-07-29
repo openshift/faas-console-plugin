@@ -92,7 +92,7 @@ test.describe('Create go function', () => {
 
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
       await expect(row).toBeVisible({ timeout: 30_000 });
-      await expect(row.getByText(/Running|ScaledToZero/)).toBeVisible({ timeout: 30_000 });
+      await expect(row.getByText(/Running|ScaledToZero/)).toBeVisible({ timeout: 300_000 });
     });
   });
 });

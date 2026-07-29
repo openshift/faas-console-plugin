@@ -244,6 +244,26 @@ page.locator('#name')  // form inputs with HTML id
 
 **Use `exact: true`** when a name is a substring of other elements (e.g., "Name" matches "Namespace").
 
+### Polling with `expect.poll`
+
+Use `expect.poll()` instead of manual `for`/`while` loops when waiting for K8s resources to reach a desired state. It gives clear timeout errors and reads better than index-counting loops.
+
+```typescript
+await expect
+  .poll(
+    async () => {
+      const res = await page.request.get(url, { headers });
+      if (!res.ok()) return false;
+      const body = await res.json();
+      return body.status?.readyReplicas > 0;
+    },
+    { timeout: 120_000, intervals: [2_000] },
+  )
+  .toBe(true);
+```
+
+All cluster helpers in `e2e/helpers/cluster.ts` follow this pattern.
+
 ### Playwright Route LIFO Ordering
 
 Playwright evaluates `page.route()` handlers in LIFO (last-in, first-out) order. Routes registered last are checked first. When a test needs to override the GitHub mock catch-all (e.g., for the duplicate-name error test), register the override after the fixture has set up the catch-all.
@@ -251,6 +271,39 @@ Playwright evaluates `page.route()` handlers in LIFO (last-in, first-out) order.
 ### Auth
 
 Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`. The authenticated-page fixture then injects the GitHub mock and PAT on top of that session.
+
+## CI E2e (Prow)
+
+E2e tests also run in CI via Prow/ci-operator against an ephemeral OCP cluster on AWS.
+
+### How it works
+
+1. ci-operator provisions an ephemeral cluster from the `openshift-org-aws` pool
+2. The `install-operators` pre-step installs the Serverless operator from `redhat-operators`
+3. ci-operator builds the plugin container image from the Dockerfile
+4. `test-prow-e2e.sh` deploys the plugin to the cluster via Helm, enables it on the console, then runs Playwright headless
+5. Artifacts (JUnit XML, HTML report, screenshots, traces) are copied to `$ARTIFACT_DIR` for Prow Spyglass
+
+### Configuration
+
+| File | Purpose |
+|------|---------|
+| `.ci-operator.yaml` | Build root image config (Node 22 base image for the `src` container) |
+| `test-prow-e2e.sh` | Prow e2e test entrypoint (reads cluster credentials, deploys plugin, runs tests) |
+
+The ci-operator job config lives in the `openshift/release` repo at `ci-operator/config/openshift/faas-console-plugin/`.
+
+### Prow jobs
+
+| Job | Type | What it runs |
+|-----|------|-------------|
+| `lint` | Container test (no cluster) | `yarn install --immutable && yarn run lint && yarn run build` |
+| `unit` | Container test (no cluster) | `yarn install --immutable && yarn run test` |
+| `e2e-aws` | Cluster test | `test-prow-e2e.sh` against an ephemeral OCP cluster |
+
+### Local vs CI differences
+
+In local dev, `simulateGitHubActionsDeploy()` calls `ensureServerlessOperator()` to install the operator if it is missing.
 
 ### Test file template
 

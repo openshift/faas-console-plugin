@@ -38,12 +38,19 @@ export async function ensureNamespace(page: Page, name: string): Promise<void> {
   const headers = await k8sHeaders(page);
   const nsUrl = `${K8S}/api/v1/namespaces/${name}`;
 
-  for (let i = 0; i < 60; i++) {
-    const check = await page.request.get(nsUrl, { headers });
-    if (!check.ok()) break;
+  const check = await page.request.get(nsUrl, { headers });
+  if (check.ok()) {
     const ns = await check.json();
-    if (ns.status?.phase !== 'Terminating') return;
-    await page.waitForTimeout(2000);
+    if (ns.status?.phase === 'Terminating') {
+      await expect
+        .poll(async () => (await page.request.get(nsUrl, { headers })).ok(), {
+          timeout: 120_000,
+          intervals: [2_000],
+        })
+        .toBe(false);
+    } else {
+      return;
+    }
   }
 
   const res = await page.request.post(`${K8S}/api/v1/namespaces`, {
@@ -117,14 +124,17 @@ async function ensureServerlessOperator(page: Page): Promise<void> {
     },
   );
 
-  for (let i = 0; i < 120; i++) {
-    const res = await page.request.get(csvPath, { headers });
-    if (res.ok()) {
-      const body = await res.json();
-      if (body.items?.some((csv: CsvItem) => isServerlessReady(csv))) break;
-    }
-    await page.waitForTimeout(2000);
-  }
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(csvPath, { headers });
+        if (!res.ok()) return false;
+        const body = await res.json();
+        return body.items?.some((csv: CsvItem) => isServerlessReady(csv)) ?? false;
+      },
+      { timeout: 240_000, intervals: [2_000] },
+    )
+    .toBe(true);
 
   await ensureNamespace(page, SERVING_NS);
 
@@ -139,11 +149,25 @@ async function ensureServerlessOperator(page: Page): Promise<void> {
   );
 
   const ksvcCrdPath = `${K8S}/apis/apiextensions.k8s.io/v1/customresourcedefinitions/services.serving.knative.dev`;
-  for (let i = 0; i < 60; i++) {
-    const probe = await page.request.get(ksvcCrdPath, { headers });
-    if (probe.ok()) return;
-    await page.waitForTimeout(2000);
-  }
+  await expect
+    .poll(async () => (await page.request.get(ksvcCrdPath, { headers })).ok(), {
+      timeout: 120_000,
+      intervals: [2_000],
+    })
+    .toBe(true);
+
+  const webhookPath = `${K8S}/apis/apps/v1/namespaces/${SERVING_NS}/deployments/webhook`;
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get(webhookPath, { headers });
+        if (!res.ok()) return 0;
+        const body = await res.json();
+        return body.status?.readyReplicas ?? 0;
+      },
+      { timeout: 120_000, intervals: [2_000] },
+    )
+    .toBeGreaterThan(0);
 }
 
 // ---------------------------------------------------------------------------
@@ -188,25 +212,27 @@ export async function simulateGitHubActionsDeploy(
   // Knative doesn't propagate custom labels to deployments, so patch
   // the deployment with function.knative.dev/name for the UI's K8s watch.
   const depPath = deploymentApiPath(namespace);
-  for (let i = 0; i < 30; i++) {
-    const probe = await page.request.get(
-      `${depPath}?labelSelector=serving.knative.dev/service=${name}`,
-      { headers },
-    );
-    if (probe.ok()) {
-      const body = await probe.json();
-      if (body.items?.length > 0) {
-        const dep = body.items[0];
-        const labels = dep.metadata.labels ?? {};
-        if (!labels['function.knative.dev/name']) {
-          await page.request.patch(`${depPath}/${dep.metadata.name}`, {
-            headers: { ...headers, 'Content-Type': 'application/merge-patch+json' },
-            data: { metadata: { labels: { 'function.knative.dev/name': name } } },
-          });
-        }
-        return;
-      }
-    }
-    await page.waitForTimeout(1000);
+  const depSelector = `${depPath}?labelSelector=serving.knative.dev/service=${name}`;
+
+  await expect
+    .poll(
+      async () => {
+        const probe = await page.request.get(depSelector, { headers });
+        if (!probe.ok()) return 0;
+        const body = await probe.json();
+        return body.items?.length ?? 0;
+      },
+      { timeout: 30_000, intervals: [1_000] },
+    )
+    .toBeGreaterThan(0);
+
+  const depList = await page.request.get(depSelector, { headers });
+  const dep = (await depList.json()).items[0];
+  const labels = dep.metadata.labels ?? {};
+  if (!labels['function.knative.dev/name']) {
+    await page.request.patch(`${depPath}/${dep.metadata.name}`, {
+      headers: { ...headers, 'Content-Type': 'application/merge-patch+json' },
+      data: { metadata: { labels: { 'function.knative.dev/name': name } } },
+    });
   }
 }
