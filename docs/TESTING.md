@@ -242,6 +242,26 @@ page.locator('#name')  // form inputs with HTML id
 
 **Use `exact: true`** when a name is a substring of other elements (e.g., "Name" matches "Namespace").
 
+### Polling with `expect.poll`
+
+Use `expect.poll()` instead of manual `for`/`while` loops when waiting for K8s resources to reach a desired state. It gives clear timeout errors and reads better than index-counting loops.
+
+```typescript
+await expect
+  .poll(
+    async () => {
+      const res = await page.request.get(url, { headers });
+      if (!res.ok()) return false;
+      const body = await res.json();
+      return body.status?.readyReplicas > 0;
+    },
+    { timeout: 120_000, intervals: [2_000] },
+  )
+  .toBe(true);
+```
+
+All cluster helpers in `e2e/helpers/cluster.ts` follow this pattern.
+
 ### Playwright Route LIFO Ordering
 
 Playwright evaluates `page.route()` handlers in LIFO (last-in, first-out) order. Routes registered last are checked first. When a test needs to override the GitHub mock catch-all (e.g., for the duplicate-name error test), register the override after the fixture has set up the catch-all.
