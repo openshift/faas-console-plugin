@@ -1,6 +1,6 @@
 import { K8sResourceKind, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 import { useMemo } from 'react';
-import { ClusterFunction, FunctionStatus } from '../types';
+import { ClusterFunction, FunctionStatus, K8sKeyedResource } from '../types';
 import { OcpClusterService } from './OcpClusterService';
 
 const instance = new OcpClusterService();
@@ -10,12 +10,17 @@ const REVISION_LABEL = 'serving.knative.dev/revision';
 
 interface ClusterService {
   functions: ReadonlyMap<string, ClusterFunction>;
+  secrets: K8sKeyedResource[];
+  configMaps: K8sKeyedResource[];
   loaded: boolean;
   error: unknown;
   generateKubeconfig: (namespace: string) => Promise<string>;
 }
 
-export function useClusterService(functionNames: string[] = []): ClusterService {
+export function useClusterService(
+  functionNames: string[] = [],
+  namespace?: string,
+): ClusterService {
   const knSvcConfig = useMemo(
     () =>
       functionNames.length > 0
@@ -48,8 +53,36 @@ export function useClusterService(functionNames: string[] = []): ClusterService 
     [functionNames],
   );
 
+  const secretConfig = useMemo(
+    () =>
+      namespace
+        ? {
+            groupVersionKind: { version: 'v1', kind: 'Secret' },
+            namespace,
+            isList: true,
+          }
+        : null,
+    [namespace],
+  );
+
+  const configMapConfig = useMemo(
+    () =>
+      namespace
+        ? {
+            groupVersionKind: { version: 'v1', kind: 'ConfigMap' },
+            namespace,
+            isList: true,
+          }
+        : null,
+    [namespace],
+  );
+
   const [knSvcs, knLoaded, knError] = useK8sWatchResource<K8sResourceKind[]>(knSvcConfig);
   const [deps, depLoaded, depError] = useK8sWatchResource<K8sResourceKind[]>(depConfig);
+  const [rawSecrets, secretLoaded, secretError] =
+    useK8sWatchResource<K8sResourceKind[]>(secretConfig);
+  const [rawConfigMaps, cmLoaded, cmError] =
+    useK8sWatchResource<K8sResourceKind[]>(configMapConfig);
 
   const functions = useMemo(() => {
     const safeKnSvcs = knLoaded ? (knSvcs ?? []) : [];
@@ -57,10 +90,17 @@ export function useClusterService(functionNames: string[] = []): ClusterService 
     return listKnativeClusterFunctions(safeKnSvcs, safeDeps);
   }, [knSvcs, knLoaded, deps, depLoaded]);
 
+  const secrets = useMemo(() => toKeyedResources(rawSecrets), [rawSecrets]);
+  const configMaps = useMemo(() => toKeyedResources(rawConfigMaps), [rawConfigMaps]);
+
+  const loaded = knLoaded && depLoaded && (!namespace || (secretLoaded && cmLoaded));
+
   return {
     functions,
-    loaded: knLoaded && depLoaded,
-    error: knError || depError,
+    secrets,
+    configMaps,
+    loaded,
+    error: knError || depError || secretError || cmError,
     generateKubeconfig: instance.generateKubeconfig.bind(instance),
   };
 }
@@ -112,4 +152,13 @@ function deriveKnativeStatus(
   if (ready.status === 'False') return 'Error';
 
   return 'Deploying';
+}
+
+function toKeyedResources(resources: K8sResourceKind[]): K8sKeyedResource[] {
+  return (resources ?? [])
+    .filter((r) => r.metadata?.name)
+    .map((r) => ({
+      name: r.metadata!.name!,
+      keys: r.data ? Object.keys(r.data) : [],
+    }));
 }

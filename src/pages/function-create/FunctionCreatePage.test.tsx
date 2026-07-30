@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../testing/msw/server';
@@ -254,5 +254,45 @@ describe('FunctionCreatePage', () => {
       screen.getByText(/A GitHub Personal Access Token is required to create functions/),
     ).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /Owner/ })).not.toBeInTheDocument();
+  });
+
+  it('sends environment variables to backend during submission', async () => {
+    sessionStorage.setItem(PAT_KEY, 'ghp_test');
+    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser' }));
+    const user = userEvent.setup();
+    let capturedRequest: Record<string, unknown> | null = null;
+    setupCreateFlowHandlers();
+    server.use(
+      http.post(`${BACKEND_API}/api/function/create`, async ({ request }) => {
+        capturedRequest = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json([
+          { path: 'func.yaml', mode: '100644', content: 'name: my-func', type: 'blob' },
+        ]);
+      }),
+    );
+
+    renderPage();
+    await fillForm(user);
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+    const envSection = screen.getByRole('group', { name: /Environment Variables/ });
+    const nameInput = within(envSection).getAllByRole('textbox', { name: /^Name$/ })[0];
+    const valueInput = within(envSection).getByRole('textbox', { name: /^Value$/ });
+
+    expect(nameInput).toBeInTheDocument();
+    expect(valueInput).toBeInTheDocument();
+
+    await user.type(nameInput, 'MY_VAR');
+    await user.type(valueInput, 'my-value');
+    await user.click(screen.getByRole('button', { name: /Create/ }));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/faas');
+    });
+
+    expect(capturedRequest).toBeTruthy();
+    expect(capturedRequest!.envVars).toEqual([
+      { name: 'MY_VAR', source: 'value', value: 'my-value', resourceName: '', resourceKey: '' },
+    ]);
   });
 });

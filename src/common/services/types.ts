@@ -16,6 +16,33 @@ export interface FunctionConfig {
   registry: string;
   namespace: string;
   branch: string;
+  envVars?: EnvVar[];
+}
+
+export type EnvVarSource = 'value' | 'secret' | 'configMap';
+
+export interface EnvVar {
+  name: string;
+  source: EnvVarSource;
+  value: string;
+  resourceName: string;
+  resourceKey: string;
+}
+
+export interface PlainEnvVar {
+  name: string;
+  value: string;
+}
+
+export interface ResourceEnvVar {
+  name: string;
+  resourceName: string;
+  resourceKey: string;
+}
+
+export interface K8sKeyedResource {
+  name: string;
+  keys: string[];
 }
 
 export type FunctionRuntime = 'node' | 'python' | 'go' | 'quarkus';

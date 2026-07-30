@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -16,12 +17,21 @@ import (
 	"knative.dev/func/pkg/functions"
 )
 
+type envVarEntry struct {
+	Name         string `json:"name"`
+	Source       string `json:"source"`
+	Value        string `json:"value"`
+	ResourceName string `json:"resourceName"`
+	ResourceKey  string `json:"resourceKey"`
+}
+
 type funcCreateRequest struct {
-	Name      string `json:"name"`
-	Runtime   string `json:"runtime"`
-	Registry  string `json:"registry"`
-	Namespace string `json:"namespace"`
-	Branch    string `json:"branch"`
+	Name      string        `json:"name"`
+	Runtime   string        `json:"runtime"`
+	Registry  string        `json:"registry"`
+	Namespace string        `json:"namespace"`
+	Branch    string        `json:"branch"`
+	EnvVars   []envVarEntry `json:"envVars,omitempty"`
 }
 
 // validName restricts function names to lowercase DNS-label characters.
@@ -98,6 +108,13 @@ func handleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(cfg.EnvVars) > 0 {
+		if err := injectEnvVars(root, cfg.EnvVars); err != nil {
+			jsonError(w, "failed to inject environment variables: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
 	var files []fileEntry
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -160,4 +177,29 @@ func generateCIWorkflow(root, runtime, branch, registry string) error {
 		Root:    root,
 		Runtime: runtime,
 	})
+}
+
+func envVarToFuncEnv(ev envVarEntry) functions.Env {
+	name := ev.Name
+	var value string
+	switch ev.Source {
+	case "secret":
+		value = fmt.Sprintf("{{ secret:%s:%s }}", ev.ResourceName, ev.ResourceKey)
+	case "configMap":
+		value = fmt.Sprintf("{{ configMap:%s:%s }}", ev.ResourceName, ev.ResourceKey)
+	default:
+		value = ev.Value
+	}
+	return functions.Env{Name: &name, Value: &value}
+}
+
+func injectEnvVars(root string, envs []envVarEntry) error {
+	fn, err := functions.NewFunction(root)
+	if err != nil {
+		return err
+	}
+	for _, ev := range envs {
+		fn.Run.Envs = append(fn.Run.Envs, envVarToFuncEnv(ev))
+	}
+	return fn.Write()
 }

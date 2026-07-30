@@ -21,13 +21,13 @@ argument-hint: "[--dry-run] [JIRA-TICKET-OR-URL]"
 3. **Branch**:
 
    ```bash
-   ./hack/branch.sh $@
+   ./hack/branch.sh $ARGUMENTS
    ```
 
 4. **Read ticket**:
 
    ```bash
-   ./hack/read-ticket.sh $@
+   ./hack/read-ticket.sh $ARGUMENTS
    ```
 
    Follow the ACTION in the output.
