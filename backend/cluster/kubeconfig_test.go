@@ -41,8 +41,10 @@ func fullFakeClient(token string) (*k8sClient, *fake.Clientset) {
 
 var _ = Describe("GenerateKubeconfig", func() {
 
-	It("provisions RBAC and returns a valid kubeconfig", func() {
-		cl, _ := fullFakeClient("sa-token-value")
+	It("returns a valid kubeconfig with the token and server URL", func() {
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "serviceaccounts", tokenReactor("sa-token-value"))
+		cl := &k8sClient{clientset: cs}
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
 
@@ -61,7 +63,9 @@ var _ = Describe("GenerateKubeconfig", func() {
 	})
 
 	It("embeds the CA certificate when the cluster uses a private CA", func() {
-		cl, _ := fullFakeClient("sa-token-value")
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "serviceaccounts", tokenReactor("sa-token-value"))
+		cl := &k8sClient{clientset: cs}
 		caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, caCert)
@@ -72,66 +76,6 @@ var _ = Describe("GenerateKubeconfig", func() {
 		clusters := parsed["clusters"].([]any)
 		cluster := clusters[0].(map[string]any)["cluster"].(map[string]any)
 		Expect(cluster).To(HaveKey("certificate-authority-data"))
-	})
-
-	It("returns an error when creating the service account fails", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			if action.GetSubresource() == "" {
-				return true, nil, forbiddenFor("serviceaccounts")
-			}
-			return false, nil, nil
-		})
-		cl := &k8sClient{clientset: cs}
-
-		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("create service account"))
-	})
-
-	It("returns an error when applying the role fails", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "roles", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			return true, nil, forbiddenFor("roles")
-		})
-		cl := &k8sClient{clientset: cs}
-
-		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("apply role"))
-	})
-
-	It("returns an error when creating the role binding fails", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			return true, nil, forbiddenFor("rolebindings")
-		})
-		cl := &k8sClient{clientset: cs}
-
-		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("create role binding"))
-	})
-
-	It("returns an error when creating the image builder binding fails", func() {
-		rbCount := 0
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "rolebindings", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			rbCount++
-			if rbCount == 1 {
-				return false, nil, nil
-			}
-			return true, nil, forbiddenFor("rolebindings")
-		})
-		cl := &k8sClient{clientset: cs}
-
-		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("image builder binding"))
 	})
 
 	It("returns an error when requesting the service account token fails", func() {
@@ -151,7 +95,9 @@ var _ = Describe("GenerateKubeconfig", func() {
 	})
 
 	It("returns an error when the external API server URL is empty", func() {
-		cl, _ := fullFakeClient("sa-token-value")
+		cs := fake.NewSimpleClientset()
+		cs.PrependReactor("create", "serviceaccounts", tokenReactor("sa-token-value"))
+		cl := &k8sClient{clientset: cs}
 
 		_, err := GenerateKubeconfig(context.Background(), cl, "default", "", nil)
 

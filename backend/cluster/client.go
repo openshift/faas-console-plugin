@@ -21,10 +21,14 @@ const (
 )
 
 type Client interface {
-	CreateServiceAccount(ctx context.Context, namespace string) error
-	ApplyRole(ctx context.Context, namespace string) error
-	CreateRoleBinding(ctx context.Context, namespace string) error
-	CreateImageBuilderBinding(ctx context.Context, namespace string) error
+	CreateServiceAccount(ctx context.Context, namespace string) (bool, error)
+	DeleteServiceAccount(ctx context.Context, namespace string) error
+	ApplyRole(ctx context.Context, namespace string) (bool, error)
+	DeleteRole(ctx context.Context, namespace string) error
+	CreateRoleBinding(ctx context.Context, namespace string) (bool, error)
+	DeleteRoleBinding(ctx context.Context, namespace string) error
+	CreateImageBuilderBinding(ctx context.Context, namespace string) (bool, error)
+	DeleteImageBuilderBinding(ctx context.Context, namespace string) error
 	RequestToken(ctx context.Context, namespace string) (string, error)
 }
 
@@ -75,45 +79,67 @@ type k8sClient struct {
 	clientset kubernetes.Interface
 }
 
-func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) error {
+func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
 	sa := &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{Name: saName, Namespace: namespace},
 	}
 	_, err := c.clientset.CoreV1().ServiceAccounts(namespace).Create(ctx, sa, metav1.CreateOptions{})
 	if k8serrors.IsAlreadyExists(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("create service account: %w", err)
+	}
+	return true, nil
+}
+
+func (c *k8sClient) DeleteServiceAccount(ctx context.Context, namespace string) error {
+	err := c.clientset.CoreV1().ServiceAccounts(namespace).Delete(ctx, saName, metav1.DeleteOptions{})
+	if k8serrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("create service account: %w", err)
+		return fmt.Errorf("delete service account: %w", err)
 	}
 	return nil
 }
 
-func (c *k8sClient) ApplyRole(ctx context.Context, namespace string) error {
+func (c *k8sClient) ApplyRole(ctx context.Context, namespace string) (bool, error) {
 	body := roleBody(namespace)
 	_, err := c.clientset.RbacV1().Roles(namespace).Create(ctx, body, metav1.CreateOptions{})
 	if err == nil {
-		return nil
+		return true, nil
 	}
 	if !k8serrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create role: %w", err)
+		return false, fmt.Errorf("create role: %w", err)
 	}
 
 	existing, err := c.clientset.RbacV1().Roles(namespace).Get(ctx, roleName, metav1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("get existing role: %w", err)
+		return false, fmt.Errorf("get existing role: %w", err)
 	}
 	if existing.ResourceVersion == "" {
-		return fmt.Errorf("role metadata missing resourceVersion")
+		return false, fmt.Errorf("role metadata missing resourceVersion")
 	}
 	body.ResourceVersion = existing.ResourceVersion
 	if _, err = c.clientset.RbacV1().Roles(namespace).Update(ctx, body, metav1.UpdateOptions{}); err != nil {
-		return fmt.Errorf("update role: %w", err)
+		return false, fmt.Errorf("update role: %w", err)
+	}
+	return false, nil
+}
+
+func (c *k8sClient) DeleteRole(ctx context.Context, namespace string) error {
+	err := c.clientset.RbacV1().Roles(namespace).Delete(ctx, roleName, metav1.DeleteOptions{})
+	if k8serrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delete role: %w", err)
 	}
 	return nil
 }
 
-func (c *k8sClient) CreateRoleBinding(ctx context.Context, namespace string) error {
+func (c *k8sClient) CreateRoleBinding(ctx context.Context, namespace string) (bool, error) {
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: namespace},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: saName, Namespace: namespace}},
@@ -125,15 +151,26 @@ func (c *k8sClient) CreateRoleBinding(ctx context.Context, namespace string) err
 	}
 	_, err := c.clientset.RbacV1().RoleBindings(namespace).Create(ctx, rb, metav1.CreateOptions{})
 	if k8serrors.IsAlreadyExists(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("create role binding: %w", err)
+	}
+	return true, nil
+}
+
+func (c *k8sClient) DeleteRoleBinding(ctx context.Context, namespace string) error {
+	err := c.clientset.RbacV1().RoleBindings(namespace).Delete(ctx, roleName, metav1.DeleteOptions{})
+	if k8serrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("create role binding: %w", err)
+		return fmt.Errorf("delete role binding: %w", err)
 	}
 	return nil
 }
 
-func (c *k8sClient) CreateImageBuilderBinding(ctx context.Context, namespace string) error {
+func (c *k8sClient) CreateImageBuilderBinding(ctx context.Context, namespace string) (bool, error) {
 	name := saName + "-image-builder"
 	rb := &rbacv1.RoleBinding{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -146,10 +183,22 @@ func (c *k8sClient) CreateImageBuilderBinding(ctx context.Context, namespace str
 	}
 	_, err := c.clientset.RbacV1().RoleBindings(namespace).Create(ctx, rb, metav1.CreateOptions{})
 	if k8serrors.IsAlreadyExists(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("create image builder binding: %w", err)
+	}
+	return true, nil
+}
+
+func (c *k8sClient) DeleteImageBuilderBinding(ctx context.Context, namespace string) error {
+	name := saName + "-image-builder"
+	err := c.clientset.RbacV1().RoleBindings(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if k8serrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("create image builder binding: %w", err)
+		return fmt.Errorf("delete image builder binding: %w", err)
 	}
 	return nil
 }

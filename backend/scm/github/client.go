@@ -237,3 +237,11 @@ func (c *ghClient) StoreSecret(ctx context.Context, owner, repo, name, value str
 	}
 	return nil
 }
+
+func (c *ghClient) DeleteRepo(ctx context.Context, owner, repo string) error {
+	_, err := c.client.Repositories.Delete(ctx, owner, repo)
+	if err != nil {
+		return fmt.Errorf("delete repo: %w", mapErr(err))
+	}
+	return nil
+}

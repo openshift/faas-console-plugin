@@ -19,6 +19,7 @@ type scmStub struct {
 	pushFiles   func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error
 	initRepo    func(ctx context.Context, owner, name, branch string, topics []string) error
 	storeSecret func(ctx context.Context, owner, repo, name, value string) error
+	deleteRepo  func(ctx context.Context, owner, repo string) error
 }
 
 func (s *scmStub) GetUser(ctx context.Context) (*scm.User, error) {
@@ -56,6 +57,13 @@ func (s *scmStub) StoreSecret(ctx context.Context, owner, repo, name, value stri
 	return nil
 }
 
+func (s *scmStub) DeleteRepo(ctx context.Context, owner, repo string) error {
+	if s.deleteRepo != nil {
+		return s.deleteRepo(ctx, owner, repo)
+	}
+	return nil
+}
+
 
 func withSCMStub(stub scm.Client) {
 	orig := config.SCMRegistry
@@ -66,39 +74,43 @@ func withSCMStub(stub scm.Client) {
 }
 
 type clusterStub struct {
-	createServiceAccount      func(ctx context.Context, namespace string) error
-	applyRole                 func(ctx context.Context, namespace string) error
-	createRoleBinding         func(ctx context.Context, namespace string) error
-	createImageBuilderBinding func(ctx context.Context, namespace string) error
+	createServiceAccount      func(ctx context.Context, namespace string) (bool, error)
+	applyRole                 func(ctx context.Context, namespace string) (bool, error)
+	createRoleBinding         func(ctx context.Context, namespace string) (bool, error)
+	createImageBuilderBinding func(ctx context.Context, namespace string) (bool, error)
 	requestToken              func(ctx context.Context, namespace string) (string, error)
+	deleteServiceAccount      func(ctx context.Context, namespace string) error
+	deleteRole                func(ctx context.Context, namespace string) error
+	deleteRoleBinding         func(ctx context.Context, namespace string) error
+	deleteImageBuilderBinding func(ctx context.Context, namespace string) error
 }
 
-func (s *clusterStub) CreateServiceAccount(ctx context.Context, namespace string) error {
+func (s *clusterStub) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
 	if s.createServiceAccount != nil {
 		return s.createServiceAccount(ctx, namespace)
 	}
-	return nil
+	return true, nil
 }
 
-func (s *clusterStub) ApplyRole(ctx context.Context, namespace string) error {
+func (s *clusterStub) ApplyRole(ctx context.Context, namespace string) (bool, error) {
 	if s.applyRole != nil {
 		return s.applyRole(ctx, namespace)
 	}
-	return nil
+	return true, nil
 }
 
-func (s *clusterStub) CreateRoleBinding(ctx context.Context, namespace string) error {
+func (s *clusterStub) CreateRoleBinding(ctx context.Context, namespace string) (bool, error) {
 	if s.createRoleBinding != nil {
 		return s.createRoleBinding(ctx, namespace)
 	}
-	return nil
+	return true, nil
 }
 
-func (s *clusterStub) CreateImageBuilderBinding(ctx context.Context, namespace string) error {
+func (s *clusterStub) CreateImageBuilderBinding(ctx context.Context, namespace string) (bool, error) {
 	if s.createImageBuilderBinding != nil {
 		return s.createImageBuilderBinding(ctx, namespace)
 	}
-	return nil
+	return true, nil
 }
 
 func (s *clusterStub) RequestToken(ctx context.Context, namespace string) (string, error) {
@@ -106,6 +118,34 @@ func (s *clusterStub) RequestToken(ctx context.Context, namespace string) (strin
 		return s.requestToken(ctx, namespace)
 	}
 	return "stub-token", nil
+}
+
+func (s *clusterStub) DeleteServiceAccount(ctx context.Context, namespace string) error {
+	if s.deleteServiceAccount != nil {
+		return s.deleteServiceAccount(ctx, namespace)
+	}
+	return nil
+}
+
+func (s *clusterStub) DeleteRole(ctx context.Context, namespace string) error {
+	if s.deleteRole != nil {
+		return s.deleteRole(ctx, namespace)
+	}
+	return nil
+}
+
+func (s *clusterStub) DeleteRoleBinding(ctx context.Context, namespace string) error {
+	if s.deleteRoleBinding != nil {
+		return s.deleteRoleBinding(ctx, namespace)
+	}
+	return nil
+}
+
+func (s *clusterStub) DeleteImageBuilderBinding(ctx context.Context, namespace string) error {
+	if s.deleteImageBuilderBinding != nil {
+		return s.deleteImageBuilderBinding(ctx, namespace)
+	}
+	return nil
 }
 
 func withClusterStub(stub cluster.Client) {

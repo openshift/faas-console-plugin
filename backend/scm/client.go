@@ -46,6 +46,7 @@ type Client interface {
 	PushFiles(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
+	DeleteRepo(ctx context.Context, owner, repo string) error
 }
 
 type User struct {

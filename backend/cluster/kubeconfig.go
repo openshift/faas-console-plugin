@@ -13,19 +13,6 @@ func GenerateKubeconfig(ctx context.Context, client Client, namespace, externalA
 		return "", fmt.Errorf("API server URL is required")
 	}
 
-	if err := client.CreateServiceAccount(ctx, namespace); err != nil {
-		return "", fmt.Errorf("create service account: %w", err)
-	}
-	if err := client.ApplyRole(ctx, namespace); err != nil {
-		return "", fmt.Errorf("apply role: %w", err)
-	}
-	if err := client.CreateRoleBinding(ctx, namespace); err != nil {
-		return "", fmt.Errorf("create role binding: %w", err)
-	}
-	if err := client.CreateImageBuilderBinding(ctx, namespace); err != nil {
-		return "", fmt.Errorf("create image builder binding: %w", err)
-	}
-
 	token, err := client.RequestToken(ctx, namespace)
 	if err != nil {
 		return "", fmt.Errorf("request token: %w", err)
