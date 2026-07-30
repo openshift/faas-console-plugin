@@ -1,0 +1,98 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "UTC",
+  "schedule": ["* 6 * * *"],
+  "minimumReleaseAge": "7 days",
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "groupName": "patternfly",
+      "matchPackageNames": ["@patternfly/*"]
+    },
+    {
+      "matchPackageNames": ["@patternfly/*"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "groupName": "console-sdk",
+      "matchPackageNames": [
+        "@openshift-console/dynamic-plugin-sdk",
+        "@openshift-console/dynamic-plugin-sdk-webpack"
+      ]
+    },
+    {
+      "matchPackageNames": [
+        "@openshift-console/dynamic-plugin-sdk",
+        "@openshift-console/dynamic-plugin-sdk-webpack"
+      ],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "groupName": "react",
+      "matchPackageNames": [
+        "react",
+        "react-dom",
+        "react-redux",
+        "react-router",
+        "react-i18next"
+      ],
+      "enabled": false
+    },
+    {
+      "groupName": "lint",
+      "matchPackageNames": [
+        "eslint",
+        "eslint-*",
+        "prettier",
+        "stylelint",
+        "stylelint-*",
+        "typescript-eslint"
+      ],
+      "schedule": ["* 6 1,15 * *"]
+    },
+    {
+      "groupName": "test",
+      "matchPackageNames": [
+        "vitest",
+        "@vitest/*",
+        "@playwright/*",
+        "@testing-library/*",
+        "jsdom",
+        "msw"
+      ],
+      "schedule": ["* 6 1,15 * *"]
+    },
+    {
+      "groupName": "webpack",
+      "matchPackageNames": [
+        "webpack",
+        "webpack-cli",
+        "webpack-dev-server",
+        "ts-loader",
+        "css-loader",
+        "style-loader",
+        "copy-webpack-plugin"
+      ]
+    },
+    {
+      "matchPackageNames": ["@types/node", "@types/react"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "groupName": "gomod",
+      "matchManagers": ["gomod"]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["k8s.io/*", "sigs.k8s.io/*"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    }
+  ]
+}
