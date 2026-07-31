@@ -2,12 +2,16 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "timezone": "UTC",
-  "schedule": ["* 6 * * *"],
+  "schedule": ["before 7am"],
   "minimumReleaseAge": "7 days",
   "lockFileMaintenance": {
     "enabled": true
   },
   "packageRules": [
+    {
+      "groupName": "misc",
+      "matchManagers": ["npm"]
+    },
     {
       "groupName": "patternfly",
       "matchPackageNames": ["@patternfly/*"]
@@ -53,7 +57,7 @@
         "stylelint-*",
         "typescript-eslint"
       ],
-      "schedule": ["* 6 1,15 * *"]
+      "schedule": ["before 7am on Monday"]
     },
     {
       "groupName": "test",
@@ -65,7 +69,7 @@
         "jsdom",
         "msw"
       ],
-      "schedule": ["* 6 1,15 * *"]
+      "schedule": ["before 7am on Monday"]
     },
     {
       "groupName": "webpack",
@@ -90,7 +94,7 @@
     },
     {
       "matchManagers": ["gomod"],
-      "matchPackageNames": ["k8s.io/*", "sigs.k8s.io/*"],
+      "matchPackageNames": ["k8s.io/*", "sigs.k8s.io/*", "knative.dev/*"],
       "matchUpdateTypes": ["major", "minor"],
       "enabled": false
     }
