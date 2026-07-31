@@ -35,7 +35,20 @@ fi
 
 # --- Install Helm ---
 echo "Installing Helm..."
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION=v3.21.3 bash
+HELM_VERSION="v3.21.3"
+HELM_INSTALL_DIR="$(mktemp -d)"
+case "$(uname -m)" in
+  x86_64)  HELM_ARCH="amd64"; HELM_SHA256="15e041a93a590dce8100f39385cd98c84a765c9e36aeeb9e2dc6ff9e4769e2e0" ;;
+  aarch64) HELM_ARCH="arm64"; HELM_SHA256="67f58155079ff9ffab98ba5c88daff0ed9b542f3a4732f5dd426dde7dd0f5244" ;;
+  *) echo "Unsupported architecture: $(uname -m)"; exit 1 ;;
+esac
+HELM_TARBALL="helm-${HELM_VERSION}-linux-${HELM_ARCH}.tar.gz"
+curl -fsSL -o "${HELM_INSTALL_DIR}/${HELM_TARBALL}" "https://get.helm.sh/${HELM_TARBALL}"
+echo "${HELM_SHA256}  ${HELM_INSTALL_DIR}/${HELM_TARBALL}" | sha256sum --check
+tar -xzf "${HELM_INSTALL_DIR}/${HELM_TARBALL}" -C "${HELM_INSTALL_DIR}" --strip-components=1 "linux-${HELM_ARCH}/helm"
+rm -f "${HELM_INSTALL_DIR}/${HELM_TARBALL}"
+export PATH="${HELM_INSTALL_DIR}:${PATH}"
+echo "Helm installed: $(helm version --short)"
 
 # --- Deploy plugin ---
 oc new-project "${PLUGIN_NAMESPACE}" || oc project "${PLUGIN_NAMESPACE}"
