@@ -35,7 +35,9 @@ fi
 
 # --- Install Helm ---
 echo "Installing Helm..."
-curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION=v3.21.3 bash
+HELM_DIR=$(mktemp -d)
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | HELM_INSTALL_DIR="$HELM_DIR" bash -s -- --no-sudo --version v3.21.3
+export PATH="$HELM_DIR:$PATH"
 
 # --- Deploy plugin ---
 oc new-project "${PLUGIN_NAMESPACE}" || oc project "${PLUGIN_NAMESPACE}"
