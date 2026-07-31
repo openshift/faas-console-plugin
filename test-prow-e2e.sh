@@ -33,6 +33,10 @@ if [[ -z "${PLUGIN_PULL_SPEC:-}" ]]; then
   exit 1
 fi
 
+# --- Install Helm ---
+echo "Installing Helm..."
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION=v3.21.3 bash
+
 # --- Deploy plugin ---
 oc new-project "${PLUGIN_NAMESPACE}" || oc project "${PLUGIN_NAMESPACE}"
 
