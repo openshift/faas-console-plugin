@@ -99,7 +99,7 @@
     "postcss": ">=8.5.23",
     "vite": ">=8.0.16",
     "ws": ">=8.21.1",
-    "minimatch": ">=10.2.5"
+    "minimatch": ">=10.2.6"
   },
   "packageManager": "yarn@4.13.0",
   "dependencies": {
