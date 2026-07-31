@@ -18,6 +18,7 @@ We use Jira for planning and tracking. Issues are organized as:
 
 - **Epics** group related stories under a single initiative (see [epic template](templates/jira-epic-template.md))
 - **Stories** describe a unit of deliverable work (see [story template](templates/jira-story-template.md))
+- **Bugs** describe a defect to fix (see [bug template](templates/jira-bug-template.md))
 - **Sub-tasks** break a story into smaller pieces when needed
 
 ## Jira Story Status
