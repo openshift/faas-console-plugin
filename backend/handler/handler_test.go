@@ -64,7 +64,6 @@ func (s *scmStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-
 func withSCMStub(stub scm.Client) {
 	orig := config.SCMRegistry
 	config.SCMRegistry = scm.Registry{

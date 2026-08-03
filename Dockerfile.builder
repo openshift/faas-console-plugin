@@ -1,0 +1,27 @@
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26
+
+USER root
+
+# Corepack + Yarn 4 (Node.js 22 is already in the base image)
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+    COREPACK_HOME=/tmp/corepack
+RUN npm i -g corepack && corepack enable
+
+# Helm (checksum-verified download instead of piping install script from main)
+ARG HELM_VERSION=v3.21.3
+ARG HELM_SHA256_amd64=15e041a93a590dce8100f39385cd98c84a765c9e36aeeb9e2dc6ff9e4769e2e0
+ARG HELM_SHA256_arm64=67f58155079ff9ffab98ba5c88daff0ed9b542f3a4732f5dd426dde7dd0f5244
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
+    && eval "CHECKSUM=\${HELM_SHA256_${ARCH}}" \
+    && curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${ARCH}.tar.gz" -o /tmp/helm.tar.gz \
+    && echo "${CHECKSUM}  /tmp/helm.tar.gz" | sha256sum -c - \
+    && tar xzf /tmp/helm.tar.gz --strip-components=1 -C /usr/local/bin "linux-${ARCH}/helm" \
+    && rm /tmp/helm.tar.gz
+
+# Playwright system dependencies (Chromium)
+RUN dnf install -y \
+    nss atk at-spi2-atk cups-libs libdrm libXcomposite libXdamage libXrandr \
+    mesa-libgbm pango alsa-lib libxkbcommon \
+    && dnf clean all
+
+USER 1001

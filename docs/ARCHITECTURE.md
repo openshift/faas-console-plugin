@@ -119,7 +119,7 @@ Go + `net/http` standard library. Key dependencies:
 ### Key Decisions
 
 **Cluster host resolution: explicit parameter via `--kube-host` flag**
-`cluster.New(host, token, caCert)` accepts the API server URL as an explicit parameter. Empty host triggers `rest.InClusterConfig()` (production pods). In dev, `init.sh` passes `--kube-host $KUBE_API_SERVER` to the backend binary; in tests, it is passed directly to `cluster.New`. Env var injection (`KUBERNETES_SERVICE_HOST`) was explicitly rejected as it abuses a Kubernetes-standardized variable and creates hidden ambient state.
+`cluster.New(host, token, caCert)` accepts the API server URL as an explicit parameter. Empty host triggers `rest.InClusterConfig()` (production pods). In dev, `hack/dev.sh` passes `--kube-host $KUBE_API_SERVER` to the backend binary; in tests, it is passed directly to `cluster.New`. Env var injection (`KUBERNETES_SERVICE_HOST`) was explicitly rejected as it abuses a Kubernetes-standardized variable and creates hidden ambient state.
 
 **External API URL resolved at Helm install time**
 The URL embedded in generated kubeconfigs (`externalAPIServerURL`) comes from the Infrastructure CR (`config.openshift.io/v1/Infrastructure/cluster`) via Helm `lookup` at install time, injected as `--external-api-server-url`. It is not fetched at runtime. This eliminates the need for a `ClusterRole` to query the Infrastructure CR from within the pod.

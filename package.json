@@ -6,14 +6,13 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/functions-dev/ocp-console-plugin.git"
+    "url": "https://github.com/openshift/faas-console-plugin.git"
   },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "yarn clean && NODE_ENV=production yarn webpack",
     "build-dev": "yarn clean && yarn webpack",
     "start": "yarn webpack serve --progress",
-    "start-console": "./start-console.sh",
     "test": "vitest run",
     "i18n": "i18next-cli extract",
     "lint": "yarn eslint src e2e && stylelint 'src/**/*.css' --allow-empty-input",

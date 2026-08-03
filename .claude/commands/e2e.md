@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read, Write, Edit, Bash(npx playwright test*), Bash(yarn test:e2e*), Bash(grep *), Bash(find *), Bash(npx tsc*), mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_console_messages, mcp__playwright__browser_click, mcp__playwright__browser_close
+allowed-tools: Read, Write, Edit, Bash(npx playwright test*), Bash(make test-e2e*), Bash(grep *), Bash(find *), Bash(npx tsc*), mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_console_messages, mcp__playwright__browser_click, mcp__playwright__browser_close
 description: Scaffold and debug Playwright e2e tests for a feature
 ---
 
@@ -100,7 +100,7 @@ Start by reading `docs/TESTING.md` (E2e Conventions section) for the full refere
 
    ```bash
    npx tsc --noEmit -p e2e/tsconfig.json
-   yarn test:e2e e2e/use-cases/<feature>/
+   make test-e2e ARGS="e2e/use-cases/<feature>/"
    ```
 
 6. **Debug failures** -- when a test fails:
@@ -121,7 +121,7 @@ Start by reading `docs/TESTING.md` (E2e Conventions section) for the full refere
 7. **Iterate** until all tests pass. Run the full suite once at the end:
 
    ```bash
-   yarn test:e2e
+   make test-e2e
    ```
 
 ## Rules

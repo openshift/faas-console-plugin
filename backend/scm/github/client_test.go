@@ -22,7 +22,6 @@ func newClient(handler http.HandlerFunc) scm.Client {
 	return NewWithBaseURL("test-pat", srv.URL)
 }
 
-
 var _ = Describe("GitHub SCM client", func() {
 
 	Describe("GetUser", func() {

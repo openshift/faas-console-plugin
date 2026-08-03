@@ -42,9 +42,7 @@ func fullFakeClient(token string) (*k8sClient, *fake.Clientset) {
 var _ = Describe("GenerateKubeconfig", func() {
 
 	It("returns a valid kubeconfig with the token and server URL", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "serviceaccounts", tokenReactor("sa-token-value"))
-		cl := &k8sClient{clientset: cs}
+		cl, _ := fullFakeClient("sa-token-value")
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
 
@@ -63,9 +61,7 @@ var _ = Describe("GenerateKubeconfig", func() {
 	})
 
 	It("embeds the CA certificate when the cluster uses a private CA", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "serviceaccounts", tokenReactor("sa-token-value"))
-		cl := &k8sClient{clientset: cs}
+		cl, _ := fullFakeClient("sa-token-value")
 		caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
 
 		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, caCert)
@@ -95,9 +91,7 @@ var _ = Describe("GenerateKubeconfig", func() {
 	})
 
 	It("returns an error when the external API server URL is empty", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "serviceaccounts", tokenReactor("sa-token-value"))
-		cl := &k8sClient{clientset: cs}
+		cl, _ := fullFakeClient("sa-token-value")
 
 		_, err := GenerateKubeconfig(context.Background(), cl, "default", "", nil)
 
