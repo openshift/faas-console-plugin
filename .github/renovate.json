@@ -89,6 +89,10 @@
       "enabled": false
     },
     {
+      "groupName": "java",
+      "matchManagers": ["maven"]
+    },
+    {
       "groupName": "gomod",
       "matchManagers": ["gomod"]
     },
