@@ -16,7 +16,7 @@ COPY config/ config/
 COPY testing/ testing/
 RUN  yarn build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26 AS go-build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1785791459 AS go-build
 ARG TARGETOS
 ARG TARGETARCH
 
