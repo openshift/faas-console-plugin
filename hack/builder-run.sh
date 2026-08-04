@@ -23,7 +23,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/log.sh"
 
 BUILDER_IMAGE="${BUILDER_IMAGE:-localhost/faas-console-plugin-builder:latest}"
-CONTAINER_CMD="${CONTAINER_CMD:-$(command -v podman 2>/dev/null || echo docker)}"
+CONTAINER_CMD=podman
 
 log::step "Building builder image"
 if ! $CONTAINER_CMD build -f Dockerfile.builder -t "$BUILDER_IMAGE" . >/dev/null; then

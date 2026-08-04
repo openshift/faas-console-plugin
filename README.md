@@ -77,7 +77,7 @@ make undeploy
 - [Go](https://go.dev/dl/) (v1.26+)
 - [Helm](https://helm.sh/docs/intro/install/)
 - [oc](https://console.redhat.com/openshift/downloads) CLI
-- [Docker](https://www.docker.com) or [podman 3.2.0+](https://podman.io)
+- [Podman](https://podman.io) (v3.2.0+)
 - An [OpenShift cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
 - [gh](https://cli.github.com/) CLI (optional, enables your agent to create/update PRs)

@@ -54,14 +54,8 @@ echo "Console Image: $CONSOLE_IMAGE"
 echo "Console URL: http://localhost:${CONSOLE_PORT}"
 echo "Console Platform: $CONSOLE_IMAGE_PLATFORM"
 
-# Prefer podman if installed. Otherwise, fall back to docker.
-if [ -x "$(command -v podman)" ]; then
-    CONTAINER_CMD="podman"
-    PLUGIN_HOST="host.containers.internal"
-else
-    CONTAINER_CMD="docker"
-    PLUGIN_HOST="host.docker.internal"
-fi
+CONTAINER_CMD="podman"
+PLUGIN_HOST="host.containers.internal"
 CONTAINER_NETWORK_OPTS="-p ${CONSOLE_PORT}:9000"
 if [[ "$BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT" == *"crc.testing"* ]]; then
     CONTAINER_NETWORK_OPTS="${CONTAINER_NETWORK_OPTS} --add-host api.crc.testing:host-gateway"

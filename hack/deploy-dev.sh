@@ -16,7 +16,7 @@ source "${SCRIPT_DIR}/lib/log.sh"
 NAMESPACE="${NAMESPACE:-console-functions-plugin}"
 IMAGE_TAG="${IMAGE_TAG:-localhost/faas-console-plugin:latest}"
 PLUGIN_NAME="console-functions-plugin"
-CONTAINER_CMD=$(command -v podman 2>/dev/null || echo docker)
+CONTAINER_CMD=podman
 REGISTRY_PORT=5001
 INTERNAL_REGISTRY="image-registry.openshift-image-registry.svc:5000"
 
