@@ -70,9 +70,13 @@ done
 
 NETWORK_OPTS=()
 if grep -q 'api.crc.testing' "${KUBECONFIG:-/dev/null}" 2>/dev/null; then
-  NETWORK_OPTS+=(--add-host "api.crc.testing:host-gateway")
-  NETWORK_OPTS+=(--add-host "console-openshift-console.apps-crc.testing:host-gateway")
-  NETWORK_OPTS+=(--add-host "oauth-openshift.apps-crc.testing:host-gateway")
+  if [[ "$(uname)" == "Linux" ]]; then
+    NETWORK_OPTS+=(--net=host)
+  else
+    NETWORK_OPTS+=(--add-host "api.crc.testing:host-gateway")
+    NETWORK_OPTS+=(--add-host "console-openshift-console.apps-crc.testing:host-gateway")
+    NETWORK_OPTS+=(--add-host "oauth-openshift.apps-crc.testing:host-gateway")
+  fi
 fi
 
 log::step "Running: $*"
