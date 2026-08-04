@@ -109,6 +109,15 @@
     {
       "groupName": "images",
       "matchManagers": ["dockerfile"]
+    },
+    {
+      "matchPackageNames": ["/^quay\\.io\\/konflux-ci\\//"],
+      "minimumReleaseAge": "0 days",
+      "addLabels": [
+        "ok-to-test",
+        "approved",
+        "lgtm"
+      ]
     }
   ]
 }
