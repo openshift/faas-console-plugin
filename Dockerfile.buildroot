@@ -23,5 +23,3 @@ RUN dnf install -y \
     nss atk at-spi2-atk cups-libs libdrm libXcomposite libXdamage libXrandr \
     mesa-libgbm pango alsa-lib libxkbcommon \
     && dnf clean all
-
-USER 1001
