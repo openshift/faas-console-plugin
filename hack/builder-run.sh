@@ -16,7 +16,6 @@ set -euo pipefail
 #   KUBECONFIG=<kubeconfig PATH> \
 #   PLUGIN_PULL_SPEC=<a publicly accessible/accessible in the cluster image tag> \
 #   BRIDGE_KUBEADMIN_PASSWORD=<password> \
-#   CONTAINER_ENV=PLUGIN_PULL_SPEC,BRIDGE_KUBEADMIN_PASSWORD \
 #     ./hack/builder-run.sh make e2e
 #
 
@@ -64,8 +63,10 @@ if [ -n "${KUBECONFIG:-}" ]; then
   ENV_STR+=("-e" "KUBECONFIG=/kube/config")
 fi
 
-for VAR in ${CONTAINER_ENV//,/ }; do
-  ENV_STR+=("-e" "$VAR=${!VAR}")
+for VAR in PLUGIN_PULL_SPEC BRIDGE_KUBEADMIN_PASSWORD; do
+  if [ -n "${!VAR:-}" ]; then
+    ENV_STR+=("-e" "$VAR")
+  fi
 done
 
 NETWORK_OPTS=()
