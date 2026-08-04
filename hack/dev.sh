@@ -116,10 +116,10 @@ resolve_kube_api_server() {
 start_backend() {
   build_pages
   log::info "Building Go backend..."
-  (cd backend && go build -buildvcs=false -o ../bin/backend .)
+  make build-backend
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
   log::info "Starting Go backend..."
-  ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
+  ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
@@ -141,7 +141,7 @@ start_backend_watcher() {
 
       echo "[watcher] Detected change, rebuilding backend..."
       old_pid=$(cat "$PID_DIR/backend.pid" 2>/dev/null || true)
-      build_output=$(cd backend && go build -buildvcs=false -o ../bin/backend-tmp . 2>&1) && build_ok=true || build_ok=false
+      build_output=$(cd backend && go build -buildvcs=false -o ../bin/plugin-backend-tmp . 2>&1) && build_ok=true || build_ok=false
 
       if [ -n "$old_pid" ]; then
         kill_tree "$old_pid" 2>/dev/null || true
@@ -149,14 +149,14 @@ start_backend_watcher() {
       fi
 
       if $build_ok; then
-        mv bin/backend-tmp bin/backend
-        ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
+        mv bin/plugin-backend-tmp bin/plugin-backend
+        ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
       else
         echo "[watcher] Build failed. Starting error server."
         echo "$build_output"
-        rm -f bin/backend-tmp
+        rm -f bin/plugin-backend-tmp
         echo "$build_output" > "$LOG_DIR/backend-build-error.txt"
         ./bin/errserver --port "$BACKEND_PORT" --msg-file "$LOG_DIR/backend-build-error.txt" >>"$LOG_DIR/backend.log" 2>&1 &
         errserver_pid=$!
