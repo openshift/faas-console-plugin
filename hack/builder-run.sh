@@ -25,7 +25,7 @@ BUILDER_IMAGE="${BUILDER_IMAGE:-localhost/faas-console-plugin-builder:latest}"
 CONTAINER_CMD=podman
 
 log::step "Building builder image"
-if ! $CONTAINER_CMD build -f Dockerfile.builder -t "$BUILDER_IMAGE" . >/dev/null; then
+if ! $CONTAINER_CMD build -f Dockerfile.buildroot -t "$BUILDER_IMAGE" . >/dev/null; then
   log::error "Failed to build builder image"
   exit 1
 fi
