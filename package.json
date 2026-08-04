@@ -101,7 +101,7 @@
     "ws": ">=8.21.1",
     "minimatch": ">=10.2.6"
   },
-  "packageManager": "yarn@4.13.0",
+  "packageManager": "yarn@4.17.1",
   "dependencies": {
     "@octokit/rest": "^22.0.1",
     "@patternfly/react-code-editor": "~6.6.0",
