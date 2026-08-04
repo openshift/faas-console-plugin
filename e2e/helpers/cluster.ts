@@ -90,51 +90,51 @@ async function ensureServerlessOperator(page: Page): Promise<void> {
   const csvPath = `${K8S}/apis/operators.coreos.com/v1alpha1/namespaces/${SUBSCRIPTION_NS}/clusterserviceversions`;
 
   const csvCheck = await page.request.get(csvPath, { headers });
-  if (csvCheck.ok()) {
-    const body = await csvCheck.json();
-    if (body.items?.some((csv: CsvItem) => isServerlessReady(csv))) return;
+  const csvReady =
+    csvCheck.ok() && (await csvCheck.json()).items?.some((csv: CsvItem) => isServerlessReady(csv));
+
+  if (!csvReady) {
+    await ensureNamespace(page, SUBSCRIPTION_NS);
+
+    await createResourceIfNotExists(
+      page,
+      `${K8S}/apis/operators.coreos.com/v1/namespaces/${SUBSCRIPTION_NS}/operatorgroups`,
+      {
+        apiVersion: 'operators.coreos.com/v1',
+        kind: 'OperatorGroup',
+        metadata: { name: 'serverless-operators', namespace: SUBSCRIPTION_NS },
+      },
+    );
+
+    await createResourceIfNotExists(
+      page,
+      `${K8S}/apis/operators.coreos.com/v1alpha1/namespaces/${SUBSCRIPTION_NS}/subscriptions`,
+      {
+        apiVersion: 'operators.coreos.com/v1alpha1',
+        kind: 'Subscription',
+        metadata: { name: 'serverless-operator', namespace: SUBSCRIPTION_NS },
+        spec: {
+          channel: 'stable',
+          name: 'serverless-operator',
+          source: 'redhat-operators',
+          sourceNamespace: 'openshift-marketplace',
+          installPlanApproval: 'Automatic',
+        },
+      },
+    );
+
+    await expect
+      .poll(
+        async () => {
+          const res = await page.request.get(csvPath, { headers });
+          if (!res.ok()) return false;
+          const body = await res.json();
+          return body.items?.some((csv: CsvItem) => isServerlessReady(csv)) ?? false;
+        },
+        { timeout: 240_000, intervals: [2_000] },
+      )
+      .toBe(true);
   }
-
-  await ensureNamespace(page, SUBSCRIPTION_NS);
-
-  await createResourceIfNotExists(
-    page,
-    `${K8S}/apis/operators.coreos.com/v1/namespaces/${SUBSCRIPTION_NS}/operatorgroups`,
-    {
-      apiVersion: 'operators.coreos.com/v1',
-      kind: 'OperatorGroup',
-      metadata: { name: 'serverless-operators', namespace: SUBSCRIPTION_NS },
-    },
-  );
-
-  await createResourceIfNotExists(
-    page,
-    `${K8S}/apis/operators.coreos.com/v1alpha1/namespaces/${SUBSCRIPTION_NS}/subscriptions`,
-    {
-      apiVersion: 'operators.coreos.com/v1alpha1',
-      kind: 'Subscription',
-      metadata: { name: 'serverless-operator', namespace: SUBSCRIPTION_NS },
-      spec: {
-        channel: 'stable',
-        name: 'serverless-operator',
-        source: 'redhat-operators',
-        sourceNamespace: 'openshift-marketplace',
-        installPlanApproval: 'Automatic',
-      },
-    },
-  );
-
-  await expect
-    .poll(
-      async () => {
-        const res = await page.request.get(csvPath, { headers });
-        if (!res.ok()) return false;
-        const body = await res.json();
-        return body.items?.some((csv: CsvItem) => isServerlessReady(csv)) ?? false;
-      },
-      { timeout: 240_000, intervals: [2_000] },
-    )
-    .toBe(true);
 
   await ensureNamespace(page, SERVING_NS);
 

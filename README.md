@@ -2,9 +2,7 @@
 
 A Functions-as-a-Service PoC UI for the OpenShift Web Console. Developers create, edit, and deploy serverless functions without CLI knowledge.
 
-Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/console/tree/main/frontend/packages/console-dynamic-plugin-sdk) using React, TypeScript, and PatternFly 6.
-
-Check out the **[Github page](https://github.com/openshift/faas-console-plugin)** for a quick start or read ahead.
+Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/console/tree/main/frontend/packages/console-dynamic-plugin-sdk) using Go, React, TypeScript, and PatternFly 6.
 
 ## Team Values
 
@@ -46,43 +44,40 @@ Check out the **[Github page](https://github.com/openshift/faas-console-plugin)*
 ### Prerequisites
 
 - [oc](https://console.redhat.com/openshift/downloads) CLI
-- An [OpenShift 4.19 cluster](https://console.redhat.com/openshift/create)
+- [Helm](https://helm.sh/docs/intro/install/)
+- An [OpenShift 4.22+ cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content*, *secret* and *workflow* write permissions in all repositories
 
-### Quick install
+### Install
 
 ```shell
-oc new-project console-functions-plugin
-oc apply -f https://functions-dev.github.io/ocp-console-plugin/plugin.yaml
-```
-
-### Manual install (requires [Helm](https://helm.sh))
-
-```shell
-oc new-project console-functions-plugin
-helm upgrade -i console-functions-plugin charts/openshift-console-plugin \
-    -n console-functions-plugin --create-namespace \
-    --set "plugin.image=ghcr.io/functions-dev/ocp-console-plugin-functions-plugin:latest@sha256:<digest>"
+make deploy
 ```
 
 To deploy a specific build, use its git commit SHA as the tag:
 
 ```shell
---set "plugin.image=ghcr.io/functions-dev/ocp-console-plugin-functions-plugin:sha-<commit>"
+make deploy IMAGE=quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin:<commit>
 ```
 
-Available image tags are listed in the [container registry](https://github.com/functions-dev/ocp-console-plugin/pkgs/container/console-functions-plugin). Consult the chart [values](charts/openshift-console-plugin/values.yaml) file for additional parameters.
+Available image tags are listed in the [container registry](https://quay.io/repository/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin?tab=tags).
+
+To remove the plugin:
+
+```shell
+make undeploy
+```
 
 ## Development
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en/) (v18+)
+- [Node.js](https://nodejs.org/en/) (v22+)
 - [Yarn](https://yarnpkg.com) (v4)
-- [Go](https://go.dev/dl/) (v1.24+)
+- [Go](https://go.dev/dl/) (v1.26+)
 - [Helm](https://helm.sh/docs/intro/install/)
 - [oc](https://console.redhat.com/openshift/downloads) CLI
-- [Docker](https://www.docker.com) or [podman 3.2.0+](https://podman.io)
+- [Podman](https://podman.io) (v3.2.0+)
 - An [OpenShift cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
 - [gh](https://cli.github.com/) CLI (optional, enables your agent to create/update PRs)
@@ -90,69 +85,41 @@ Available image tags are listed in the [container registry](https://github.com/f
 - [Superpowers](https://github.com/obra/superpowers) (optional, enables your coding agents to brainstorm, write plans, use tdd, etc.)
 - [Jira CLI](https://github.com/ankitpokhrel/jira-cli/wiki/Installation) (optional, enables your coding agent to read Jira tickets)
 
+### Cluster setup
+
+```shell
+oc login ...
+make setup-serverless       # install Serverless operator + Knative Serving (optional)
+```
+
 ### Setup
 
-1. `oc login` to your OpenShift cluster
-2. `yarn install`
-3. `./init.sh`
-
-This builds the pages assets (plugin.yaml, landing page), compiles the Go backend, starts the webpack dev server, and launches the OpenShift console in a container. Navigate to <http://localhost:9000> to see the running plugin.
-
-To stop the dev environment:
-
 ```shell
-./init.sh --stop
+make dev                    # build + start webpack + console container
+make dev-stop               # stop dev environment
+make dev-randomize-ports    # start with random ports (when defaults are in use)
 ```
 
-To use random ports (useful when defaults are already in use):
+Navigate to <http://localhost:9000> to see the running plugin.
+
+### Testing
 
 ```shell
-./init.sh --randomize-ports
-```
-
-### Running e2e tests
-
-E2e tests use Playwright against a running cluster. Set `BRIDGE_GITHUB_PAT` in `.env` with a GitHub PAT that has `repo` scope, then:
-
-```shell
-yarn test:e2e              # all tests, headless
-yarn test:e2e:report       # open HTML report
-yarn test:e2e:headed       # visible browser
-yarn test:e2e:ui           # interactive UI mode
+make unit                               # frontend + backend unit tests
+make test-e2e                           # Playwright e2e (requires make dev running)
+make test-e2e ARGS="--headed"           # visible browser
+make test-e2e ARGS="--ui"              # interactive UI mode
 ```
 
 See [docs/TESTING.md](docs/TESTING.md#e2e-conventions) for full conventions, helpers, and environment variables.
 
-### Viewing GitHub Pages locally
+### Deploy to cluster
 
-The landing page served at [functions-dev.github.io/ocp-console-plugin](https://functions-dev.github.io/ocp-console-plugin/) is built from `pages/index.html` and the Helm chart. The `init.sh` script generates these assets into `backend/static/` automatically, so the running backend serves them at <http://localhost:8080>.
+To deploy a production-like image to the cluster instead of running locally:
 
-## Docker image
-
-Before you can deploy your plugin on a cluster, you must build an image and
-push it to an image registry.
-
-1. Build the image:
-
-   ```sh
-   docker build -t quay.io/my-repository/my-plugin:latest .
-   ```
-
-2. Run the image:
-
-   ```sh
-   docker run -it --rm -d -p 9001:80 quay.io/my-repository/my-plugin:latest
-   ```
-
-3. Push the image:
-
-   ```sh
-   docker push quay.io/my-repository/my-plugin:latest
-   ```
-
-NOTE: If you have a Mac with Apple silicon, you will need to add the flag
-`--platform=linux/amd64` when building the image to target the correct platform
-to run in-cluster.
+```shell
+make deploy-dev             # build image, push to internal registry, deploy
+```
 
 ## i18n
 
@@ -187,14 +154,14 @@ namespace. For example:
   }
 ```
 
-Running `yarn i18n` extracts translatable strings into the JSON files in the
-`locales` folder and regenerates TypeScript types in `config/i18next/`. The
-extraction configuration is in `i18next.config.ts`.
+Running `make verify` checks i18n freshness and extracts translatable strings
+into the JSON files in the `locales` folder. The extraction configuration is in
+`i18next.config.ts`.
 
 ## Linting
 
-This project adds prettier, eslint, and stylelint. Linting can be run with
-`yarn run lint`.
+This project adds prettier, eslint, stylelint, and golangci-lint. Linting can
+be run with `make lint`.
 
 The stylelint config disallows defining colors since these cause problems with dark
 mode. Use [PatternFly semantic tokens](https://www.patternfly.org/tokens/all-patternfly-tokens)

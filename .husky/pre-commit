@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-yarn i18n
-yarn lint
-yarn type-check
-
-cd backend
-go vet ./...
-unformatted="$(gofmt -l .)"
-if [ -n "$unformatted" ]; then
-  echo "Go files not formatted. Run: gofmt -w backend/"
-  echo "$unformatted"
-  exit 1
-fi
+make lint type-check verify

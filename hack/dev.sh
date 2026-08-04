@@ -2,6 +2,14 @@
 
 set -euo pipefail
 
+# Start local dev environment: Go backend + webpack dev server + console container.
+# Prerequisites: oc login
+# Optional: make setup-serverless (for full Knative/Serverless functionality)
+# Usage: make dev | make dev-stop | make dev-randomize-ports
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/log.sh"
+
 LOG_DIR=".dev-logs"
 CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
 BACKEND_PORT=8080
@@ -21,15 +29,15 @@ wait_for_port() {
       local pid
       pid=$(cat "$pidfile")
       if ! kill -0 "$pid" 2>/dev/null; then
-        echo "Error: $label process exited. Check $LOG_DIR/ for details."
+        log::error "$label process exited. Check $LOG_DIR/ for details."
         exit 1
       fi
     fi
     if [ $elapsed -ge $TIMEOUT ]; then
-      echo "Error: $label did not start within ${TIMEOUT}s. Check $LOG_DIR/ for details."
+      log::error "$label did not start within ${TIMEOUT}s. Check $LOG_DIR/ for details."
       exit 1
     fi
-    echo "Waiting for $label (port $port)... ${elapsed}s"
+    log::waiting "Waiting for $label (port $port)... ${elapsed}s"
     sleep 1
     elapsed=$((elapsed + 1))
   done
@@ -58,7 +66,7 @@ stop_pid() {
   if kill -0 "$pid" 2>/dev/null; then
     kill_tree "$pid"
     while kill -0 "$pid" 2>/dev/null; do sleep 0.1; done
-    echo "Stopped $label (PID $pid)."
+    log::info "Stopped $label (PID $pid)."
   fi
   rm -f "$pidfile"
 }
@@ -89,45 +97,39 @@ build_pages() {
     echo "Error: helm not found. Install from https://helm.sh/docs/intro/install/"
     exit 1
   fi
-
-  local plugin_name="console-functions-plugin"
-  echo "Building pages assets..."
-  helm template "$plugin_name" charts/openshift-console-plugin \
-    -n "$plugin_name" \
-    --set "plugin.image=ghcr.io/functions-dev/${plugin_name}:latest" \
-    --set "plugin.apiServerURL=$KUBE_API_SERVER" \
-    > backend/static/plugin.yaml
+  log::info "Building pages assets..."
+  make manifests
   cp pages/index.html backend/static/index.html
 }
 
 extract_cluster_ca() {
-  echo "Extracting cluster CA certificate..."
+  log::info "Extracting cluster CA certificate..."
   CA_FILE=$(mktemp -t cluster-ca.XXXXXX).crt
   oc get cm kube-root-ca.crt -n default -o jsonpath='{.data.ca\.crt}' > "$CA_FILE"
 }
 
 resolve_kube_api_server() {
-  echo "Resolving cluster API server URL..."
-  KUBE_API_SERVER=$(oc whoami --show-server)
+  log::info "Resolving cluster API server URL..."
+  export KUBE_API_SERVER=$(oc whoami --show-server)
 }
 
 start_backend() {
   build_pages
-  echo "Building Go backend..."
-  (cd backend && go build -buildvcs=false -o ../bin/backend .)
+  log::info "Building Go backend..."
+  make build-backend
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
-  echo "Starting Go backend..."
-  ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
+  log::info "Starting Go backend..."
+  ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
 start_backend_watcher() {
   if ! command -v inotifywait &>/dev/null; then
-    echo "Warning: inotifywait not found. Install inotify-tools for auto-recompile."
+    log::warn "inotifywait not found. Install inotify-tools for auto-recompile."
     return
   fi
 
-  echo "Starting backend file watcher..."
+  log::info "Starting backend file watcher..."
   (
     while true; do
       if ! inotifywait -r -e modify,create,delete,move --include '\.(go|mod|sum)$' backend/ >/dev/null 2>&1; then
@@ -139,7 +141,7 @@ start_backend_watcher() {
 
       echo "[watcher] Detected change, rebuilding backend..."
       old_pid=$(cat "$PID_DIR/backend.pid" 2>/dev/null || true)
-      build_output=$(cd backend && go build -buildvcs=false -o ../bin/backend-tmp . 2>&1) && build_ok=true || build_ok=false
+      build_output=$(cd backend && go build -buildvcs=false -o ../bin/plugin-backend-tmp . 2>&1) && build_ok=true || build_ok=false
 
       if [ -n "$old_pid" ]; then
         kill_tree "$old_pid" 2>/dev/null || true
@@ -147,14 +149,14 @@ start_backend_watcher() {
       fi
 
       if $build_ok; then
-        mv bin/backend-tmp bin/backend
-        ./bin/backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
+        mv bin/plugin-backend-tmp bin/plugin-backend
+        ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
       else
         echo "[watcher] Build failed. Starting error server."
         echo "$build_output"
-        rm -f bin/backend-tmp
+        rm -f bin/plugin-backend-tmp
         echo "$build_output" > "$LOG_DIR/backend-build-error.txt"
         ./bin/errserver --port "$BACKEND_PORT" --msg-file "$LOG_DIR/backend-build-error.txt" >>"$LOG_DIR/backend.log" 2>&1 &
         errserver_pid=$!
@@ -191,7 +193,7 @@ stop_console() {
   local cid
   cid=$(cat "$cidfile")
   if podman stop "$cid" >/dev/null 2>&1; then
-    echo "Stopped OpenShift console (container $cid)."
+    log::info "Stopped OpenShift console (container $cid)."
   fi
   rm -f "$cidfile"
 }
@@ -205,33 +207,32 @@ stop_dev() {
 
 check_prerequisites() {
   if ! command -v oc &>/dev/null; then
-    echo "Error: oc CLI not found. Install from https://console.redhat.com/openshift/downloads"
+    log::error "oc CLI not found. Install from https://console.redhat.com/openshift/downloads"
     exit 1
   fi
 
   if ! oc whoami &>/dev/null; then
-    echo "Error: not logged in to OpenShift. Run 'oc login' first."
+    log::error "Not logged in to OpenShift. Run 'oc login' first."
     exit 1
   fi
-
 }
 
 install_dependencies() {
   if [ ! -d "node_modules" ]; then
-    echo "Installing dependencies..."
+    log::info "Installing dependencies..."
     yarn install
   fi
 }
 
 start_plugin() {
-  echo "Starting plugin dev server..."
+  log::info "Starting plugin dev server..."
   PLUGIN_PORT="$PLUGIN_PORT" yarn start >"$LOG_DIR/webpack.log" 2>&1 &
   echo $! > "$PID_DIR/webpack.pid"
 }
 
 start_console() {
-  echo "Starting OpenShift console..."
-  ./start-console.sh \
+  log::info "Starting OpenShift console..."
+  ./hack/start-console.sh \
     --backend-port "$BACKEND_PORT" \
     --plugin-port "$PLUGIN_PORT" \
     --console-port "$CONSOLE_PORT" \
@@ -241,16 +242,16 @@ start_console() {
 }
 
 print_status() {
-  echo ""
-  echo "Dev environment started:"
-  echo "  Backend: http://localhost:$BACKEND_PORT"
-  echo "  Console: http://localhost:$CONSOLE_PORT"
-  echo "  Logs:    $LOG_DIR/"
-  echo ""
-  echo "To stop: ./init.sh --stop"
+  log::step "Dev environment started"
+  log::link "Backend" "http://localhost:$BACKEND_PORT"
+  log::link "Console" "http://localhost:$CONSOLE_PORT"
+  log::link "Logs" "$LOG_DIR/"
+  log::hint "To stop: make dev-stop"
+  log::hint "For full Knative integration: make setup-serverless"
 }
 
 main() {
+  log::step "Starting local dev environment"
   mkdir -p "$LOG_DIR" "$PID_DIR" bin
   check_prerequisites
   install_dependencies

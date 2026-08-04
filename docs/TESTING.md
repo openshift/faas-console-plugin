@@ -143,13 +143,19 @@ afterEach(() => {
 });
 ```
 
+### Running unit tests
+
+```bash
+make unit-frontend
+```
+
 ## E2e Conventions
 
 E2e tests run against a real OpenShift cluster. GitHub API calls are intercepted with `page.route()` mocks, while K8s API calls go to the real cluster. Each test file covers a single use case, exercising a flow from start to finish with `test.step` for structure.
 
 ### Prerequisites
 
-- A running OpenShift cluster with the plugin deployed (or a local dev environment via `init.sh`)
+- A running OpenShift cluster with the plugin deployed (or a local dev environment via `make dev`)
 - The OpenShift Serverless operator should be installed on the cluster (tests install it automatically, but first install takes several minutes)
 
 ### Environment
@@ -164,12 +170,12 @@ E2e tests run against a real OpenShift cluster. GitHub API calls are intercepted
 ### Running
 
 ```bash
-yarn test:e2e                                          # all tests, headless
-yarn test:e2e e2e/use-cases/creation/                  # one use-case directory
-yarn test:e2e e2e/use-cases/delete/function-delete.test.ts  # single file
-yarn test:e2e:headed                                   # visible browser
-yarn test:e2e:ui                                       # interactive UI mode
-yarn test:e2e:report                                   # open HTML report
+make test-e2e                                                   # all tests, headless
+make test-e2e ARGS="e2e/use-cases/creation/"                    # one use-case directory
+make test-e2e ARGS="e2e/use-cases/delete/function-delete.test.ts"  # single file
+make test-e2e ARGS="--headed"                                   # visible browser
+make test-e2e ARGS="--ui"                                       # interactive UI mode
+yarn test:e2e:report                                            # open HTML report (no make target)
 ```
 
 ### File Structure
@@ -282,15 +288,15 @@ E2e tests also run in CI via Prow/ci-operator against an ephemeral OCP cluster o
 1. ci-operator provisions an ephemeral cluster from the `openshift-org-aws` pool
 2. The `install-operators` pre-step installs the Serverless operator from `redhat-operators`
 3. ci-operator builds the plugin container image from the Dockerfile
-4. `test-prow-e2e.sh` deploys the plugin to the cluster via Helm, enables it on the console, then runs Playwright headless
+4. `hack/test-prow-e2e.sh` deploys the plugin to the cluster via Helm, enables it on the console, then runs Playwright headless
 5. Artifacts (JUnit XML, HTML report, screenshots, traces) are copied to `$ARTIFACT_DIR` for Prow Spyglass
 
 ### Configuration
 
 | File | Purpose |
 |------|---------|
-| `.ci-operator.yaml` | Build root image config (Node 22 base image for the `src` container) |
-| `test-prow-e2e.sh` | Prow e2e test entrypoint (reads cluster credentials, deploys plugin, runs tests) |
+| `Dockerfile.builder` | Builder image (Go 1.26 + Node 22 + Yarn 4 + Helm for the `src` container) |
+| `hack/test-prow-e2e.sh` | Prow e2e test entrypoint (reads cluster credentials, deploys plugin, runs tests) |
 
 The ci-operator job config lives in the `openshift/release` repo at `ci-operator/config/openshift/faas-console-plugin/`.
 
@@ -298,9 +304,10 @@ The ci-operator job config lives in the `openshift/release` repo at `ci-operator
 
 | Job | Type | What it runs |
 |-----|------|-------------|
-| `lint` | Container test (no cluster) | `yarn install --immutable && yarn run lint && yarn run build` |
-| `unit` | Container test (no cluster) | `yarn install --immutable && yarn run test` |
-| `e2e-aws` | Cluster test | `test-prow-e2e.sh` against an ephemeral OCP cluster |
+| `images` | Image build | Builds the plugin container image from `Dockerfile` (automatic ci-operator job) |
+| `lint` | Container test (no cluster) | `make lint` |
+| `unit` | Container test (no cluster) | `make unit` |
+| `e2e-aws` | Cluster test | `make e2e` against an ephemeral OCP cluster (with Serverless + Pipelines operators pre-installed) |
 
 ### Local vs CI differences
 
@@ -388,5 +395,5 @@ Use `DescribeTable` / `Entry` for validation and error variants to keep them con
 ### Running
 
 ```bash
-make test-backend
+make unit-backend
 ```
