@@ -1,6 +1,10 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "github>konflux-ci/mintmaker//config/renovate/renovate.json",
+    "config:best-practices"
+  ],
+  "enabledManagers": ["maven", "tekton", "gomod", "npm", "dockerfile"],
   "timezone": "UTC",
   "schedule": ["before 7am"],
   "minimumReleaseAge": "7 days",
@@ -101,6 +105,19 @@
       "matchPackageNames": ["k8s.io/*", "sigs.k8s.io/*", "knative.dev/*"],
       "matchUpdateTypes": ["major", "minor"],
       "enabled": false
+    },
+    {
+      "groupName": "images",
+      "matchManagers": ["dockerfile"]
+    },
+    {
+      "matchPackageNames": ["/^quay\\.io\\/konflux-ci\\//"],
+      "minimumReleaseAge": "0 days",
+      "addLabels": [
+        "ok-to-test",
+        "approved",
+        "lgtm"
+      ]
     }
   ]
 }
