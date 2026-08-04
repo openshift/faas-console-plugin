@@ -56,11 +56,11 @@ ENV_STR=()
 VOLUME_MOUNT=()
 ARTIFACT_DIR="${ARTIFACT_DIR:-$(pwd)/.e2e/artifacts}"
 mkdir -p "$ARTIFACT_DIR"
-VOLUME_MOUNT+=("-v" "$ARTIFACT_DIR:/tmp/artifacts")
+VOLUME_MOUNT+=("-v" "$ARTIFACT_DIR:/tmp/artifacts:Z")
 ENV_STR+=("-e" "ARTIFACT_DIR=/tmp/artifacts")
 
 if [ -n "${KUBECONFIG:-}" ]; then
-  VOLUME_MOUNT+=("-v" "$KUBECONFIG:/kube/config:ro")
+  VOLUME_MOUNT+=("-v" "$KUBECONFIG:/kube/config:ro,Z")
   ENV_STR+=("-e" "KUBECONFIG=/kube/config")
 fi
 
@@ -83,7 +83,7 @@ log::step "Running: $*"
 if $CONTAINER_CMD run "${ENV_STR[@]}" --rm -it ${NETWORK_OPTS[@]+"${NETWORK_OPTS[@]}"} \
   --shm-size=512m \
   "${VOLUME_MOUNT[@]}" \
-  -v "$(pwd)":/src:ro \
+  -v "$(pwd)":/src:ro,Z \
   -w /opt/app-root/src \
   "$BUILDER_IMAGE" sh -c "$ENTRYPOINT" -- "$@"; then
   log::info "SUCCESS"
