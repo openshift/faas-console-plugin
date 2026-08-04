@@ -26,7 +26,7 @@ BUILDER_IMAGE="${BUILDER_IMAGE:-localhost/faas-console-plugin-builder:latest}"
 CONTAINER_CMD="${CONTAINER_CMD:-$(command -v podman 2>/dev/null || echo docker)}"
 
 log::step "Building builder image"
-if ! $CONTAINER_CMD build --platform "linux/$(uname -m | sed 's/x86_64/amd64/')" -f Dockerfile.builder -t "$BUILDER_IMAGE" . >/dev/null; then
+if ! $CONTAINER_CMD build -f Dockerfile.builder -t "$BUILDER_IMAGE" . >/dev/null; then
   log::error "Failed to build builder image"
   exit 1
 fi
@@ -70,7 +70,6 @@ done
 
 NETWORK_OPTS=()
 if grep -q 'api.crc.testing' "${KUBECONFIG:-/dev/null}" 2>/dev/null; then
-  NETWORK_OPTS+=(--net=host)
   NETWORK_OPTS+=(--add-host "api.crc.testing:host-gateway")
   NETWORK_OPTS+=(--add-host "console-openshift-console.apps-crc.testing:host-gateway")
   NETWORK_OPTS+=(--add-host "oauth-openshift.apps-crc.testing:host-gateway")

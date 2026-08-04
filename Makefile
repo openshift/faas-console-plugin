@@ -111,13 +111,13 @@ manifests: ## Render Helm chart to backend/static/plugin.yaml
 		> $(BACKEND_DIR)/static/plugin.yaml
 
 deploy: ## Deploy plugin to cluster (defaults to quay.io latest image)
-	hack/deploy-plugin.sh
+	hack/deploy.sh
 
 undeploy: ## Remove plugin from cluster
 	helm uninstall $(PLUGIN_NAME) -n $(NAMESPACE)
 
 deploy-dev: ## Build and deploy to cluster (dev)
-	hack/deploy.sh
+	hack/deploy-dev.sh
 
 setup-serverless: ## Install Serverless operator and Knative Serving
 	hack/setup-serverless.sh

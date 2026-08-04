@@ -1,87 +1,65 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build container image, push to internal OCP registry, deploy plugin.
-# Prerequisites: oc login
-# Optional: make setup-serverless (for full Knative/Serverless functionality)
-# Usage: make deploy-dev [IMAGE_TAG=...] [NAMESPACE=...]
+# Deploy the plugin to an OpenShift cluster using the Helm chart.
+# Installs (or upgrades) the chart, waits for rollout, enables the plugin
+# on the console, and restarts the console pods.
+#
+# For the full dev workflow (build image + push to internal registry + deploy),
+# see deploy-dev.sh instead.
+#
+# Usage: make deploy [IMAGE=...] [NAMESPACE=...]
+# Prerequisites: oc login, Helm
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
 
+PLUGIN_NAME="${PLUGIN_NAME:-console-functions-plugin}"
 NAMESPACE="${NAMESPACE:-console-functions-plugin}"
-IMAGE_TAG="${IMAGE_TAG:-localhost/faas-console-plugin:latest}"
-PLUGIN_NAME="console-functions-plugin"
-CONTAINER_CMD=$(command -v podman 2>/dev/null || echo docker)
-REGISTRY_PORT=5001
-INTERNAL_REGISTRY="image-registry.openshift-image-registry.svc:5000"
+IMAGE="${IMAGE:-quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin:latest}"
 
-# --- Prerequisites ---
+log::step "Deploying plugin"
 
-if ! command -v oc &>/dev/null; then
-  log::error "oc CLI not found. Install from https://console.redhat.com/openshift/downloads"
-  exit 1
-fi
+log::info "Installing Helm chart..."
+helm upgrade -i "$PLUGIN_NAME" charts/openshift-console-plugin \
+  -n "$NAMESPACE" --create-namespace \
+  --set "plugin.image=$IMAGE"
 
-if ! oc whoami &>/dev/null; then
-  log::error "Not logged in to OpenShift. Run 'oc login' first."
-  exit 1
-fi
+log::info "Waiting for rollout..."
+oc rollout status deployment/"$PLUGIN_NAME" -n "$NAMESPACE" --timeout=300s
 
-# --- Build ---
-
-log::step "Building image"
-make image IMAGE_TAG="$IMAGE_TAG"
-
-# --- Push to internal registry ---
-
-log::step "Pushing to internal registry"
-
-# Port-forward the internal registry service.
-# On macOS, podman runs in a VM that can't reach localhost, so we bind to all
-# interfaces and push via the host's LAN IP. On Linux, localhost works directly.
-if [[ "$(uname)" == "Darwin" ]]; then
-  PUSH_TARGET=$(ifconfig | awk '/inet / && !/127.0.0.1/ {print $2; exit}')
-  if [ -z "$PUSH_TARGET" ]; then
-    log::error "Could not determine host IP address."
+log::info "Waiting for ConsolePlugin CR..."
+for i in $(seq 1 60); do
+  if oc get consoleplugins "$PLUGIN_NAME" &>/dev/null; then
+    log::info "ConsolePlugin CR found."
+    break
+  fi
+  if [ "$i" -eq 60 ]; then
+    log::error "ConsolePlugin CR did not appear within 120s."
+    oc get all -n "$NAMESPACE"
     exit 1
   fi
-  PUSH_TARGET="${PUSH_TARGET}:${REGISTRY_PORT}"
+  sleep 2
+done
+
+ENABLED=$(oc get consoles.operator.openshift.io cluster -o jsonpath='{.spec.plugins}' 2>/dev/null || true)
+if echo "$ENABLED" | grep -q "$PLUGIN_NAME"; then
+  log::info "Plugin $PLUGIN_NAME already enabled on console."
 else
-  PUSH_TARGET="localhost:${REGISTRY_PORT}"
+  log::info "Patching console operator to enable plugin..."
+  oc patch consoles.operator.openshift.io cluster \
+    --type=json \
+    --patch='[{"op":"add","path":"/spec/plugins/-","value":"'"${PLUGIN_NAME}"'"}]'
 fi
 
-oc get namespace "$NAMESPACE" &>/dev/null 2>&1 || oc create namespace "$NAMESPACE"
+log::info "Restarting console pods to pick up plugin changes..."
+oc rollout restart deployment/console -n openshift-console
+oc rollout status deployment/console -n openshift-console --timeout=300s
 
-log::info "Port-forwarding registry to ${PUSH_TARGET}..."
-kubectl port-forward svc/image-registry \
-  --address='::' --address='0.0.0.0' \
-  "${REGISTRY_PORT}:5000" \
-  -n openshift-image-registry &
-PF_PID=$!
-trap "kill $PF_PID 2>/dev/null || true" EXIT
-sleep 5
+CONSOLE_URL=$(oc get consoles.config.openshift.io cluster -o jsonpath='{.status.consoleURL}')
+API_URL=$(oc whoami --show-server)
 
-PUSH_IMAGE="${PUSH_TARGET}/${NAMESPACE}/${PLUGIN_NAME}:latest"
-
-log::info "Logging in to registry..."
-$CONTAINER_CMD login "$PUSH_TARGET" \
-  -u unused -p "$(oc whoami -t)" --tls-verify=false
-
-$CONTAINER_CMD tag "$IMAGE_TAG" "$PUSH_IMAGE"
-
-DIGEST_FILE=$(mktemp /tmp/plugin-digest.XXXXXX)
-log::info "Pushing image..."
-$CONTAINER_CMD push "$PUSH_IMAGE" --tls-verify=false --digestfile "$DIGEST_FILE"
-
-DIGEST=$(cat "$DIGEST_FILE")
-rm -f "$DIGEST_FILE"
-DEPLOY_IMAGE="${INTERNAL_REGISTRY}/${NAMESPACE}/${PLUGIN_NAME}:latest@${DIGEST}"
-
-kill $PF_PID 2>/dev/null || true
-trap - EXIT
-
-# --- Deploy ---
-
-log::step "Deploying plugin via Helm"
-make deploy IMAGE="$DEPLOY_IMAGE" NAMESPACE="$NAMESPACE"
+log::step "Plugin deployed successfully"
+log::link "API" "$CONSOLE_URL/api/proxy/plugin/$PLUGIN_NAME/backend/"
+log::link "Console" "$CONSOLE_URL/faas"
+log::hint "For full Knative integration: make setup-serverless"
