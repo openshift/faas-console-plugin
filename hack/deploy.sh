@@ -57,7 +57,6 @@ oc rollout restart deployment/console -n openshift-console
 oc rollout status deployment/console -n openshift-console --timeout=300s
 
 CONSOLE_URL=$(oc get consoles.config.openshift.io cluster -o jsonpath='{.status.consoleURL}')
-API_URL=$(oc whoami --show-server)
 
 log::step "Plugin deployed successfully"
 log::link "API" "$CONSOLE_URL/api/proxy/plugin/$PLUGIN_NAME/backend/"
