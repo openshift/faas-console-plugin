@@ -12,7 +12,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
+	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/github"
 )
 
 //go:embed static/*
@@ -26,7 +29,18 @@ func main() {
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
 	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
+	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL (for testing with fake server)")
 	flag.Parse()
+
+	if *ghAPIURL != "" {
+		baseURL := *ghAPIURL
+		config.SCMRegistry = scm.Registry{
+			scm.GitHub: func(pat string) scm.Client {
+				return github.NewWithBaseURL(pat, baseURL)
+			},
+		}
+		log.Printf("Using custom GitHub API URL: %s", baseURL)
+	}
 
 	if *kubeAPIServer == "" {
 		log.Fatal("--external-api-server-url is required")
