@@ -9,6 +9,11 @@ setup('authenticate', async ({ page }) => {
 
   await page.goto('/');
 
+  await page
+    .locator('[data-test-id="login"], [data-test="username"]')
+    .first()
+    .waitFor({ timeout: 30_000 });
+
   const authDisabled = await page.evaluate(() => window.SERVER_FLAGS?.authDisabled);
 
   if (!authDisabled) {
@@ -25,7 +30,7 @@ setup('authenticate', async ({ page }) => {
 
   const skipTour = page.locator('[data-test="tour-step-footer-secondary"]');
   if (await skipTour.isVisible().catch(() => false)) {
-    await skipTour.click();
+    await skipTour.evaluate((el: HTMLElement) => el.click());
   }
 
   await page.context().storageState({ path: authFile });
