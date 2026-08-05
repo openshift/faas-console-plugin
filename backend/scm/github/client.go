@@ -66,9 +66,55 @@ func isRepoExists(err error) bool {
 func (c *ghClient) GetUser(ctx context.Context) (*scm.User, error) {
 	user, _, err := c.client.Users.Get(ctx, "")
 	if err != nil {
-		return nil, mapErr(err)
+		return nil, fmt.Errorf("get user: %w", mapErr(err))
 	}
 	return &scm.User{Login: user.GetLogin(), AvatarURL: user.GetAvatarURL()}, nil
+}
+
+func (c *ghClient) ListRepos(ctx context.Context) ([]scm.Repo, error) {
+	user, _, err := c.client.Users.Get(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("get authenticated user: %w", mapErr(err))
+	}
+	login := user.GetLogin()
+
+	var repos []scm.Repo
+	opts := &ghlib.SearchOptions{ListOptions: ghlib.ListOptions{PerPage: 100}}
+	for {
+		result, resp, err := c.client.Search.Repositories(ctx, fmt.Sprintf("topic:serverless-function user:%s", login), opts)
+		if err != nil {
+			return nil, fmt.Errorf("search repos for user %s: %w", login, mapErr(err))
+		}
+		for _, r := range result.Repositories {
+			repos = append(repos, scm.Repo{
+				Owner:         r.GetOwner().GetLogin(),
+				Name:          r.GetName(),
+				URL:           r.GetHTMLURL(),
+				DefaultBranch: r.GetDefaultBranch(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+	return repos, nil
+}
+
+func (c *ghClient) GetFileContent(ctx context.Context, owner, repo, ref, path string) (string, error) {
+	opts := &ghlib.RepositoryContentGetOptions{Ref: ref}
+	file, _, _, err := c.client.Repositories.GetContents(ctx, owner, repo, path, opts)
+	if err != nil {
+		return "", fmt.Errorf("get file %s/%s/%s: %w", owner, repo, path, mapErr(err))
+	}
+	if file == nil {
+		return "", fmt.Errorf("path %q is a directory, not a file", path)
+	}
+	content, err := file.GetContent()
+	if err != nil {
+		return "", fmt.Errorf("decode content for %q: %w", path, err)
+	}
+	return content, nil
 }
 
 func (c *ghClient) GetFiles(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {

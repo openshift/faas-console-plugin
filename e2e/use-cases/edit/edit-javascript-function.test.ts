@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToEditPage } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/github';
+import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
 
 test.describe('Edit JavaScript function', () => {
   test('regression SRVOCF-1007: editor loads JS files without Monaco worker errors', async ({

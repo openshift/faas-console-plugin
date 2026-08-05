@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/github';
+import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
 
 test.describe('Functions list', () => {
   test('user browses functions, refreshes, and navigates to edit and create', async ({ page }) => {

@@ -4,24 +4,38 @@ import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { UserAvatar } from './UserAvatar';
 import { PAT_KEY, USER_KEY } from '../services/types';
-import { ForgeConnectionContext } from '../context/ForgeConnectionProvider';
+import { AuthContext } from '../context/AuthProvider';
 import { ReactNode } from 'react';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const GITHUB_API = 'https://api.github.com';
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
+  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
+    const res = await fetch(new URL(url, 'http://localhost').href, options);
+    const json = await res.json();
+    if (!res.ok) throw json;
+    return json;
+  };
 
-const testUser = { name: 'twoGiants' };
+  return { consoleFetchJSON };
+});
+
+const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
+
+const testUser = { name: 'twoGiants', avatarUrl: '' };
 
 function renderWithContext(
   ui: ReactNode,
-  contextValue = { isActive: false, user: testUser, connectionId: 0, connectToForge: vi.fn() },
+  contextValue = {
+    isAuthenticated: false,
+    user: testUser,
+    connectionId: 0,
+    onLogin: vi.fn(),
+  },
 ) {
-  return render(
-    <ForgeConnectionContext.Provider value={contextValue}>{ui}</ForgeConnectionContext.Provider>,
-  );
+  return render(<AuthContext.Provider value={contextValue}>{ui}</AuthContext.Provider>);
 }
 
 describe('UserAvatar', () => {
@@ -108,19 +122,19 @@ describe('UserAvatar', () => {
 
     it('does not trigger any action when clicked', async () => {
       const user = userEvent.setup();
-      const connectToForge = vi.fn();
+      const onLogin = vi.fn();
 
       renderWithContext(<UserAvatar enableReconnect />, {
-        isActive: false,
+        isAuthenticated: false,
         user: testUser,
         connectionId: 0,
-        connectToForge,
+        onLogin,
       });
 
       const oauthButton = screen.getByRole('button', { name: /Sign in with GitHub/i });
       await user.click(oauthButton);
 
-      expect(connectToForge).not.toHaveBeenCalled();
+      expect(onLogin).not.toHaveBeenCalled();
     });
   });
 
@@ -131,15 +145,15 @@ describe('UserAvatar', () => {
       expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled();
     });
 
-    it('calls GitHub API with PAT and updates UI on successful connect', async () => {
+    it('calls backend API with PAT and updates UI on successful connect', async () => {
       const user = userEvent.setup();
-      const connectToForge = vi.fn();
+      const onLogin = vi.fn();
 
       renderWithContext(<UserAvatar enableReconnect />, {
-        isActive: false,
+        isAuthenticated: false,
         user: testUser,
         connectionId: 0,
-        connectToForge,
+        onLogin,
       });
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
@@ -150,14 +164,17 @@ describe('UserAvatar', () => {
       });
 
       expect(sessionStorage.getItem(PAT_KEY)).toBe('ghp_valid');
-      expect(JSON.parse(sessionStorage.getItem(USER_KEY)!)).toEqual(testUser);
-      expect(connectToForge).toHaveBeenCalled();
+      expect(JSON.parse(sessionStorage.getItem(USER_KEY)!)).toEqual({
+        name: 'twoGiants',
+        avatarUrl: '',
+      });
+      expect(onLogin).toHaveBeenCalled();
     });
 
-    it('shows error alert when GitHub API rejects', async () => {
+    it('shows error alert when backend API rejects', async () => {
       const user = userEvent.setup();
       server.use(
-        http.get(`${GITHUB_API}/user`, () =>
+        http.get(`${BACKEND_API}/api/v1/auth/user`, () =>
           HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
         ),
       );
@@ -205,13 +222,13 @@ describe('UserAvatar', () => {
 
     it('clears PAT input after successful connect', async () => {
       const user = userEvent.setup();
-      const connectToForge = vi.fn();
+      const onLogin = vi.fn();
 
       renderWithContext(<UserAvatar enableReconnect />, {
-        isActive: false,
+        isAuthenticated: false,
         user: testUser,
         connectionId: 0,
-        connectToForge,
+        onLogin,
       });
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
@@ -229,7 +246,7 @@ describe('UserAvatar', () => {
     it('clears PAT input and error on cancel', async () => {
       const user = userEvent.setup();
       server.use(
-        http.get(`${GITHUB_API}/user`, () =>
+        http.get(`${BACKEND_API}/api/v1/auth/user`, () =>
           HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
         ),
       );
@@ -251,9 +268,9 @@ describe('UserAvatar', () => {
     it('disables Cancel button while validating', async () => {
       const user = userEvent.setup();
       server.use(
-        http.get(`${GITHUB_API}/user`, async () => {
+        http.get(`${BACKEND_API}/api/v1/auth/user`, async () => {
           await delay('infinite');
-          return HttpResponse.json({ login: 'twoGiants' });
+          return HttpResponse.json({ login: 'twoGiants', avatarUrl: '' });
         }),
       );
 

@@ -18,10 +18,10 @@ import {
 } from '@patternfly/react-core';
 import { GithubIcon, KeyIcon, UserIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
-import { ForgeUser, PAT_KEY, USER_KEY } from '../services/types';
+import { AuthUser, PAT_KEY, USER_KEY } from '../services/types';
 import { useContext, useState } from 'react';
-import { ForgeConnectionContext } from '../context/ForgeConnectionProvider';
-import { useSourceControlService } from '../services/source-control/useSourceControlService';
+import { AuthContext } from '../context/AuthProvider';
+import { useAuthService } from '../services/auth/useAuthService';
 import { errorMessage } from '../utils/utils';
 
 interface UserAvatarProps {
@@ -52,20 +52,20 @@ export function UserAvatar({ enableReconnect }: UserAvatarProps) {
 }
 
 function useUserAvatar(enableReconnect: boolean) {
-  const sourceControlService = useSourceControlService();
-  const connectToForge = useContext(ForgeConnectionContext).connectToForge;
-  const [user, setUser] = useState<ForgeUser | null>(() => readStoredUser());
+  const authService = useAuthService();
+  const onLogin = useContext(AuthContext).onLogin;
+  const [user, setUser] = useState<AuthUser | null>(() => readStoredUser());
   const [isModalOpen, setIsModalOpen] = useState(
     () => enableReconnect && !sessionStorage.getItem(PAT_KEY),
   );
 
   const login = async (pat: string) => {
-    const forgeUser = await sourceControlService.fetchUserInfo(pat);
+    const authUser = await authService.validateToken(pat);
     sessionStorage.setItem(PAT_KEY, pat);
-    sessionStorage.setItem(USER_KEY, JSON.stringify(forgeUser));
-    setUser(forgeUser);
+    sessionStorage.setItem(USER_KEY, JSON.stringify(authUser));
+    setUser(authUser);
     setIsModalOpen(false);
-    connectToForge(forgeUser);
+    onLogin(authUser);
   };
 
   const openModal = () => setIsModalOpen(true);
@@ -74,7 +74,7 @@ function useUserAvatar(enableReconnect: boolean) {
   return { user, isModalOpen, openModal, closeModal, login };
 }
 
-function readStoredUser(): ForgeUser | null {
+function readStoredUser(): AuthUser | null {
   const pat = sessionStorage.getItem(PAT_KEY);
   const userJson = sessionStorage.getItem(USER_KEY);
 
@@ -83,7 +83,7 @@ function readStoredUser(): ForgeUser | null {
   }
 
   try {
-    return JSON.parse(userJson) as ForgeUser;
+    return JSON.parse(userJson) as AuthUser;
   } catch {
     return null;
   }

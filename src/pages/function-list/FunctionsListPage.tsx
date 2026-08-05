@@ -17,21 +17,17 @@ import { Link, useNavigate } from 'react-router';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { UserAvatar } from '../../common/components/UserAvatar';
-import {
-  ForgeConnectionContext,
-  ForgeConnectionProvider,
-} from '../../common/context/ForgeConnectionProvider';
-import { ClusterFunction } from '../../common/services/types';
+import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
+import { ClusterFunction, FunctionListItem } from '../../common/services/types';
 import { useClusterService } from '../../common/services/cluster/useClusterService';
-import { SourceControlService } from '../../common/services/source-control/SourceControlService';
-import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
-import { errorMessage, parseFuncYaml } from '../../common/utils/utils';
+import { useFunctionService } from '../../common/services/function/useFunctionService';
+import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
   return (
-    <ForgeConnectionProvider>
+    <AuthProvider>
       <FunctionsListPageContent />
-    </ForgeConnectionProvider>
+    </AuthProvider>
   );
 }
 
@@ -112,8 +108,8 @@ function useFunctionListPage(): {
   isConnectedToForge: boolean;
   error: string;
 } {
-  const { isActive: isConnectedToForge, connectionId } = useContext(ForgeConnectionContext);
-  const sourceControl = useSourceControlService();
+  const { isAuthenticated: isConnectedToForge, connectionId } = useContext(AuthContext);
+  const functionService = useFunctionService();
   const navigate = useNavigate();
 
   const [functionItems, setFunctionItems] = useState<FunctionTableItem[]>([]);
@@ -136,7 +132,7 @@ function useFunctionListPage(): {
     setRefreshing(true);
 
     try {
-      const items = await loadFunctionTableItems(sourceControl);
+      const items = await loadFunctionTableItems(functionService);
       setFunctionItems(items);
       setError('');
     } catch (err) {
@@ -156,7 +152,7 @@ function useFunctionListPage(): {
       let items: FunctionTableItem[];
 
       try {
-        items = await loadFunctionTableItems(sourceControl);
+        items = await loadFunctionTableItems(functionService);
       } catch (err) {
         if (!ignore) {
           setReposLoaded(true);
@@ -175,7 +171,7 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [sourceControl, isConnectedToForge, connectionId]);
+  }, [functionService, isConnectedToForge, connectionId]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
@@ -204,23 +200,15 @@ function useFunctionListPage(): {
   };
 }
 
-async function loadFunctionTableItems(svc: SourceControlService): Promise<FunctionTableItem[]> {
-  const repos = await svc.listFunctionRepos();
-  const results = await Promise.all(
-    repos.map(async (repo) => {
-      try {
-        const funcYaml = await svc.fetchFileContent(repo, 'func.yaml');
-        const { name, namespace, runtime } = parseFuncYaml(funcYaml);
-        return newItem(name || repo.name, repo.name, namespace, runtime);
-      } catch (err) {
-        console.error(`Failed to load func.yaml for ${repo.name}:`, err);
-        const item = newItem(repo.name, repo.name, '', '');
-        item.status = 'Error';
-        return item;
-      }
-    }),
+interface FunctionServiceLike {
+  listFunctions(): Promise<FunctionListItem[]>;
+}
+
+async function loadFunctionTableItems(svc: FunctionServiceLike): Promise<FunctionTableItem[]> {
+  const items = await svc.listFunctions();
+  return items.map((item) =>
+    newItem(item.name || item.repoName, item.repoName, item.namespace, item.runtime),
   );
-  return results;
 }
 
 function newItem(

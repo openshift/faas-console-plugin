@@ -10,15 +10,6 @@ export interface FileEntry {
   type: 'blob';
 }
 
-export interface FunctionConfig {
-  name: string;
-  runtime: FunctionRuntime;
-  registry: string;
-  namespace: string;
-  branch: string;
-  envVars?: EnvVar[];
-}
-
 export type EnvVarSource = 'value' | 'secret' | 'configMap';
 
 export interface EnvVar {
@@ -47,20 +38,30 @@ export interface K8sKeyedResource {
 
 export type FunctionRuntime = 'node' | 'python' | 'go' | 'quarkus';
 
-export interface RepoMetadata {
-  owner: string;
+export interface AuthUser {
   name: string;
+  avatarUrl: string;
+}
+
+export interface FunctionListItem {
+  owner: string;
+  repoName: string;
   url: string;
   defaultBranch: string;
+  name: string;
+  namespace: string;
+  runtime: string;
 }
 
-export interface ForgeUser {
+export interface CreateFunctionRequest {
   name: string;
-}
-
-export interface RepoSecret {
-  name: string;
-  value: string;
+  runtime: string;
+  registry: string;
+  namespace: string;
+  branch: string;
+  owner: string;
+  repo: string;
+  envVars?: EnvVar[];
 }
 
 export type FunctionStatus =

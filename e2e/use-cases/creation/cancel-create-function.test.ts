@@ -7,10 +7,10 @@ const NAMESPACE = 'create-test';
 
 test.describe('Cancel create function', () => {
   test('user cancels creation and no resources are created', async ({ page }) => {
-    const githubRequests: Request[] = [];
+    const createRequests: Request[] = [];
     page.on('request', (req) => {
-      if (req.url().includes('api.github.com') && req.method() === 'POST') {
-        githubRequests.push(req);
+      if (req.url().includes('/api/v1/func/create') && req.method() === 'POST') {
+        createRequests.push(req);
       }
     });
 
@@ -30,9 +30,8 @@ test.describe('Cancel create function', () => {
       await expect(page).toHaveURL(/\/faas$/);
     });
 
-    await test.step('verify no GitHub repo creation request was made', async () => {
-      const repoCreated = githubRequests.some((r) => r.url().includes('/user/repos'));
-      expect(repoCreated).toBe(false);
+    await test.step('verify no function creation request was made', async () => {
+      expect(createRequests).toHaveLength(0);
     });
   });
 });

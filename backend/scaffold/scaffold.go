@@ -10,6 +10,14 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
+type EnvVar struct {
+	Name         string `json:"name"`
+	Source       string `json:"source"`
+	Value        string `json:"value"`
+	ResourceName string `json:"resourceName"`
+	ResourceKey  string `json:"resourceKey"`
+}
+
 type Config struct {
 	Name             string
 	Runtime          string
@@ -18,6 +26,7 @@ type Config struct {
 	Branch           string
 	SCM              scm.Platform
 	InternalRegistry bool // when true, CI skips external registry login
+	EnvVars          []EnvVar
 }
 
 func Generate(cfg Config) ([]scm.FileEntry, error) {
@@ -46,6 +55,12 @@ func Generate(cfg Config) ([]scm.FileEntry, error) {
 		}
 	} else if cfg.SCM != "" {
 		return nil, fmt.Errorf("unsupported SCM: %q", cfg.SCM)
+	}
+
+	if len(cfg.EnvVars) > 0 {
+		if err := injectEnvVars(root, cfg.EnvVars); err != nil {
+			return nil, fmt.Errorf("inject env vars: %w", err)
+		}
 	}
 
 	return collectFiles(root)
