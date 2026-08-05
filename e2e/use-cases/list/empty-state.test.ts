@@ -1,13 +1,14 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
+import { BACKEND_ROUTE } from '../../mocks/backend-api';
 
 test.describe('Functions list empty state', () => {
   test('shows empty state when no functions exist', async ({ page }) => {
-    await test.step('override mock to return zero repos', async () => {
-      await page.route('https://api.github.com/**', async (route) => {
-        const path = new URL(route.request().url()).pathname;
-        if (route.request().method() === 'GET' && path === '/search/repositories') {
-          return route.fulfill({ json: { total_count: 0, items: [] } });
+    await test.step('override mock to return zero functions', async () => {
+      await page.route(BACKEND_ROUTE, async (route) => {
+        const apiPath = new URL(route.request().url()).pathname;
+        if (route.request().method() === 'GET' && apiPath.endsWith('/func/list')) {
+          return route.fulfill({ json: [] });
         }
         return route.fallback();
       });

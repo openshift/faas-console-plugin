@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToCreatePage } from '../../helpers/navigation';
 import { ensureNamespace } from '../../helpers/cluster';
+import { BACKEND_ROUTE } from '../../mocks/backend-api';
 
 const FUNC_NAME = 'test-func';
 const NAMESPACE = 'create-test';
@@ -12,14 +13,16 @@ test.describe('Create duplicate function', () => {
       await ensureNamespace(page, NAMESPACE);
     });
 
-    await test.step('override repo existence check to return 200', async () => {
-      await page.route('https://api.github.com/repos/*/*', (route) => {
-        if (route.request().method() === 'GET') {
+    await test.step('override create endpoint to return conflict', async () => {
+      await page.route(BACKEND_ROUTE, (route) => {
+        const apiPath = new URL(route.request().url()).pathname;
+        if (route.request().method() === 'POST' && apiPath.endsWith('/func/create')) {
           return route.fulfill({
-            json: { name: FUNC_NAME, default_branch: BRANCH },
+            status: 409,
+            json: { message: 'repository already exists' },
           });
         }
-        return route.continue();
+        return route.fallback();
       });
     });
 
@@ -40,7 +43,7 @@ test.describe('Create duplicate function', () => {
       await page.getByRole('button', { name: 'Create', exact: true }).click();
 
       await expect(page.getByText('Error creating function')).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByText(/exists, please choose a different name/)).toBeVisible();
+      await expect(page.getByText(/repository already exists/)).toBeVisible();
     });
 
     await test.step('verify user stays on the create page', async () => {

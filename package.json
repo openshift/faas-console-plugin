@@ -102,8 +102,6 @@
   },
   "packageManager": "yarn@4.17.1",
   "dependencies": {
-    "@octokit/rest": "^22.0.1",
-    "@patternfly/react-code-editor": "~6.6.0",
-    "libsodium-wrappers": "^0.8.4"
+    "@patternfly/react-code-editor": "~6.6.0"
   }
 }

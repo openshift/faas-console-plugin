@@ -1,16 +1,16 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToEditPage } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/github';
+import { BACKEND_ROUTE, PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
 
 test.describe('Save failure', () => {
   test('error alert appears when save fails', async ({ page }) => {
-    await test.step('override GitHub mock to fail on commit creation', async () => {
-      await page.route('https://api.github.com/**', async (route) => {
-        const path = new URL(route.request().url()).pathname;
-        if (route.request().method() === 'POST' && /\/git\/commits$/.test(path)) {
+    await test.step('override backend mock to fail on file push', async () => {
+      await page.route(BACKEND_ROUTE, async (route) => {
+        const apiPath = new URL(route.request().url()).pathname;
+        if (route.request().method() === 'PUT' && apiPath.endsWith('/files')) {
           return route.fulfill({
-            status: 500,
-            json: { message: 'Internal Server Error' },
+            status: 502,
+            json: { message: 'failed to push files to repository' },
           });
         }
         return route.fallback();

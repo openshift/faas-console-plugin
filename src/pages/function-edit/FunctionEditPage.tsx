@@ -19,19 +19,18 @@ import { useParams } from 'react-router';
 import { EditToolbar } from './components/EditToolbar';
 import { FileTreeView } from './components/FileTreeView';
 import { UserAvatar } from '../../common/components/UserAvatar';
-import { ForgeConnectionProvider } from '../../common/context/ForgeConnectionProvider';
-import { SourceControlService } from '../../common/services/source-control/SourceControlService';
-import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
-import { FileEntry, RepoMetadata } from '../../common/services/types';
+import { AuthProvider } from '../../common/context/AuthProvider';
+import { useFunctionService } from '../../common/services/function/useFunctionService';
+import { FileEntry, FunctionListItem } from '../../common/services/types';
 import { getLanguageFromPath, handlerMap, parseFuncYaml } from '../../common/utils/utils';
 
 // --- page component ---
 
 export default function FunctionEditPage() {
   return (
-    <ForgeConnectionProvider>
+    <AuthProvider>
       <FunctionEditPageContent />
-    </ForgeConnectionProvider>
+    </AuthProvider>
   );
 }
 
@@ -49,20 +48,20 @@ function FunctionEditPageContent() {
         <EditToolbar hasChanges={state.hasChanges} onSave={state.saveFiles} />
         <Sidebar hasGutter hasBorder>
           <SidebarPanel width={{ default: 'width_25' }}>
-            {state.repoMetadata && (
+            {state.repoInfo && (
               <DescriptionList isHorizontal isCompact>
                 <DescriptionListGroup>
                   <DescriptionListTerm>{t('Repository')}</DescriptionListTerm>
                   <DescriptionListDescription>
-                    <a href={state.repoMetadata.url} target="_blank" rel="noopener noreferrer">
-                      {state.repoMetadata.owner}/{state.repoMetadata.name}
+                    <a href={state.repoInfo.url} target="_blank" rel="noopener noreferrer">
+                      {state.repoInfo.owner}/{state.repoInfo.repoName}
                     </a>
                   </DescriptionListDescription>
                 </DescriptionListGroup>
                 <DescriptionListGroup>
                   <DescriptionListTerm>{t('Branch')}</DescriptionListTerm>
                   <DescriptionListDescription>
-                    {state.repoMetadata.defaultBranch}
+                    {state.repoInfo.defaultBranch}
                   </DescriptionListDescription>
                 </DescriptionListGroup>
               </DescriptionList>
@@ -117,19 +116,19 @@ interface FunctionEditPageState {
   dirtyPaths: Set<string>;
   hasChanges: boolean;
   isLoading: boolean;
-  repoMetadata: RepoMetadata | undefined;
+  repoInfo: FunctionListItem | undefined;
   onFileSelect: (path: string) => void;
   onFileChange: (content: string) => void;
   saveFiles: () => Promise<void>;
 }
 
 function useFunctionEditPage(): FunctionEditPageState {
-  const sourceControl = useSourceControlService();
+  const functionService = useFunctionService();
   const { name: repoName } = useParams<{ name: string }>();
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [originalFiles, setOriginalFiles] = useState<FileEntry[]>([]);
-  const [repoMetadata, setRepoMetadata] = useState<RepoMetadata>();
+  const [repoInfo, setRepoInfo] = useState<FunctionListItem>();
   const [selectedPath, setSelectedPath] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -149,10 +148,9 @@ function useFunctionEditPage(): FunctionEditPageState {
     let ignore = false;
 
     async function loadFiles() {
-      let repo: { content: FileEntry[]; metadata: RepoMetadata };
+      let repo: { content: FileEntry[]; info: FunctionListItem };
       try {
-        // we ignore the error and show an empty tree if repo is not found
-        repo = await resolveRepoContent(repoName!, sourceControl);
+        repo = await resolveRepoContent(repoName!, functionService);
       } catch {
         if (!ignore) setIsLoading(false);
         return;
@@ -165,12 +163,8 @@ function useFunctionEditPage(): FunctionEditPageState {
       }
 
       setFiles(repo.content);
-      // Shallow copy each entry so files and originalFiles hold
-      // different object references. When onFileChange updates a
-      // file's content via setFiles, the corresponding originalFiles
-      // entry stays unchanged, enabling dirty comparison.
       setOriginalFiles(repo.content.map((f) => ({ ...f })));
-      setRepoMetadata(repo.metadata);
+      setRepoInfo(repo.info);
       setSelectedPath(determineHandler(repo.content));
       setIsLoading(false);
     }
@@ -179,7 +173,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     return () => {
       ignore = true;
     };
-  }, [repoName, sourceControl]);
+  }, [repoName, functionService]);
 
   const onFileSelect = (path: string) => {
     setSelectedPath(path);
@@ -191,8 +185,14 @@ function useFunctionEditPage(): FunctionEditPageState {
   };
 
   const saveFiles = async () => {
-    if (!repoMetadata) return;
-    await sourceControl.updateRepo(repoMetadata, files, 'Update function files');
+    if (!repoInfo) return;
+    await functionService.putFiles(
+      repoInfo.owner,
+      repoInfo.repoName,
+      files,
+      'Update function files',
+      repoInfo.defaultBranch,
+    );
     setOriginalFiles(files.map((f) => ({ ...f })));
   };
 
@@ -204,25 +204,29 @@ function useFunctionEditPage(): FunctionEditPageState {
     dirtyPaths: dirtyFiles,
     hasChanges,
     isLoading,
-    repoMetadata,
+    repoInfo,
     onFileSelect,
     onFileChange,
     saveFiles,
   };
 }
 
+interface FunctionServiceLike {
+  listFunctions(): Promise<FunctionListItem[]>;
+  getFiles(owner: string, name: string, ref?: string): Promise<FileEntry[]>;
+}
+
 async function resolveRepoContent(
   repoName: string,
-  sourceControl: SourceControlService,
-): Promise<{ content: FileEntry[]; metadata: RepoMetadata }> {
-  const repos = await sourceControl.listFunctionRepos();
-
-  const repoMetadata = repos.find((r) => r.name === repoName);
-  if (!repoMetadata) throw new Error(`repository ${repoName} not found`);
+  svc: FunctionServiceLike,
+): Promise<{ content: FileEntry[]; info: FunctionListItem }> {
+  const items = await svc.listFunctions();
+  const item = items.find((r) => r.repoName === repoName);
+  if (!item) throw new Error(`repository ${repoName} not found`);
 
   return {
-    content: await sourceControl.fetch(repoMetadata),
-    metadata: repoMetadata,
+    content: await svc.getFiles(item.owner, item.repoName),
+    info: item,
   };
 }
 

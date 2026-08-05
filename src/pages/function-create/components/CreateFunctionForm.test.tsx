@@ -1,21 +1,19 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CreateFunctionForm } from './CreateFunctionForm';
-import { ForgeConnectionContext } from '../../../common/context/ForgeConnectionProvider';
-import { ForgeUser, K8sKeyedResource } from '../../../common/services/types';
+import { AuthContext } from '../../../common/context/AuthProvider';
+import { AuthUser, K8sKeyedResource } from '../../../common/services/types';
 
-const testUser: ForgeUser = { name: 'testuser' };
-const forgeContext = {
-  isActive: true,
+const testUser: AuthUser = { name: 'testuser', avatarUrl: '' };
+const authContext = {
+  isAuthenticated: true,
   user: testUser,
   connectionId: 0,
-  connectToForge: vi.fn(),
+  onLogin: vi.fn(),
 };
 
 function renderWithContext(ui: React.ReactElement) {
-  return render(
-    <ForgeConnectionContext.Provider value={forgeContext}>{ui}</ForgeConnectionContext.Provider>,
-  );
+  return render(<AuthContext.Provider value={authContext}>{ui}</AuthContext.Provider>);
 }
 
 vi.mock('react-i18next', () => ({

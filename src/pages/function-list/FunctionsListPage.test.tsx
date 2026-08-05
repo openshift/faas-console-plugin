@@ -10,15 +10,25 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  DocumentTitle: ({ children }: { children: string }) => children,
-  ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
-    <>
-      {title}
-      {children}
-    </>
-  ),
-}));
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
+  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
+    const res = await fetch(new URL(url, 'http://localhost').href, options);
+    const json = await res.json();
+    if (!res.ok) throw json;
+    return json;
+  };
+
+  return {
+    DocumentTitle: ({ children }: { children: string }) => children,
+    ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+      <>
+        {title}
+        {children}
+      </>
+    ),
+    consoleFetchJSON,
+  };
+});
 
 const mockUseClusterService = vi.fn();
 vi.mock('../../common/services/cluster/useClusterService', () => ({
@@ -47,7 +57,7 @@ vi.mock('../../common/components/UserAvatar', () => ({
   ),
 }));
 
-const GITHUB_API = 'https://api.github.com';
+const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
 
 function clusterData(
   overrides: Partial<{
@@ -83,45 +93,41 @@ function renderAuthenticated() {
   sessionStorage.setItem(PAT_KEY, 'ghp_test');
 }
 
-function setupReposHandler(repos: { owner: string; name: string; url: string }[]) {
+function setupListHandler(
+  items: {
+    owner: string;
+    repoName: string;
+    url: string;
+    name: string;
+    namespace: string;
+    runtime: string;
+  }[],
+) {
   server.use(
-    http.get(`${GITHUB_API}/search/repositories`, () =>
-      HttpResponse.json({
-        total_count: repos.length,
-        items: repos.map((r) => ({
-          owner: { login: r.owner },
-          name: r.name,
-          html_url: r.url,
-          default_branch: 'main',
+    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
+      HttpResponse.json(
+        items.map((i) => ({
+          owner: i.owner,
+          repoName: i.repoName,
+          url: i.url,
+          defaultBranch: 'main',
+          name: i.name,
+          namespace: i.namespace,
+          runtime: i.runtime,
         })),
-      }),
+      ),
     ),
   );
 }
 
-function setupFuncYamlHandler(repoName: string, yaml: string) {
-  server.use(
-    http.get(`${GITHUB_API}/repos/twoGiants/${repoName}/contents/func.yaml`, () =>
-      HttpResponse.json({
-        content: btoa(yaml),
-        encoding: 'base64',
-        type: 'file',
-      }),
-    ),
-  );
-}
-
-function setupFuncYamlHandlerAll(repos: { name: string; yaml: string }[]) {
-  for (const repo of repos) {
-    setupFuncYamlHandler(repo.name, repo.yaml);
-  }
-}
-
-function repoFixture(name: string) {
+function listItem(repoName: string, name?: string, namespace = 'demo', runtime = 'go') {
   return {
     owner: 'twoGiants',
-    name,
-    url: `https://github.com/twoGiants/${name}`,
+    repoName,
+    url: `https://github.com/twoGiants/${repoName}`,
+    name: name ?? repoName,
+    namespace,
+    runtime,
   };
 }
 
@@ -136,7 +142,7 @@ describe('FunctionsListPage', () => {
 
   it('renders a spinner while loading', () => {
     renderAuthenticated();
-    setupReposHandler([]);
+    setupListHandler([]);
     mockUseClusterService.mockReturnValue(clusterData({ loaded: false }));
 
     render(
@@ -150,7 +156,7 @@ describe('FunctionsListPage', () => {
 
   it('renders the empty state when loaded with no functions', async () => {
     renderAuthenticated();
-    setupReposHandler([]);
+    setupListHandler([]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -164,8 +170,7 @@ describe('FunctionsListPage', () => {
 
   it('renders table when functions are loaded', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('my-func')]);
-    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('my-func')]);
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [
@@ -185,8 +190,7 @@ describe('FunctionsListPage', () => {
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('orphan-func')]);
-    setupFuncYamlHandler('orphan-func', 'name: orphan-func\nruntime: node\nnamespace: demo\n');
+    setupListHandler([listItem('orphan-func', 'orphan-func', 'demo', 'node')]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -198,10 +202,10 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByTestId('fn-status')).toHaveTextContent('NotDeployed');
   });
 
-  it('shows error alert when listing repos fails', async () => {
+  it('shows error alert when listing functions fails', async () => {
     renderAuthenticated();
     server.use(
-      http.get(`${GITHUB_API}/search/repositories`, () =>
+      http.get(`${BACKEND_API}/api/v1/func/list`, () =>
         HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
       ),
     );
@@ -216,10 +220,10 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
   });
 
-  it('renders empty state when GitHub API fails', async () => {
+  it('renders empty state when API fails', async () => {
     renderAuthenticated();
     server.use(
-      http.get(`${GITHUB_API}/search/repositories`, () =>
+      http.get(`${BACKEND_API}/api/v1/func/list`, () =>
         HttpResponse.json({ message: 'Requires authentication' }, { status: 401 }),
       ),
     );
@@ -234,7 +238,7 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
   });
 
-  it('does not call GitHub API when not authenticated', async () => {
+  it('does not call backend API when not authenticated', async () => {
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -248,7 +252,7 @@ describe('FunctionsListPage', () => {
 
   it('renders UserAvatar in header', () => {
     renderAuthenticated();
-    setupReposHandler([]);
+    setupListHandler([]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -277,8 +281,7 @@ describe('FunctionsListPage', () => {
 
   it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('my-func')]);
-    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('my-func')]);
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [
@@ -300,8 +303,7 @@ describe('FunctionsListPage', () => {
 
   it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('my-func')]);
-    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('my-func')]);
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [clusterFunction('my-func', 'ScaledToZero', 0)],
@@ -320,8 +322,7 @@ describe('FunctionsListPage', () => {
 
   it('shows Deploying status from ClusterFunction', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('my-func')]);
-    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('my-func')]);
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [clusterFunction('my-func', 'Deploying', 0)],
@@ -339,8 +340,7 @@ describe('FunctionsListPage', () => {
 
   it('shows Error status from ClusterFunction', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('my-func')]);
-    setupFuncYamlHandler('my-func', 'name: my-func\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('my-func')]);
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [clusterFunction('my-func', 'Error', 0)],
@@ -358,8 +358,7 @@ describe('FunctionsListPage', () => {
 
   it('passes function names to useClusterService', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('fn-a')]);
-    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('fn-a')]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -373,26 +372,25 @@ describe('FunctionsListPage', () => {
     expect(mockUseClusterService).toHaveBeenLastCalledWith(['fn-a']);
   });
 
-  it('re-fetches repos when refresh button is clicked', async () => {
+  it('re-fetches functions when refresh button is clicked', async () => {
     renderAuthenticated();
     let callCount = 0;
     server.use(
-      http.get(`${GITHUB_API}/search/repositories`, () => {
+      http.get(`${BACKEND_API}/api/v1/func/list`, () => {
         callCount++;
-        return HttpResponse.json({
-          total_count: 1,
-          items: [
-            {
-              owner: { login: 'twoGiants' },
-              name: 'fn-a',
-              html_url: 'https://github.com/twoGiants/fn-a',
-              default_branch: 'main',
-            },
-          ],
-        });
+        return HttpResponse.json([
+          {
+            owner: 'twoGiants',
+            repoName: 'fn-a',
+            url: 'https://github.com/twoGiants/fn-a',
+            defaultBranch: 'main',
+            name: 'fn-a',
+            namespace: 'demo',
+            runtime: 'go',
+          },
+        ]);
       }),
     );
-    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -413,8 +411,7 @@ describe('FunctionsListPage', () => {
 
   it('does not show spinner on refresh button during initial page load', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('fn-a')]);
-    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
+    setupListHandler([listItem('fn-a')]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -431,35 +428,34 @@ describe('FunctionsListPage', () => {
 
   it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
     renderAuthenticated();
-    let resolveSearch: (() => void) | undefined;
+    let resolveList: (() => void) | undefined;
     let firstCall = true;
 
-    function repoJson() {
-      return HttpResponse.json({
-        total_count: 1,
-        items: [
-          {
-            owner: { login: 'twoGiants' },
-            name: 'fn-a',
-            html_url: 'https://github.com/twoGiants/fn-a',
-            default_branch: 'main',
-          },
-        ],
-      });
+    function listJson() {
+      return HttpResponse.json([
+        {
+          owner: 'twoGiants',
+          repoName: 'fn-a',
+          url: 'https://github.com/twoGiants/fn-a',
+          defaultBranch: 'main',
+          name: 'fn-a',
+          namespace: 'demo',
+          runtime: 'go',
+        },
+      ]);
     }
 
     server.use(
-      http.get(`${GITHUB_API}/search/repositories`, () => {
+      http.get(`${BACKEND_API}/api/v1/func/list`, () => {
         if (firstCall) {
           firstCall = false;
-          return repoJson();
+          return listJson();
         }
         return new Promise<Response>((resolve) => {
-          resolveSearch = () => resolve(repoJson());
+          resolveList = () => resolve(listJson());
         });
       }),
     );
-    setupFuncYamlHandler('fn-a', 'name: fn-a\nruntime: go\nnamespace: demo\n');
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
@@ -475,39 +471,15 @@ describe('FunctionsListPage', () => {
     await userEvent.click(refreshBtn);
     expect(refreshBtn.querySelector('[role="progressbar"]')).toBeInTheDocument();
 
-    resolveSearch!();
+    resolveList!();
     await waitFor(() => {
       expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
     });
   });
 
-  it('shows error item when fetchFileContent throws (deleted repo)', async () => {
-    renderAuthenticated();
-    setupReposHandler([repoFixture('good-func'), repoFixture('deleted-repo')]);
-    setupFuncYamlHandler('good-func', 'name: good-func\nruntime: go\nnamespace: demo\n');
-    server.use(
-      http.get(`${GITHUB_API}/repos/twoGiants/deleted-repo/contents/func.yaml`, () =>
-        HttpResponse.json({ message: 'Not Found' }, { status: 404 }),
-      ),
-    );
-    mockUseClusterService.mockReturnValue(clusterData());
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    const names = await screen.findAllByTestId('fn-name');
-    expect(names).toHaveLength(2);
-    expect(names[0]).toHaveTextContent('good-func');
-    expect(names[1]).toHaveTextContent('deleted-repo');
-  });
-
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
     renderAuthenticated();
-    setupReposHandler([repoFixture('my-repo')]);
-    setupFuncYamlHandler('my-repo', 'name: my-function\nruntime: node\nnamespace: demo\n');
+    setupListHandler([listItem('my-repo', 'my-function', 'demo', 'node')]);
     mockUseClusterService.mockReturnValue(
       clusterData({
         functions: [
@@ -531,44 +503,43 @@ describe('FunctionsListPage', () => {
     renderAuthenticated();
     let callCount = 0;
     server.use(
-      http.get(`${GITHUB_API}/search/repositories`, () => {
+      http.get(`${BACKEND_API}/api/v1/func/list`, () => {
         callCount++;
         if (callCount === 1) {
-          return HttpResponse.json({
-            total_count: 2,
-            items: [
-              {
-                owner: { login: 'twoGiants' },
-                name: 'fn-a',
-                html_url: 'https://github.com/twoGiants/fn-a',
-                default_branch: 'main',
-              },
-              {
-                owner: { login: 'twoGiants' },
-                name: 'fn-b',
-                html_url: 'https://github.com/twoGiants/fn-b',
-                default_branch: 'main',
-              },
-            ],
-          });
-        }
-        return HttpResponse.json({
-          total_count: 1,
-          items: [
+          return HttpResponse.json([
             {
-              owner: { login: 'twoGiants' },
+              owner: 'twoGiants',
+              repoName: 'fn-a',
+              url: 'https://github.com/twoGiants/fn-a',
+              defaultBranch: 'main',
               name: 'fn-a',
-              html_url: 'https://github.com/twoGiants/fn-a',
-              default_branch: 'main',
+              namespace: 'demo',
+              runtime: 'go',
             },
-          ],
-        });
+            {
+              owner: 'twoGiants',
+              repoName: 'fn-b',
+              url: 'https://github.com/twoGiants/fn-b',
+              defaultBranch: 'main',
+              name: 'fn-b',
+              namespace: 'demo',
+              runtime: 'go',
+            },
+          ]);
+        }
+        return HttpResponse.json([
+          {
+            owner: 'twoGiants',
+            repoName: 'fn-a',
+            url: 'https://github.com/twoGiants/fn-a',
+            defaultBranch: 'main',
+            name: 'fn-a',
+            namespace: 'demo',
+            runtime: 'go',
+          },
+        ]);
       }),
     );
-    setupFuncYamlHandlerAll([
-      { name: 'fn-a', yaml: 'name: fn-a\nruntime: go\nnamespace: demo\n' },
-      { name: 'fn-b', yaml: 'name: fn-b\nruntime: go\nnamespace: demo\n' },
-    ]);
     mockUseClusterService.mockReturnValue(clusterData());
 
     render(
