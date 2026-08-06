@@ -20,7 +20,16 @@ function copyArtifacts {
   fi
 }
 
-trap copyArtifacts EXIT
+FAKE_GH_PF_PID=""
+
+function cleanup {
+  copyArtifacts
+  if [ -n "$FAKE_GH_PF_PID" ]; then
+    kill "$FAKE_GH_PF_PID" 2>/dev/null || true
+  fi
+}
+
+trap cleanup EXIT
 
 # --- Credentials ---
 BRIDGE_KUBEADMIN_PASSWORD="$(cat "${KUBEADMIN_PASSWORD_FILE:-${INSTALLER_DIR}/auth/kubeadmin-password}")"
@@ -33,6 +42,19 @@ if [[ -z "${PLUGIN_PULL_SPEC:-}" ]]; then
   log::error "PLUGIN_PULL_SPEC is not set. It should be injected by ci-operator as a dependency."
   exit 1
 fi
+
+# --- Deploy fake GitHub server ---
+log::step "Deploying fake GitHub server"
+
+FAKE_GH_URL=$(hack/deploy-fake-gh.sh | tail -1)
+export GH_API_URL="${FAKE_GH_URL}"
+
+# Port-forward fake GH for Playwright admin API access (Playwright runs outside cluster)
+NAMESPACE="${NAMESPACE:-console-functions-plugin}"
+oc port-forward svc/fakegithub 8090:8090 -n "${NAMESPACE}" &
+FAKE_GH_PF_PID=$!
+sleep 3
+export FAKE_GITHUB_URL="http://localhost:8090"
 
 # --- Deploy plugin ---
 log::step "Deploying plugin to cluster"

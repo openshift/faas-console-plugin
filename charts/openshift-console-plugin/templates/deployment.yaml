@@ -37,6 +37,9 @@ spec:
           args:
             - "--https-port={{ .Values.plugin.port }}"
             - "--external-api-server-url={{ $apiServerURL }}"
+            {{- if .Values.plugin.ghApiUrl }}
+            - "--gh-api-url={{ .Values.plugin.ghApiUrl }}"
+            {{- end }}
           imagePullPolicy: {{ .Values.plugin.imagePullPolicy }}
           {{- if and (.Values.plugin.securityContext.enabled) (.Values.plugin.containerSecurityContext) }}
           securityContext: {{ tpl (toYaml (omit .Values.plugin.containerSecurityContext "enabled")) $ | nindent 12 }}
