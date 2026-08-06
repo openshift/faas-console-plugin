@@ -21,7 +21,14 @@ setup('authenticate', async ({ page }) => {
       throw new Error('BRIDGE_KUBEADMIN_PASSWORD is required when auth is enabled');
     }
 
-    await page.locator('[data-test-id="login"]').waitFor({ state: 'visible' });
+    const loginForm = page.locator('[data-test-id="login"]');
+    const kubeAdminIDP = page.locator('a:has-text("kube:admin")');
+    await loginForm.or(kubeAdminIDP).first().waitFor({ state: 'visible' });
+    if (await kubeAdminIDP.isVisible()) {
+      await kubeAdminIDP.click();
+    }
+
+    await loginForm.waitFor({ state: 'visible' });
     await page.fill('#inputUsername', username);
     await page.fill('#inputPassword', password);
     await page.click('button[type=submit]');
