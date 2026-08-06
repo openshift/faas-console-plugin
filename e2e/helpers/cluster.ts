@@ -85,6 +85,37 @@ async function createResourceIfNotExists(
   }
 }
 
+export async function ensureSecret(
+  page: Page,
+  namespace: string,
+  name: string,
+  data: Record<string, string>,
+): Promise<void> {
+  const encoded = Object.fromEntries(
+    Object.entries(data).map(([k, v]) => [k, Buffer.from(v).toString('base64')]),
+  );
+  await createResourceIfNotExists(page, `${K8S}/api/v1/namespaces/${namespace}/secrets`, {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: { name, namespace },
+    data: encoded,
+  });
+}
+
+export async function ensureConfigMap(
+  page: Page,
+  namespace: string,
+  name: string,
+  data: Record<string, string>,
+): Promise<void> {
+  await createResourceIfNotExists(page, `${K8S}/api/v1/namespaces/${namespace}/configmaps`, {
+    apiVersion: 'v1',
+    kind: 'ConfigMap',
+    metadata: { name, namespace },
+    data,
+  });
+}
+
 async function ensureServerlessOperator(page: Page): Promise<void> {
   const headers = await k8sHeaders(page);
   const csvPath = `${K8S}/apis/operators.coreos.com/v1alpha1/namespaces/${SUBSCRIPTION_NS}/clusterserviceversions`;
