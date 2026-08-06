@@ -134,7 +134,12 @@ function PatModal({ isOpen, onClose, onConnect }: PatModalProps) {
             <Divider />
           </FlexItem>
         </Flex>
-        <Form>
+        <Form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (pat && !isValidating) handleConnect();
+          }}
+        >
           <FormGroup label={t('Personal Access Token')} fieldId="pat-input">
             <TextInput
               id="pat-input"

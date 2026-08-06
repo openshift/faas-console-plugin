@@ -170,6 +170,27 @@ describe('UserAvatar', () => {
       expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
     });
 
+    it('submits PAT when Enter is pressed in the input', async () => {
+      const user = userEvent.setup();
+      const connectToForge = vi.fn();
+
+      renderWithContext(<UserAvatar enableReconnect />, {
+        isActive: false,
+        user: testUser,
+        connectionId: 0,
+        connectToForge,
+      });
+
+      await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
+      await user.keyboard('{Enter}');
+
+      await waitFor(() => {
+        expect(screen.getByText('twoGiants')).toBeInTheDocument();
+      });
+
+      expect(connectToForge).toHaveBeenCalled();
+    });
+
     it('closes modal when Cancel is clicked', async () => {
       const user = userEvent.setup();
 
