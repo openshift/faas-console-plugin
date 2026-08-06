@@ -189,13 +189,13 @@ describe('UserAvatar', () => {
 
     it('submits PAT when Enter is pressed in the input', async () => {
       const user = userEvent.setup();
-      const connectToForge = vi.fn();
+      const onLogin = vi.fn();
 
       renderWithContext(<UserAvatar enableReconnect />, {
-        isActive: false,
+        isAuthenticated: false,
         user: testUser,
         connectionId: 0,
-        connectToForge,
+        onLogin,
       });
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
@@ -205,7 +205,7 @@ describe('UserAvatar', () => {
         expect(screen.getByText('twoGiants')).toBeInTheDocument();
       });
 
-      expect(connectToForge).toHaveBeenCalled();
+      expect(onLogin).toHaveBeenCalled();
     });
 
     it('closes modal when Cancel is clicked', async () => {

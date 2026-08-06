@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
-import { Request } from '@playwright/test';
 import { navigateToCreatePage } from '../../helpers/navigation';
 import { ensureConfigMap, ensureNamespace, ensureSecret } from '../../helpers/cluster';
+import { fakeGithubUrl } from '../../helpers/fakegithub';
 
 const FUNC_NAME = 'env-var-func';
 const NAMESPACE = 'env-var-test';
@@ -18,13 +18,6 @@ const CONFIGMAP_KEY = 'APP_MODE';
 test.describe('Create function with environment variables', () => {
   test('user creates a function with plain, Secret, and ConfigMap env vars', async ({ page }) => {
     test.setTimeout(600_000);
-
-    const githubRequests: Request[] = [];
-    page.on('request', (req) => {
-      if (req.url().includes('api.github.com')) {
-        githubRequests.push(req);
-      }
-    });
 
     await test.step('ensure namespace with Secret and ConfigMap', async () => {
       await ensureNamespace(page, NAMESPACE);
@@ -151,26 +144,15 @@ test.describe('Create function with environment variables', () => {
       await expect(page).toHaveURL(/\/faas$/, { timeout: 30_000 });
     });
 
-    await test.step('verify func.yaml blob contains env vars', async () => {
-      const blobRequests = githubRequests.filter(
-        (r) => r.url().includes('/git/blobs') && r.method() === 'POST',
-      );
-
-      const funcYamlBlob = blobRequests.find((r) => {
-        const body = r.postDataJSON();
-        const raw =
-          body?.encoding === 'base64'
-            ? Buffer.from(body.content, 'base64').toString('utf-8')
-            : (body?.content ?? '');
-        return raw.includes('name:') && raw.includes('runtime:');
+    await test.step('verify func.yaml on fake GitHub contains env vars', async () => {
+      const url = fakeGithubUrl();
+      const resp = await fetch(`${url}/repos/e2e-user/${FUNC_NAME}/contents/func.yaml`, {
+        headers: { Authorization: 'token placeholder-pat' },
       });
+      expect(resp.ok).toBe(true);
 
-      expect(funcYamlBlob).toBeDefined();
-      const body = funcYamlBlob!.postDataJSON();
-      const content =
-        body.encoding === 'base64'
-          ? Buffer.from(body.content, 'base64').toString('utf-8')
-          : body.content;
+      const json = await resp.json();
+      const content = Buffer.from(json.content, 'base64').toString('utf-8');
 
       expect(content).toContain('LOG_LEVEL');
       expect(content).toContain('debug');

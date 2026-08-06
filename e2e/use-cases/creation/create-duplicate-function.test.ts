@@ -1,9 +1,9 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToCreatePage } from '../../helpers/navigation';
 import { ensureNamespace } from '../../helpers/cluster';
-import { BACKEND_ROUTE } from '../../mocks/backend-api';
+import { deleteRepoOnFakeGithub, seedRepo } from '../../helpers/fakegithub';
 
-const FUNC_NAME = 'test-func';
+const FUNC_NAME = 'duplicate-test-func';
 const NAMESPACE = 'create-test';
 const BRANCH = 'main';
 
@@ -13,17 +13,14 @@ test.describe('Create duplicate function', () => {
       await ensureNamespace(page, NAMESPACE);
     });
 
-    await test.step('override create endpoint to return conflict', async () => {
-      await page.route(BACKEND_ROUTE, (route) => {
-        const apiPath = new URL(route.request().url()).pathname;
-        if (route.request().method() === 'POST' && apiPath.endsWith('/func/create')) {
-          return route.fulfill({
-            status: 409,
-            json: { message: 'repository already exists' },
-          });
-        }
-        return route.fallback();
-      });
+    await test.step('seed repo so the name is taken', async () => {
+      await seedRepo(
+        'e2e-user',
+        FUNC_NAME,
+        'main',
+        [],
+        [{ path: 'README.md', mode: '100644', content: '# duplicate-test-func\n' }],
+      );
     });
 
     await test.step('navigate to the create page and fill the form', async () => {
@@ -48,6 +45,10 @@ test.describe('Create duplicate function', () => {
 
     await test.step('verify user stays on the create page', async () => {
       await expect(page).toHaveURL(/\/faas\/create/);
+    });
+
+    await test.step('clean up seeded repo', async () => {
+      await deleteRepoOnFakeGithub('e2e-user', FUNC_NAME);
     });
   });
 });
