@@ -18,6 +18,17 @@ RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') \
     && tar xzf /tmp/helm.tar.gz --strip-components=1 -C /usr/local/bin "linux-${ARCH}/helm" \
     && rm /tmp/helm.tar.gz
 
+# ko (checksum-verified download, same pattern as Helm)
+ARG KO_VERSION=0.19.1
+ARG KO_SHA256_x86_64=635ac6ea3fd376c935fee597fbb29ab2c2449f49ef1655085fe3aa9c25fed7a5
+ARG KO_SHA256_arm64=4099b2d1170d3b8a70e049237462efc2dd14d5fa30e9d2e5e108fb4f778cdd3f
+RUN ARCH=$(uname -m | sed 's/aarch64/arm64/') \
+    && eval "CHECKSUM=\${KO_SHA256_${ARCH}}" \
+    && curl -fsSL "https://github.com/ko-build/ko/releases/download/v${KO_VERSION}/ko_${KO_VERSION}_Linux_${ARCH}.tar.gz" -o /tmp/ko.tar.gz \
+    && echo "${CHECKSUM}  /tmp/ko.tar.gz" | sha256sum -c - \
+    && tar xzf /tmp/ko.tar.gz -C /usr/local/bin ko \
+    && rm /tmp/ko.tar.gz
+
 # Playwright system dependencies (Chromium)
 RUN dnf install -y \
     nss atk at-spi2-atk cups-libs libdrm libXcomposite libXdamage libXrandr \
