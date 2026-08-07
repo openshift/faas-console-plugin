@@ -1,11 +1,20 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { defineConfig, devices } from '@playwright/test';
 
 if (existsSync('.env')) {
   process.loadEnvFile('.env');
 }
 
-const baseURL = process.env.BRIDGE_BASE_ADDRESS || 'http://localhost:9000';
+function resolveBaseURL(): string {
+  if (process.env.BRIDGE_BASE_ADDRESS) return process.env.BRIDGE_BASE_ADDRESS;
+  if (existsSync('.dev-env.json')) {
+    const devEnv = JSON.parse(readFileSync('.dev-env.json', 'utf-8'));
+    if (devEnv.consolePort) return `http://localhost:${devEnv.consolePort}`;
+  }
+  return 'http://localhost:9000';
+}
+
+const baseURL = resolveBaseURL();
 
 export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
