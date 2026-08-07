@@ -53,7 +53,7 @@ sleep 5
 
 log::info "Logging in to registry..."
 ko login "localhost:${REGISTRY_PORT}" \
-  -u unused -p "$(oc whoami -t)"
+  -u unused -p "$(oc create token builder -n "$NAMESPACE")"
 
 export KO_DOCKER_REPO="localhost:${REGISTRY_PORT}/${NAMESPACE}/fakegithub"
 
