@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/github';
+import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
 import {
   deploymentApiPath,
   ensureNamespace,
@@ -55,17 +55,31 @@ test.describe('Delete function', () => {
     await test.step('verify function is removed from cluster', async () => {
       const headers = await k8sHeaders(page);
 
-      const ksvcRes = await page.request.get(`${ksvcApiPath(NAMESPACE)}/${PRESEEDED_FUNC_NAME}`, {
-        headers,
-      });
-      expect(ksvcRes.status()).toBe(404);
+      await expect
+        .poll(
+          async () =>
+            (
+              await page.request.get(`${ksvcApiPath(NAMESPACE)}/${PRESEEDED_FUNC_NAME}`, {
+                headers,
+              })
+            ).status(),
+          { timeout: 30_000, intervals: [2_000] },
+        )
+        .toBe(404);
 
-      const depRes = await page.request.get(
-        `${deploymentApiPath(NAMESPACE)}?labelSelector=function.knative.dev/name=${PRESEEDED_FUNC_NAME}`,
-        { headers },
-      );
-      const body = await depRes.json();
-      expect(body.items?.length ?? 0).toBe(0);
+      await expect
+        .poll(
+          async () => {
+            const depRes = await page.request.get(
+              `${deploymentApiPath(NAMESPACE)}?labelSelector=function.knative.dev/name=${PRESEEDED_FUNC_NAME}`,
+              { headers },
+            );
+            const body = await depRes.json();
+            return body.items?.length ?? 0;
+          },
+          { timeout: 30_000, intervals: [2_000] },
+        )
+        .toBe(0);
     });
 
     await test.step('verify function shows as not deployed in the UI', async () => {

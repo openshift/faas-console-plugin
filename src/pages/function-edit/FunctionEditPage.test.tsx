@@ -5,7 +5,7 @@ import { server } from '../../../testing/msw/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import FunctionEditPage from './FunctionEditPage';
 
-const GITHUB_API = 'https://api.github.com';
+const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -13,31 +13,48 @@ vi.mock('react-i18next', () => ({
 
 let mockOnChange: ((value: string) => void) | undefined;
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  DocumentTitle: ({ children }: { children: string }) => children,
-  ListPageHeader: ({ title }: { title: string }) => title,
-  CodeEditor: ({
-    onChange,
-    value,
-    language,
-    showEditor,
-    emptyState,
-  }: {
-    onChange?: (value: string) => void;
-    value?: string;
-    language?: string;
-    showEditor?: boolean;
-    emptyState?: unknown;
-  }) => {
-    mockOnChange = onChange;
-    if (!showEditor && emptyState) return emptyState;
-    return (
-      <div data-testid="code-editor" data-language={language ?? ''}>
-        {value ?? ''}
-      </div>
-    );
-  },
-}));
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
+  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
+    const res = await fetch(new URL(url, 'http://localhost').href, options);
+    const json = await res.json();
+    if (!res.ok) throw json;
+    return json;
+  };
+
+  const consoleFetch = async (url: string, options?: RequestInit) => {
+    const res = await fetch(new URL(url, 'http://localhost').href, options);
+    if (!res.ok) throw await res.json();
+    return res;
+  };
+
+  return {
+    DocumentTitle: ({ children }: { children: string }) => children,
+    ListPageHeader: ({ title }: { title: string }) => title,
+    CodeEditor: ({
+      onChange,
+      value,
+      language,
+      showEditor,
+      emptyState,
+    }: {
+      onChange?: (value: string) => void;
+      value?: string;
+      language?: string;
+      showEditor?: boolean;
+      emptyState?: unknown;
+    }) => {
+      mockOnChange = onChange;
+      if (!showEditor && emptyState) return emptyState;
+      return (
+        <div data-testid="code-editor" data-language={language ?? ''}>
+          {value ?? ''}
+        </div>
+      );
+    },
+    consoleFetchJSON,
+    consoleFetch,
+  };
+});
 
 function renderEditPage(name: string) {
   return render(
@@ -49,47 +66,37 @@ function renderEditPage(name: string) {
   );
 }
 
-function setupSearchReposHandler() {
+function setupListHandler() {
   server.use(
-    http.get(`${GITHUB_API}/search/repositories`, () =>
-      HttpResponse.json({
-        total_count: 1,
-        items: [
-          {
-            owner: { login: 'twoGiants' },
-            name: 'my-func',
-            html_url: 'https://github.com/twoGiants/my-func',
-            default_branch: 'main',
-          },
-        ],
-      }),
+    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
+      HttpResponse.json([
+        {
+          owner: 'twoGiants',
+          repoName: 'my-func',
+          url: 'https://github.com/twoGiants/my-func',
+          defaultBranch: 'main',
+          name: 'my-func',
+          namespace: 'demo',
+          runtime: 'node',
+        },
+      ]),
     ),
   );
 }
 
 function setupFetchHandlers() {
-  setupSearchReposHandler();
+  setupListHandler();
   server.use(
-    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/trees/main`, () =>
-      HttpResponse.json({
-        sha: 'tree-sha',
-        tree: [
-          { path: 'func.yaml', type: 'blob', mode: '100644', sha: 'blob-1' },
-          { path: 'index.js', type: 'blob', mode: '100644', sha: 'blob-2' },
-        ],
-      }),
-    ),
-    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs/blob-1`, () =>
-      HttpResponse.json({
-        content: btoa('name: my-func\nruntime: node'),
-        encoding: 'base64',
-      }),
-    ),
-    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs/blob-2`, () =>
-      HttpResponse.json({
-        content: btoa('module.exports = {}'),
-        encoding: 'base64',
-      }),
+    http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
+      HttpResponse.json([
+        {
+          path: 'func.yaml',
+          mode: '100644',
+          content: 'name: my-func\nruntime: node',
+          type: 'blob',
+        },
+        { path: 'index.js', mode: '100644', content: 'module.exports = {}', type: 'blob' },
+      ]),
     ),
   );
 }
@@ -104,11 +111,11 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows loading state in tree while fetching files', () => {
-    setupSearchReposHandler();
+    setupListHandler();
     server.use(
-      http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/trees/main`, async () => {
+      http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
         await delay('infinite');
-        return HttpResponse.json({});
+        return HttpResponse.json([]);
       }),
     );
 
@@ -118,7 +125,7 @@ describe('FunctionEditPage', () => {
     expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
   });
 
-  it('loads files from GitHub', async () => {
+  it('loads files from backend', async () => {
     setupFetchHandlers();
 
     renderEditPage('my-func');
@@ -211,7 +218,7 @@ describe('FunctionEditPage', () => {
 
   it('resets hasChanges after save', async () => {
     setupFetchHandlers();
-    setupPushHandlers();
+    setupPutHandler();
 
     renderEditPage('my-func');
 
@@ -247,7 +254,7 @@ describe('FunctionEditPage', () => {
       expect(screen.getByTestId('code-editor')).toHaveTextContent('name: my-func');
     });
 
-    // After editing, dirty indicator appends ● to the filename
+    // After editing, dirty indicator appends a dot to the filename
     await user.click(screen.getByText(/^index\.js/));
 
     await waitFor(() => {
@@ -273,15 +280,13 @@ describe('FunctionEditPage', () => {
     });
   });
 
-  it('calls GitHub push API when saving edited files', async () => {
+  it('calls backend PUT when saving edited files', async () => {
     setupFetchHandlers();
-    setupPushHandlers();
-
-    const createTree = vi.fn();
+    const putHandler = vi.fn();
     server.use(
-      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/trees`, async ({ request }) => {
-        createTree(await request.json());
-        return HttpResponse.json({ sha: 'tree-sha' });
+      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async ({ request }) => {
+        putHandler(await request.json());
+        return new HttpResponse(null, { status: 204 });
       }),
     );
 
@@ -296,15 +301,14 @@ describe('FunctionEditPage', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
 
     await waitFor(() => {
-      expect(createTree).toHaveBeenCalled();
+      expect(putHandler).toHaveBeenCalled();
     });
   });
 
   it('shows danger alert when save fails', async () => {
     setupFetchHandlers();
-    setupPushHandlers();
     server.use(
-      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
+      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
         HttpResponse.json({ message: 'Server Error' }, { status: 500 }),
       ),
     );
@@ -326,11 +330,10 @@ describe('FunctionEditPage', () => {
 
   it('disables save button while saving is in progress', async () => {
     setupFetchHandlers();
-    setupPushHandlers();
     server.use(
-      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, async () => {
+      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
         await delay('infinite');
-        return HttpResponse.json({ sha: 'blob-sha' });
+        return new HttpResponse(null, { status: 204 });
       }),
     );
 
@@ -351,10 +354,9 @@ describe('FunctionEditPage', () => {
 
   it('clears error alert when next save succeeds', async () => {
     setupFetchHandlers();
-    setupPushHandlers();
 
     server.use(
-      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
+      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
         HttpResponse.json({ message: 'Server Error' }, { status: 500 }),
       ),
     );
@@ -375,8 +377,9 @@ describe('FunctionEditPage', () => {
     });
 
     server.use(
-      http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
-        HttpResponse.json({ sha: 'blob-sha' }),
+      http.put(
+        `${BACKEND_API}/api/v1/func/twoGiants/my-func/files`,
+        () => new HttpResponse(null, { status: 204 }),
       ),
     );
 
@@ -404,7 +407,7 @@ describe('FunctionEditPage', () => {
   it('shows success message after save and hides it after 2 seconds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     setupFetchHandlers();
-    setupPushHandlers();
+    setupPutHandler();
 
     renderEditPage('my-func');
 
@@ -430,24 +433,11 @@ describe('FunctionEditPage', () => {
   });
 });
 
-function setupPushHandlers() {
-  setupSearchReposHandler();
+function setupPutHandler() {
   server.use(
-    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/ref/:ref+`, () =>
-      HttpResponse.json({ object: { sha: 'head-sha' } }),
+    http.put(
+      `${BACKEND_API}/api/v1/func/twoGiants/my-func/files`,
+      () => new HttpResponse(null, { status: 204 }),
     ),
-    http.get(`${GITHUB_API}/repos/twoGiants/my-func/git/commits/:sha`, () =>
-      HttpResponse.json({ tree: { sha: 'parent-tree-sha' } }),
-    ),
-    http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/blobs`, () =>
-      HttpResponse.json({ sha: 'blob-sha' }),
-    ),
-    http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/trees`, () =>
-      HttpResponse.json({ sha: 'tree-sha' }),
-    ),
-    http.post(`${GITHUB_API}/repos/twoGiants/my-func/git/commits`, () =>
-      HttpResponse.json({ sha: 'commit-sha' }),
-    ),
-    http.patch(`${GITHUB_API}/repos/twoGiants/my-func/git/refs/:ref+`, () => HttpResponse.json({})),
   );
 }

@@ -5,21 +5,17 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 import { UserAvatar } from '../../common/components/UserAvatar';
-import {
-  ForgeConnectionContext,
-  ForgeConnectionProvider,
-} from '../../common/context/ForgeConnectionProvider';
+import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { useClusterService } from '../../common/services/cluster/useClusterService';
 import { useFunctionService } from '../../common/services/function/useFunctionService';
-import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
 import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/services/types';
 import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionCreatePage() {
   return (
-    <ForgeConnectionProvider>
+    <AuthProvider>
       <FunctionCreatePageContent />
-    </ForgeConnectionProvider>
+    </AuthProvider>
   );
 }
 
@@ -83,12 +79,11 @@ function useFunctionCreatePage(): {
   onNamespaceChange: (namespace: string) => void;
 } {
   const navigate = useNavigate();
-  const isConnectedToForge = useContext(ForgeConnectionContext).isActive;
+  const isConnectedToForge = useContext(AuthContext).isAuthenticated;
   const functionService = useFunctionService();
-  const sourceControl = useSourceControlService();
   const [namespace, setNamespace] = useState('');
   const debouncedNamespace = useDebouncedValue(namespace, 300);
-  const { secrets, configMaps, generateKubeconfig } = useClusterService([], debouncedNamespace);
+  const { secrets, configMaps } = useClusterService([], debouncedNamespace);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,21 +93,15 @@ function useFunctionCreatePage(): {
     setError(null);
 
     try {
-      const files = await functionService.generateFunction({
+      await functionService.createFunction({
         name: data.name,
         runtime: data.runtime,
         registry: data.registry,
         namespace: data.namespace,
         branch: data.branch,
+        owner: data.owner,
+        repo: data.repo,
         envVars: toEnvVars(data.plainEnvVars, data.secretEnvVars, data.configMapEnvVars),
-      });
-
-      const repo = { owner: data.owner, name: data.repo, url: '', defaultBranch: data.branch };
-
-      const kubeconfig = await generateKubeconfig(data.namespace);
-      await sourceControl.createRepoWithSecret(repo, files, 'Initialize Knative function project', {
-        name: 'KUBECONFIG',
-        value: kubeconfig,
       });
 
       navigate('/faas');

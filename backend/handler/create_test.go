@@ -210,6 +210,16 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("internal registry namespace mismatch", createRequest{Name: "fn", Runtime: "go", Registry: "image-registry.openshift-image-registry.svc:5000/default", Namespace: "test", Branch: "main", Owner: "a", Repo: "r"}),
 		Entry("missing owner", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "", Repo: "r"}),
 		Entry("missing repo", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: ""}),
+		Entry("env var missing name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
+			EnvVars: []scaffold.EnvVar{{Name: "", Value: "v"}}}),
+		Entry("secret env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
+			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceKey: "k"}}}),
+		Entry("secret env var missing resourceKey", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
+			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceName: "s"}}}),
+		Entry("configMap env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
+			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "configMap", ResourceKey: "k"}}}),
+		Entry("invalid env var source", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
+			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "invalid"}}}),
 	)
 
 	Describe("rollback on failure", func() {

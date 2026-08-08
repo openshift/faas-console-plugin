@@ -26,13 +26,14 @@ var (
 )
 
 type createRequest struct {
-	Name      string `json:"name"`
-	Runtime   string `json:"runtime"`
-	Registry  string `json:"registry"`
-	Namespace string `json:"namespace"`
-	Branch    string `json:"branch"`
-	Owner     string `json:"owner"`
-	Repo      string `json:"repo"`
+	Name      string            `json:"name"`
+	Runtime   string            `json:"runtime"`
+	Registry  string            `json:"registry"`
+	Namespace string            `json:"namespace"`
+	Branch    string            `json:"branch"`
+	Owner     string            `json:"owner"`
+	Repo      string            `json:"repo"`
+	EnvVars   []scaffold.EnvVar `json:"envVars,omitempty"`
 }
 
 // errUpstream marks errors that originated from an upstream API (SCM, cluster)
@@ -90,6 +91,7 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		Branch:           req.Branch,
 		SCM:              scm.DefaultPlatform,
 		InternalRegistry: strings.HasPrefix(req.Registry, config.OCPInternalRegistry),
+		EnvVars:          req.EnvVars,
 	})
 	if err != nil {
 		return fmt.Errorf("generate scaffold: %w", err)
@@ -175,6 +177,24 @@ func validateCreateRequest(req createRequest) error {
 	}
 	if !validSCMName.MatchString(req.Repo) {
 		return fmt.Errorf("invalid repo name")
+	}
+	for i, ev := range req.EnvVars {
+		if ev.Name == "" {
+			return fmt.Errorf("envVars[%d]: name is required", i)
+		}
+		switch ev.Source {
+		case "secret", "configMap":
+			if ev.ResourceName == "" {
+				return fmt.Errorf("envVars[%d]: resourceName is required for source %q", i, ev.Source)
+			}
+			if ev.ResourceKey == "" {
+				return fmt.Errorf("envVars[%d]: resourceKey is required for source %q", i, ev.Source)
+			}
+		case "value":
+			// plain key/value, no extra validation
+		default:
+			return fmt.Errorf("envVars[%d]: invalid source %q", i, ev.Source)
+		}
 	}
 	return nil
 }

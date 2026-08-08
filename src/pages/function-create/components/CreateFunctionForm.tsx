@@ -28,7 +28,7 @@ import {
   PlainEnvVar,
   ResourceEnvVar,
 } from '../../../common/services/types';
-import { ForgeConnectionContext } from '../../../common/context/ForgeConnectionProvider';
+import { AuthContext } from '../../../common/context/AuthProvider';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 
 const OCP_INTERNAL_REGISTRY = 'image-registry.openshift-image-registry.svc:5000/';
@@ -163,7 +163,7 @@ export function CreateFunctionForm({
 }
 
 function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
-  const { user } = useContext(ForgeConnectionContext);
+  const { user } = useContext(AuthContext);
   const [fields, setFields] = useState<CreateFunctionFormData>({
     owner: user?.name ?? '',
     repo: '',

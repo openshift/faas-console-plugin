@@ -1,8 +1,9 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToCreatePage } from '../../helpers/navigation';
 import { ensureNamespace } from '../../helpers/cluster';
+import { deleteRepoOnFakeGithub, seedRepo } from '../../helpers/fakegithub';
 
-const FUNC_NAME = 'test-func';
+const FUNC_NAME = 'duplicate-test-func';
 const NAMESPACE = 'create-test';
 const BRANCH = 'main';
 
@@ -12,15 +13,14 @@ test.describe('Create duplicate function', () => {
       await ensureNamespace(page, NAMESPACE);
     });
 
-    await test.step('override repo existence check to return 200', async () => {
-      await page.route('https://api.github.com/repos/*/*', (route) => {
-        if (route.request().method() === 'GET') {
-          return route.fulfill({
-            json: { name: FUNC_NAME, default_branch: BRANCH },
-          });
-        }
-        return route.continue();
-      });
+    await test.step('seed repo so the name is taken', async () => {
+      await seedRepo(
+        'e2e-user',
+        FUNC_NAME,
+        'main',
+        [],
+        [{ path: 'README.md', mode: '100644', content: '# duplicate-test-func\n' }],
+      );
     });
 
     await test.step('navigate to the create page and fill the form', async () => {
@@ -40,11 +40,15 @@ test.describe('Create duplicate function', () => {
       await page.getByRole('button', { name: 'Create', exact: true }).click();
 
       await expect(page.getByText('Error creating function')).toBeVisible({ timeout: 30_000 });
-      await expect(page.getByText(/exists, please choose a different name/)).toBeVisible();
+      await expect(page.getByText(/repository already exists/)).toBeVisible();
     });
 
     await test.step('verify user stays on the create page', async () => {
       await expect(page).toHaveURL(/\/faas\/create/);
+    });
+
+    await test.step('clean up seeded repo', async () => {
+      await deleteRepoOnFakeGithub('e2e-user', FUNC_NAME);
     });
   });
 });

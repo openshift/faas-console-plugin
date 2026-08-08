@@ -6,6 +6,7 @@ TEST_TIMEOUT ?= 120s
 CGO_ENABLED ?= 0
 LDFLAGS ?= -s -w
 BACKEND_BIN ?= $(PROJECT_DIR)/bin/plugin-backend
+FAKEGITHUB_BIN ?= $(PROJECT_DIR)/bin/fakegithub
 GOLANGCI_LINT_VERSION ?= v2.12.2
 GOLANGCI_LINT = go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
@@ -21,7 +22,7 @@ IMAGE ?= quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin
 KUBE_API_SERVER ?= https://api.example.com:6443
 
 .PHONY: help install-frontend build-frontend lint-frontend unit-frontend type-check test-e2e verify \
-        install-backend build-backend unit-backend lint-backend fmt-backend \
+        install-backend build-backend build-fakegithub unit-backend lint-backend fmt-backend \
         image manifests deploy undeploy deploy-dev setup-serverless \
         dev dev-% \
         build lint unit e2e
@@ -86,6 +87,10 @@ build-backend: ## Compile Go binary to bin/
 	$(if $(GOOS),GOOS=$(GOOS)) \
 	$(if $(GOARCH),GOARCH=$(GOARCH)) \
 	go -C $(BACKEND_DIR) build -ldflags="$(LDFLAGS)" -o $(BACKEND_BIN) .
+
+build-fakegithub: ## Build fake GitHub server binary
+	@mkdir -p $(dir $(FAKEGITHUB_BIN))
+	CGO_ENABLED=$(CGO_ENABLED) go -C $(BACKEND_DIR) build -buildvcs=false -o $(FAKEGITHUB_BIN) ./cmd/fakegithub
 
 unit-backend: ## Run Go unit tests
 	go -C $(BACKEND_DIR) test ./... -timeout $(TEST_TIMEOUT)
