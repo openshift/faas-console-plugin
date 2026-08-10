@@ -27,6 +27,8 @@
     "webpack": "webpack"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
     "@openshift-console/dynamic-plugin-sdk": "4.23-latest",
     "@openshift-console/dynamic-plugin-sdk-webpack": "4.23-latest",
     "@patternfly/react-code-editor": "6.6.1",

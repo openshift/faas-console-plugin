@@ -45,8 +45,10 @@ dev-%:
 
 ##@ Frontend
 
-install-frontend: ## Install frontend dependencies (yarn install --immutable)
-	yarn install --immutable
+install-frontend: ## Install frontend dependencies (skips if up to date)
+	@if [ ! -d node_modules ] || [ yarn.lock -nt node_modules/.yarn-state.yml ]; then \
+		yarn install --immutable; \
+	fi
 
 build-frontend: install-frontend ## Build production bundle
 	yarn build
