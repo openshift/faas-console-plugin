@@ -13,7 +13,7 @@ Before starting, check if `demo/pdf-transcriber/.env` exists. If it does not, co
 
 - NAMESPACE: `pdf-transcriber`
 - ADC_FILE: `$HOME/.config/gcloud/application_default_credentials.json`
-- GCP_PROJECT: `ANTHROPIC_VERTEX_PROJECT_ID` from `demo/pdf-transcriber/.env`
+- GCP_PROJECT: `ANTHROPIC_VERTEX_PROJECT_ID` from `demo/pdf-transcriber/.env` (look up in the [GCP project spreadsheet](https://docs.google.com/spreadsheets/d/1qWoCx3i5jZ-t6BUD-2AIdutk9sMmkytoXqjBXh2oi4U/edit?gid=0#gid=0))
 - GCP_REGION: `CLOUD_ML_REGION` from `demo/pdf-transcriber/.env`
 - DEMO_DIR: `demo/pdf-transcriber`
 - PROJECT_DIR: `pdf-transcriber`
@@ -110,12 +110,10 @@ Do NOT rewrite `func.yaml` from scratch. The `func` CLI generates fields like `c
 - Add these to `build.buildEnvs` if not already present:
   - `MAVEN_S2I_ARTIFACT_DIRS` = `target/quarkus-app`
   - `S2I_SOURCE_DEPLOYMENTS_FILTER` = `lib quarkus-run.jar app quarkus`
-- Add `run.volumes` with the GCP secret mount:
-  - `secret: gcp-adc`, `path: /var/secrets/google`
 - Add these to `run.envs` if not already present:
   - `ANTHROPIC_VERTEX_PROJECT_ID` = value loaded from `demo/pdf-transcriber/.env`
   - `CLOUD_ML_REGION` = value loaded from `demo/pdf-transcriber/.env`
-  - `GOOGLE_APPLICATION_CREDENTIALS` = `/var/secrets/google/application_default_credentials.json`
+  - `GCP_CREDENTIALS` = `{{ secret:gcp-adc:application_default_credentials.json }}`
 
 Show the user the planned changes and confirm before editing.
 
