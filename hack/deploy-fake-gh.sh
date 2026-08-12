@@ -57,7 +57,7 @@ oc port-forward svc/image-registry \
   "${REGISTRY_PORT}:5000" \
   -n openshift-image-registry &
 PF_PID=$!
-trap "kill $PF_PID 2>/dev/null || true" EXIT
+trap "kill $PF_PID 2>/dev/null || true" EXIT INT TERM
 sleep 5
 
 # --- Build and push with ko ---

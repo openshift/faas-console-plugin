@@ -294,7 +294,7 @@ main() {
   write_dev_env
   extract_cluster_ca
   resolve_kube_api_server
-  trap 'stop_dev' EXIT
+  trap 'stop_dev' EXIT INT TERM
   if $FAKE_GH; then
     start_fakegithub
     wait_for_port "$FAKE_GH_PORT" "Fake GitHub server" "$PID_DIR/fakegithub.pid"
@@ -306,7 +306,7 @@ main() {
   wait_for_port "$PLUGIN_PORT" "Plugin dev server" "$PID_DIR/webpack.pid"
   start_console
   wait_for_port "$CONSOLE_PORT" "OpenShift console" "$PID_DIR/console.pid"
-  trap - EXIT
+  trap - EXIT INT TERM
   print_status
 }
 
