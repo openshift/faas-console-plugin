@@ -31,6 +31,7 @@ function cleanup {
   if [ -n "$FAKE_GH_PF_PID" ]; then
     kill "$FAKE_GH_PF_PID" 2>/dev/null || true
   fi
+  oc delete deployment/fakegithub svc/fakegithub -n "${NAMESPACE}" 2>/dev/null || true
 }
 
 trap cleanup EXIT
