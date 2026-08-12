@@ -39,6 +39,20 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 | `/e2e` | Scaffold and debug Playwright e2e tests |
 | `/scrutinise` | Critically review your own output |
 
+### ChatOps
+
+PRs merge via Prow when they have both `approved` and `lgtm` labels.
+
+| Command | What it does |
+|---------|--------------|
+| `/lgtm` | Approve for merge (or use GitHub review approval) |
+| `/approve` | OWNERS approval (cannot self-approve) |
+| `/hold` | Block merge |
+| `/retest` | Re-run failed CI jobs |
+| `/test e2e-aws` | Run e2e CI job |
+
+[All available commands](https://go.k8s.io/bot-commands?repo=openshift%2Ffaas-console-plugin)  for this repo.
+
 ## Deployment on cluster
 
 ### Prerequisites
@@ -91,15 +105,15 @@ oc patch consoles.operator.openshift.io cluster --type=json \
 
 ```shell
 oc login ...
-make setup-serverless       # install Serverless operator + Knative Serving (optional)
+make setup-serverless # install Serverless operator + Knative Serving (optional)
 ```
 
 ### Setup
 
 ```shell
-make dev                    # build + start webpack + console container
-make dev-stop               # stop dev environment
-make dev-randomize-ports    # start with random ports (when defaults are in use)
+make dev                 # build + start webpack + console container
+make dev-stop            # stop dev environment
+make dev-randomize-ports # start with random ports (when defaults are in use)
 ```
 
 Navigate to <http://localhost:9000> to see the running plugin.
@@ -107,10 +121,10 @@ Navigate to <http://localhost:9000> to see the running plugin.
 ### Testing
 
 ```shell
-make unit                               # frontend + backend unit tests
-make test-e2e                           # Playwright e2e (requires make dev running)
-make test-e2e ARGS="--headed"           # visible browser
-make test-e2e ARGS="--ui"              # interactive UI mode
+make unit                     # frontend + backend unit tests
+make test-e2e                 # Playwright e2e (requires make dev running)
+make test-e2e ARGS="--headed" # visible browser
+make test-e2e ARGS="--ui"     # interactive UI mode
 ```
 
 See [docs/TESTING.md](docs/TESTING.md#e2e-conventions) for full conventions, helpers, and environment variables.
@@ -120,7 +134,7 @@ See [docs/TESTING.md](docs/TESTING.md#e2e-conventions) for full conventions, hel
 To deploy a production-like image to the cluster instead of running locally:
 
 ```shell
-make deploy-dev             # build image, push to internal registry, deploy
+make deploy-dev # build image, push to internal registry, deploy
 ```
 
 ## i18n
