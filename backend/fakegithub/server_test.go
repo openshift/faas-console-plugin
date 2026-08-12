@@ -219,7 +219,7 @@ var _ = Describe("FakeGitHub Server", func() {
 	})
 
 	Describe("Admin API", func() {
-		It("resets all state", func() {
+		It("seeds and resets all state", func() {
 			ts, cl := startServer()
 			seedRepo(ts)
 
