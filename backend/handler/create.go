@@ -21,6 +21,7 @@ var (
 	validBranch      = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
 	validRuntimes    = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
 	validSCMName     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+	validEnvVarName  = regexp.MustCompile(`^[-._a-zA-Z][-._a-zA-Z0-9]*$`)
 	newClusterClient = cluster.New
 	generateScaffold = scaffold.Generate
 )
@@ -179,8 +180,8 @@ func validateCreateRequest(req createRequest) error {
 		return fmt.Errorf("invalid repo name")
 	}
 	for i, ev := range req.EnvVars {
-		if ev.Name == "" {
-			return fmt.Errorf("envVars[%d]: name is required", i)
+		if !validEnvVarName.MatchString(ev.Name) {
+			return fmt.Errorf("envVars[%d]: invalid name %q", i, ev.Name)
 		}
 		switch ev.Source {
 		case "secret", "configMap":

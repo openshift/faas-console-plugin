@@ -212,6 +212,8 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("missing repo", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: ""}),
 		Entry("env var missing name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
 			EnvVars: []scaffold.EnvVar{{Name: "", Value: "v"}}}),
+		Entry("env var invalid name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
+			EnvVars: []scaffold.EnvVar{{Name: "123BAD", Source: "value", Value: "v"}}}),
 		Entry("secret env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
 			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceKey: "k"}}}),
 		Entry("secret env var missing resourceKey", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
@@ -221,6 +223,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("invalid env var source", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
 			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "invalid"}}}),
 	)
+
 
 	Describe("rollback on failure", func() {
 		It("rolls back cluster resources when GenerateKubeconfig fails", func() {
