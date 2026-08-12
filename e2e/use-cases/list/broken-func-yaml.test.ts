@@ -5,17 +5,21 @@ import { seedRepo, deleteRepoOnFakeGithub } from '../../helpers/fakegithub';
 const BROKEN_REPO = 'broken-func-yaml-repo';
 
 test.describe('Broken func.yaml', () => {
-  test('shows Error status for a repo with invalid func.yaml', async ({ page }) => {
-    await test.step('seed a repo with invalid func.yaml', async () => {
-      await seedRepo('e2e-user', BROKEN_REPO, 'main', ['serverless-function'], [
-        {
-          path: 'func.yaml',
-          mode: '100644',
-          content: '}{not yaml',
-        },
-      ]);
-    });
+  test.beforeEach(async () => {
+    await seedRepo('e2e-user', BROKEN_REPO, 'main', ['serverless-function'], [
+      {
+        path: 'func.yaml',
+        mode: '100644',
+        content: '}{not yaml',
+      },
+    ]);
+  });
 
+  test.afterEach(async () => {
+    await deleteRepoOnFakeGithub('e2e-user', BROKEN_REPO);
+  });
+
+  test('shows Error status for a repo with invalid func.yaml', async ({ page }) => {
     await test.step('navigate to functions list', async () => {
       await navigateToFunctionsList(page);
     });
@@ -41,10 +45,6 @@ test.describe('Broken func.yaml', () => {
       // Namespace shows em dash via TextOrDash, runtime renders as empty string
       await expect(row.locator('td[data-label="Namespace"]')).toHaveText('\u2014');
       await expect(row.locator('td[data-label="Runtime"]')).toHaveText('');
-    });
-
-    await test.step('clean up broken repo', async () => {
-      await deleteRepoOnFakeGithub('e2e-user', BROKEN_REPO);
     });
   });
 });

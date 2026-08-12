@@ -4,6 +4,27 @@ import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
 import { deleteRepoOnFakeGithub, seedRepo } from '../../helpers/fakegithub';
 
 test.describe('Save failure', () => {
+  test.afterEach(async () => {
+    await seedRepo(
+      'e2e-user',
+      PRESEEDED_FUNC_NAME,
+      'main',
+      ['serverless-function'],
+      [
+        {
+          path: 'func.yaml',
+          mode: '100644',
+          content: `name: ${PRESEEDED_FUNC_NAME}\nruntime: node\nnamespace: default\n`,
+        },
+        {
+          path: 'index.js',
+          mode: '100644',
+          content: 'module.exports = async (context) => context;',
+        },
+      ],
+    );
+  });
+
   test('error alert appears when save fails', async ({ page }) => {
     await test.step('navigate to edit page', async () => {
       await navigateToEditPage(page, PRESEEDED_FUNC_NAME);
@@ -35,27 +56,6 @@ test.describe('Save failure', () => {
 
     await test.step('save button remains enabled for retry', async () => {
       await expect(page.getByRole('button', { name: 'Save & Deploy' })).toBeEnabled();
-    });
-
-    await test.step('re-seed the repo for other tests', async () => {
-      await seedRepo(
-        'e2e-user',
-        PRESEEDED_FUNC_NAME,
-        'main',
-        ['serverless-function'],
-        [
-          {
-            path: 'func.yaml',
-            mode: '100644',
-            content: `name: ${PRESEEDED_FUNC_NAME}\nruntime: node\nnamespace: default\n`,
-          },
-          {
-            path: 'index.js',
-            mode: '100644',
-            content: 'module.exports = async (context) => context;',
-          },
-        ],
-      );
     });
   });
 });

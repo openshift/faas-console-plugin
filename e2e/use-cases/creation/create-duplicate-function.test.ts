@@ -8,19 +8,23 @@ const NAMESPACE = 'create-test';
 const BRANCH = 'main';
 
 test.describe('Create duplicate function', () => {
+  test.beforeEach(async () => {
+    await seedRepo(
+      'e2e-user',
+      FUNC_NAME,
+      'main',
+      [],
+      [{ path: 'README.md', mode: '100644', content: '# duplicate-test-func\n' }],
+    );
+  });
+
+  test.afterEach(async () => {
+    await deleteRepoOnFakeGithub('e2e-user', FUNC_NAME);
+  });
+
   test('user sees an error when the function name already exists', async ({ page }) => {
     await test.step('ensure namespace exists', async () => {
       await ensureNamespace(page, NAMESPACE);
-    });
-
-    await test.step('seed repo so the name is taken', async () => {
-      await seedRepo(
-        'e2e-user',
-        FUNC_NAME,
-        'main',
-        [],
-        [{ path: 'README.md', mode: '100644', content: '# duplicate-test-func\n' }],
-      );
     });
 
     await test.step('navigate to the create page and fill the form', async () => {
@@ -45,10 +49,6 @@ test.describe('Create duplicate function', () => {
 
     await test.step('verify user stays on the create page', async () => {
       await expect(page).toHaveURL(/\/faas\/create/);
-    });
-
-    await test.step('clean up seeded repo', async () => {
-      await deleteRepoOnFakeGithub('e2e-user', FUNC_NAME);
     });
   });
 });
