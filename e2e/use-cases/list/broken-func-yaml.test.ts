@@ -1,12 +1,13 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
+import { E2E_USER } from '../../helpers/constants';
 import { seedRepo, deleteRepoOnFakeGithub } from '../../helpers/fakegithub';
 
 const BROKEN_REPO = 'broken-func-yaml-repo';
 
 test.describe('Broken func.yaml', () => {
   test.beforeEach(async () => {
-    await seedRepo('e2e-user', BROKEN_REPO, 'main', ['serverless-function'], [
+    await seedRepo(E2E_USER, BROKEN_REPO, 'main', ['serverless-function'], [
       {
         path: 'func.yaml',
         mode: '100644',
@@ -16,7 +17,7 @@ test.describe('Broken func.yaml', () => {
   });
 
   test.afterEach(async () => {
-    await deleteRepoOnFakeGithub('e2e-user', BROKEN_REPO);
+    await deleteRepoOnFakeGithub(E2E_USER, BROKEN_REPO);
   });
 
   test('shows Error status for a repo with invalid func.yaml', async ({ page }) => {

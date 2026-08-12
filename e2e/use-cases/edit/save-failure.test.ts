@@ -1,12 +1,12 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToEditPage } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
+import { E2E_USER, PRESEEDED_FUNC_NAME } from '../../helpers/constants';
 import { deleteRepoOnFakeGithub, seedRepo } from '../../helpers/fakegithub';
 
 test.describe('Save failure', () => {
   test.afterEach(async () => {
     await seedRepo(
-      'e2e-user',
+      E2E_USER,
       PRESEEDED_FUNC_NAME,
       'main',
       ['serverless-function'],
@@ -33,7 +33,7 @@ test.describe('Save failure', () => {
     });
 
     await test.step('delete repo on fake GitHub to cause save failure', async () => {
-      await deleteRepoOnFakeGithub('e2e-user', PRESEEDED_FUNC_NAME);
+      await deleteRepoOnFakeGithub(E2E_USER, PRESEEDED_FUNC_NAME);
     });
 
     await test.step('edit file content', async () => {

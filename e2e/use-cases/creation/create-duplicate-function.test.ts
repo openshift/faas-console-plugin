@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToCreatePage } from '../../helpers/navigation';
 import { ensureNamespace } from '../../helpers/cluster';
+import { E2E_USER } from '../../helpers/constants';
 import { deleteRepoOnFakeGithub, seedRepo } from '../../helpers/fakegithub';
 
 const FUNC_NAME = 'duplicate-test-func';
@@ -10,7 +11,7 @@ const BRANCH = 'main';
 test.describe('Create duplicate function', () => {
   test.beforeEach(async () => {
     await seedRepo(
-      'e2e-user',
+      E2E_USER,
       FUNC_NAME,
       'main',
       [],
@@ -19,7 +20,7 @@ test.describe('Create duplicate function', () => {
   });
 
   test.afterEach(async () => {
-    await deleteRepoOnFakeGithub('e2e-user', FUNC_NAME);
+    await deleteRepoOnFakeGithub(E2E_USER, FUNC_NAME);
   });
 
   test('user sees an error when the function name already exists', async ({ page }) => {

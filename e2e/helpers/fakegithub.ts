@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs';
 import * as path from 'path';
+import { FAKE_GH_PAT } from './constants';
 
 interface DevEnv {
   fakeGithubPort?: number;
@@ -52,8 +53,6 @@ export async function resetFakeGithub(): Promise<void> {
     throw new Error(`Failed to reset fake GitHub: ${resp.status} ${await resp.text()}`);
   }
 }
-
-const FAKE_GH_PAT = 'placeholder-pat';
 
 export async function deleteRepoOnFakeGithub(owner: string, name: string): Promise<void> {
   const url = fakeGithubUrl();

@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToEditPage } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
+import { PRESEEDED_FUNC_NAME } from '../../helpers/constants';
 
 test.describe('Edit function', () => {
   test('user views files, edits code, and saves changes', async ({ page }) => {

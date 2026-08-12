@@ -1,7 +1,7 @@
 import { rm } from 'fs/promises';
 import * as path from 'path';
 import { resetFakeGithub, seedRepo } from './helpers/fakegithub';
-import { PRESEEDED_FUNC_NAME } from './mocks/backend-api';
+import { E2E_USER, PRESEEDED_FUNC_NAME } from './helpers/constants';
 
 // Force a fresh login on every run to avoid stale CSRF tokens when switching clusters.
 export default async function globalSetup() {
@@ -10,7 +10,7 @@ export default async function globalSetup() {
 
   await resetFakeGithub();
   await seedRepo(
-    'e2e-user',
+    E2E_USER,
     PRESEEDED_FUNC_NAME,
     'main',
     ['serverless-function'],

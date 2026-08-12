@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
 import { resetFakeGithub, seedRepo } from '../../helpers/fakegithub';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/backend-api';
+import { E2E_USER, PRESEEDED_FUNC_NAME } from '../../helpers/constants';
 
 test.describe('Functions list empty state', () => {
   test.beforeEach(async () => {
@@ -10,7 +10,7 @@ test.describe('Functions list empty state', () => {
 
   test.afterEach(async () => {
     await seedRepo(
-      'e2e-user',
+      E2E_USER,
       PRESEEDED_FUNC_NAME,
       'main',
       ['serverless-function'],
