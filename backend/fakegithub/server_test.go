@@ -22,14 +22,6 @@ func TestFakeGitHub(t *testing.T) {
 
 const testPAT = "test-pat"
 
-func startServer() (*httptest.Server, scm.Client) {
-	srv := fakegithub.New(fakegithub.User{Login: "testuser", AvatarURL: "https://example.com/avatar"}, testPAT)
-	ts := httptest.NewServer(srv)
-	DeferCleanup(ts.Close)
-	client := github.NewWithBaseURL(testPAT, ts.URL)
-	return ts, client
-}
-
 var _ = Describe("FakeGitHub Server", func() {
 
 	Describe("GetUser", func() {
@@ -243,6 +235,14 @@ var _ = Describe("FakeGitHub Server", func() {
 		})
 	})
 })
+
+func startServer() (*httptest.Server, scm.Client) {
+	srv := fakegithub.New(fakegithub.User{Login: "testuser", AvatarURL: "https://example.com/avatar"}, testPAT)
+	ts := httptest.NewServer(srv)
+	DeferCleanup(ts.Close)
+	client := github.NewWithBaseURL(testPAT, ts.URL)
+	return ts, client
+}
 
 func seedRepo(ts *httptest.Server) {
 	body := `{
