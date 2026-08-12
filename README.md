@@ -46,12 +46,12 @@ PRs merge via Prow when they have both `approved` and `lgtm` labels.
 | Command | What it does |
 |---------|--------------|
 | `/lgtm` | Approve for merge (or use GitHub review approval) |
-| `/approve` | OWNERS approval (cannot self-approve) |
+| `/approve` | OWNERS approval |
 | `/hold` | Block merge |
 | `/retest` | Re-run failed CI jobs |
 | `/test e2e-aws` | Run e2e CI job |
 
-[All available commands](https://go.k8s.io/bot-commands?repo=openshift%2Ffaas-console-plugin)  for this repo.
+[All available commands](https://go.k8s.io/bot-commands?repo=openshift%2Ffaas-console-plugin) for this repo.
 
 ## Deployment on cluster
 
