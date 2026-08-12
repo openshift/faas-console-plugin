@@ -30,14 +30,6 @@ type funcYamlFields struct {
 	Runtime   string `yaml:"runtime"`
 }
 
-func parseFuncYaml(content string) (name, namespace, runtime string, err error) {
-	var f funcYamlFields
-	if err := yaml.Unmarshal([]byte(content), &f); err != nil {
-		return "", "", "", fmt.Errorf("invalid func.yaml: %w", err)
-	}
-	return f.Name, f.Namespace, f.Runtime, nil
-}
-
 func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	pat, ok := extractSCMToken(r)
 	if !ok {
@@ -93,4 +85,12 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	_ = g.Wait()
 
 	writeJSON(w, http.StatusOK, items)
+}
+
+func parseFuncYaml(content string) (name, namespace, runtime string, err error) {
+	var f funcYamlFields
+	if err := yaml.Unmarshal([]byte(content), &f); err != nil {
+		return "", "", "", fmt.Errorf("invalid func.yaml: %w", err)
+	}
+	return f.Name, f.Namespace, f.Runtime, nil
 }
