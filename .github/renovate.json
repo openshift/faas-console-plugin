@@ -4,7 +4,7 @@
     "github>konflux-ci/mintmaker//config/renovate/renovate.json",
     "config:best-practices"
   ],
-  "enabledManagers": ["maven", "tekton", "gomod", "npm", "dockerfile"],
+  "enabledManagers": ["tekton", "gomod", "npm", "dockerfile"],
   "timezone": "UTC",
   "schedule": ["before 7am"],
   "minimumReleaseAge": "7 days",
@@ -93,10 +93,6 @@
       "enabled": false
     },
     {
-      "groupName": "java",
-      "matchManagers": ["maven"]
-    },
-    {
       "groupName": "gomod",
       "matchManagers": ["gomod"]
     },
@@ -111,7 +107,11 @@
       "matchManagers": ["dockerfile"]
     },
     {
-      "matchPackageNames": ["/^quay\\.io\\/konflux-ci\\//"],
+      "matchPackageNames": [
+        "/^quay\\.io\\/konflux-ci\\//",
+        "/^registry\\.access\\.redhat\\.com\\//",
+        "/^registry\\.redhat\\.io\\//"
+      ],
       "minimumReleaseAge": "0 days",
       "addLabels": [
         "ok-to-test",
