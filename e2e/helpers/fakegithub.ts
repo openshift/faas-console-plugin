@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { FAKE_GH_PAT } from './constants';
 
@@ -8,6 +8,11 @@ interface DevEnv {
 
 function readDevEnv(): DevEnv {
   const devEnvPath = path.join(__dirname, '../../.dev-env.json');
+  if (!existsSync(devEnvPath)) {
+    throw new Error(
+      '.dev-env.json not found. Is the development environment running? Start with: hack/dev.sh --fake-gh',
+    );
+  }
   return JSON.parse(readFileSync(devEnvPath, 'utf-8'));
 }
 
