@@ -77,7 +77,7 @@ The `demo/pdf-transcriber/Function.java` has been modified to read GCP credentia
 3. Add environment variables. Click "Add environment variable" for each:
 
    **Plain key/value env vars:**
-   - Name: `ANTHROPIC_VERTEX_PROJECT_ID`, Value: your GCP project ID (look up in the [GCP project spreadsheet](https://docs.google.com/spreadsheets/d/1qWoCx3i5jZ-t6BUD-2AIdutk9sMmkytoXqjBXh2oi4U/edit?gid=0#gid=0))
+   - Name: `ANTHROPIC_VERTEX_PROJECT_ID`, Value: your GCP project ID
    - Name: `CLOUD_ML_REGION`, Value: your GCP region (e.g. `us-east5`)
 
    **Secret reference env var:**

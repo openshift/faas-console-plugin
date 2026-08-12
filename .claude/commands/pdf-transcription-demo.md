@@ -13,7 +13,7 @@ Before starting, check if `demo/pdf-transcriber/.env` exists. If it does not, co
 
 - NAMESPACE: `pdf-transcriber`
 - ADC_FILE: `$HOME/.config/gcloud/application_default_credentials.json`
-- GCP_PROJECT: `ANTHROPIC_VERTEX_PROJECT_ID` from `demo/pdf-transcriber/.env` (look up in the [GCP project spreadsheet](https://docs.google.com/spreadsheets/d/1qWoCx3i5jZ-t6BUD-2AIdutk9sMmkytoXqjBXh2oi4U/edit?gid=0#gid=0))
+- GCP_PROJECT: `ANTHROPIC_VERTEX_PROJECT_ID` from `demo/pdf-transcriber/.env`
 - GCP_REGION: `CLOUD_ML_REGION` from `demo/pdf-transcriber/.env`
 - DEMO_DIR: `demo/pdf-transcriber`
 - PROJECT_DIR: `pdf-transcriber`
