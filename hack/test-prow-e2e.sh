@@ -12,6 +12,10 @@ source "${SCRIPT_DIR}/lib/log.sh"
 ARTIFACT_DIR=${ARTIFACT_DIR:=/tmp/artifacts}
 INSTALLER_DIR=${INSTALLER_DIR:=${ARTIFACT_DIR}/installer}
 
+# Namespace for plugin and fake GitHub deployments.
+# Exported so deploy-fake-gh.sh inherits the same value.
+export NAMESPACE="${NAMESPACE:-console-functions-plugin}"
+
 function copyArtifacts {
   if [ -d "$ARTIFACT_DIR" ]; then
     log::info "Copying artifacts from $(pwd)..."
@@ -50,7 +54,6 @@ FAKE_GH_URL=$(hack/deploy-fake-gh.sh | tail -1)
 export GH_API_URL="${FAKE_GH_URL}"
 
 # Port-forward fake GH for Playwright admin API access (Playwright runs outside cluster)
-NAMESPACE="${NAMESPACE:-console-functions-plugin}"
 oc port-forward svc/fakegithub 8090:8090 -n "${NAMESPACE}" &
 FAKE_GH_PF_PID=$!
 sleep 3
