@@ -59,6 +59,7 @@ export KO_DOCKER_REPO="localhost:${REGISTRY_PORT}/${NAMESPACE}/fakegithub"
 export KO_DEFAULTBASEIMAGE="registry.access.redhat.com/ubi9/ubi-micro:latest"
 
 log::info "Building and pushing with ko..."
+export GOFLAGS="${GOFLAGS:-} -buildvcs=false"
 KO_IMAGE=$(cd "${SCRIPT_DIR}/../backend" && ko build --bare --insecure-registry ./cmd/fakegithub)
 
 log::info "ko produced: ${KO_IMAGE}"
