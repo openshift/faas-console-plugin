@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { UserAvatar } from './UserAvatar';
-import { PAT_KEY, USER_KEY } from '../services/types';
+import { PAT_KEY, USER_KEY } from '../types';
 import { AuthContext } from '../context/AuthProvider';
 import { ReactNode } from 'react';
 

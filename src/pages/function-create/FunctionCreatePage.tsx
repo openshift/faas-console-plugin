@@ -6,9 +6,9 @@ import { useNavigate } from 'react-router';
 import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { useClusterService } from '../../common/services/cluster/useClusterService';
-import { useFunctionService } from '../../common/services/function/useFunctionService';
-import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/services/types';
+import { useCluster } from '../../common/clients/useCluster';
+import { createFunction } from '../../common/clients/functionsClient';
+import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/types';
 import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionCreatePage() {
@@ -80,10 +80,9 @@ function useFunctionCreatePage(): {
 } {
   const navigate = useNavigate();
   const isConnectedToForge = useContext(AuthContext).isAuthenticated;
-  const functionService = useFunctionService();
   const [namespace, setNamespace] = useState('');
   const debouncedNamespace = useDebouncedValue(namespace, 300);
-  const { secrets, configMaps } = useClusterService([], debouncedNamespace);
+  const { secrets, configMaps } = useCluster([], debouncedNamespace);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +92,7 @@ function useFunctionCreatePage(): {
     setError(null);
 
     try {
-      await functionService.createFunction({
+      await createFunction({
         name: data.name,
         runtime: data.runtime,
         registry: data.registry,

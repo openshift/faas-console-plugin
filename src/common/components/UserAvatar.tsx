@@ -17,12 +17,14 @@ import {
   Tooltip,
 } from '@patternfly/react-core';
 import { GithubIcon, KeyIcon, UserIcon } from '@patternfly/react-icons';
+import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 import { useTranslation } from 'react-i18next';
-import { AuthUser, PAT_KEY, USER_KEY } from '../services/types';
+import { AuthUser, PAT_KEY, USER_KEY } from '../types';
 import { useContext, useState } from 'react';
 import { AuthContext } from '../context/AuthProvider';
-import { useAuthService } from '../services/auth/useAuthService';
 import { errorMessage } from '../utils/utils';
+
+const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
 interface UserAvatarProps {
   enableReconnect: boolean;
@@ -52,7 +54,6 @@ export function UserAvatar({ enableReconnect }: UserAvatarProps) {
 }
 
 function useUserAvatar(enableReconnect: boolean) {
-  const authService = useAuthService();
   const onLogin = useContext(AuthContext).onLogin;
   const [user, setUser] = useState<AuthUser | null>(() => readStoredUser());
   const [isModalOpen, setIsModalOpen] = useState(
@@ -60,7 +61,10 @@ function useUserAvatar(enableReconnect: boolean) {
   );
 
   const login = async (pat: string) => {
-    const authUser = await authService.validateToken(pat);
+    const resp = await consoleFetchJSON(`${PROXY_BASE}/api/v1/auth/user`, 'GET', {
+      headers: { 'X-SCM-Token': pat },
+    });
+    const authUser: AuthUser = { name: resp.login, avatarUrl: resp.avatarUrl };
     sessionStorage.setItem(PAT_KEY, pat);
     sessionStorage.setItem(USER_KEY, JSON.stringify(authUser));
     setUser(authUser);

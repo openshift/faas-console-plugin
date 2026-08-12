@@ -11,7 +11,7 @@ import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import { ActionList, ActionListItem, Button } from '@patternfly/react-core';
 import { useTranslation } from 'react-i18next';
-import { FunctionStatus } from '../../../common/services/types';
+import { FunctionStatus } from '../../../common/types';
 
 export interface FunctionTableItem {
   name: string;

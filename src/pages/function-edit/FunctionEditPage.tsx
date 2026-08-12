@@ -20,8 +20,8 @@ import { EditToolbar } from './components/EditToolbar';
 import { FileTreeView } from './components/FileTreeView';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthProvider } from '../../common/context/AuthProvider';
-import { useFunctionService } from '../../common/services/function/useFunctionService';
-import { FileEntry, FunctionListItem } from '../../common/services/types';
+import { getFiles, listFunctions, putFiles } from '../../common/clients/functionsClient';
+import { FileEntry, FunctionListItem } from '../../common/types';
 import { getLanguageFromPath, handlerMap, parseFuncYaml } from '../../common/utils/utils';
 
 // --- page component ---
@@ -123,7 +123,6 @@ interface FunctionEditPageState {
 }
 
 function useFunctionEditPage(): FunctionEditPageState {
-  const functionService = useFunctionService();
   const { name: repoName } = useParams<{ name: string }>();
 
   const [files, setFiles] = useState<FileEntry[]>([]);
@@ -150,7 +149,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     async function loadFiles() {
       let repo: { content: FileEntry[]; info: FunctionListItem };
       try {
-        repo = await resolveRepoContent(repoName!, functionService);
+        repo = await resolveRepoContent(repoName!);
       } catch {
         if (!ignore) setIsLoading(false);
         return;
@@ -173,7 +172,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     return () => {
       ignore = true;
     };
-  }, [repoName, functionService]);
+  }, [repoName]);
 
   const onFileSelect = (path: string) => {
     setSelectedPath(path);
@@ -186,7 +185,7 @@ function useFunctionEditPage(): FunctionEditPageState {
 
   const saveFiles = async () => {
     if (!repoInfo) return;
-    await functionService.putFiles(
+    await putFiles(
       repoInfo.owner,
       repoInfo.repoName,
       files,
@@ -211,21 +210,15 @@ function useFunctionEditPage(): FunctionEditPageState {
   };
 }
 
-interface FunctionServiceLike {
-  listFunctions(): Promise<FunctionListItem[]>;
-  getFiles(owner: string, name: string, ref?: string): Promise<FileEntry[]>;
-}
-
 async function resolveRepoContent(
   repoName: string,
-  svc: FunctionServiceLike,
 ): Promise<{ content: FileEntry[]; info: FunctionListItem }> {
-  const items = await svc.listFunctions();
+  const items = await listFunctions();
   const item = items.find((r) => r.repoName === repoName);
   if (!item) throw new Error(`repository ${repoName} not found`);
 
   return {
-    content: await svc.getFiles(item.owner, item.repoName),
+    content: await getFiles(item.owner, item.repoName),
     info: item,
   };
 }

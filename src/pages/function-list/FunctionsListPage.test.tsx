@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router';
 import FunctionsListPage from './FunctionsListPage';
-import { PAT_KEY } from '../../common/services/types';
+import { PAT_KEY } from '../../common/types';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -30,9 +30,9 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
   };
 });
 
-const mockUseClusterService = vi.fn();
-vi.mock('../../common/services/cluster/useClusterService', () => ({
-  useClusterService: (...args: unknown[]) => mockUseClusterService(...args),
+const mockUseCluster = vi.fn();
+vi.mock('../../common/clients/useCluster', () => ({
+  useCluster: (...args: unknown[]) => mockUseCluster(...args),
 }));
 
 vi.mock('./components/FunctionTable', () => ({
@@ -143,7 +143,7 @@ describe('FunctionsListPage', () => {
   it('renders a spinner while loading', () => {
     renderAuthenticated();
     setupListHandler([]);
-    mockUseClusterService.mockReturnValue(clusterData({ loaded: false }));
+    mockUseCluster.mockReturnValue(clusterData({ loaded: false }));
 
     render(
       <MemoryRouter>
@@ -157,7 +157,7 @@ describe('FunctionsListPage', () => {
   it('renders the empty state when loaded with no functions', async () => {
     renderAuthenticated();
     setupListHandler([]);
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -171,7 +171,7 @@ describe('FunctionsListPage', () => {
   it('renders table when functions are loaded', async () => {
     renderAuthenticated();
     setupListHandler([listItem('my-func')]);
-    mockUseClusterService.mockReturnValue(
+    mockUseCluster.mockReturnValue(
       clusterData({
         functions: [
           clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
@@ -191,7 +191,7 @@ describe('FunctionsListPage', () => {
   it('shows NotDeployed status for repos without cluster deployment', async () => {
     renderAuthenticated();
     setupListHandler([listItem('orphan-func', 'orphan-func', 'demo', 'node')]);
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -209,7 +209,7 @@ describe('FunctionsListPage', () => {
         HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
       ),
     );
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -227,7 +227,7 @@ describe('FunctionsListPage', () => {
         HttpResponse.json({ message: 'Requires authentication' }, { status: 401 }),
       ),
     );
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -239,7 +239,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('does not call backend API when not authenticated', async () => {
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -253,7 +253,7 @@ describe('FunctionsListPage', () => {
   it('renders UserAvatar in header', () => {
     renderAuthenticated();
     setupListHandler([]);
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -265,7 +265,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -282,7 +282,7 @@ describe('FunctionsListPage', () => {
   it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
     renderAuthenticated();
     setupListHandler([listItem('my-func')]);
-    mockUseClusterService.mockReturnValue(
+    mockUseCluster.mockReturnValue(
       clusterData({
         functions: [
           clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
@@ -304,7 +304,7 @@ describe('FunctionsListPage', () => {
   it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
     renderAuthenticated();
     setupListHandler([listItem('my-func')]);
-    mockUseClusterService.mockReturnValue(
+    mockUseCluster.mockReturnValue(
       clusterData({
         functions: [clusterFunction('my-func', 'ScaledToZero', 0)],
       }),
@@ -323,7 +323,7 @@ describe('FunctionsListPage', () => {
   it('shows Deploying status from ClusterFunction', async () => {
     renderAuthenticated();
     setupListHandler([listItem('my-func')]);
-    mockUseClusterService.mockReturnValue(
+    mockUseCluster.mockReturnValue(
       clusterData({
         functions: [clusterFunction('my-func', 'Deploying', 0)],
       }),
@@ -341,7 +341,7 @@ describe('FunctionsListPage', () => {
   it('shows Error status from ClusterFunction', async () => {
     renderAuthenticated();
     setupListHandler([listItem('my-func')]);
-    mockUseClusterService.mockReturnValue(
+    mockUseCluster.mockReturnValue(
       clusterData({
         functions: [clusterFunction('my-func', 'Error', 0)],
       }),
@@ -356,10 +356,10 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByTestId('fn-status')).toHaveTextContent('Error');
   });
 
-  it('passes function names to useClusterService', async () => {
+  it('passes function names to useCluster', async () => {
     renderAuthenticated();
     setupListHandler([listItem('fn-a')]);
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -369,7 +369,7 @@ describe('FunctionsListPage', () => {
 
     await screen.findByTestId('fn-name');
 
-    expect(mockUseClusterService).toHaveBeenLastCalledWith(['fn-a']);
+    expect(mockUseCluster).toHaveBeenLastCalledWith(['fn-a']);
   });
 
   it('re-fetches functions when refresh button is clicked', async () => {
@@ -391,7 +391,7 @@ describe('FunctionsListPage', () => {
         ]);
       }),
     );
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -412,7 +412,7 @@ describe('FunctionsListPage', () => {
   it('does not show spinner on refresh button during initial page load', async () => {
     renderAuthenticated();
     setupListHandler([listItem('fn-a')]);
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -456,7 +456,7 @@ describe('FunctionsListPage', () => {
         });
       }),
     );
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -480,7 +480,7 @@ describe('FunctionsListPage', () => {
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
     renderAuthenticated();
     setupListHandler([listItem('my-repo', 'my-function', 'demo', 'node')]);
-    mockUseClusterService.mockReturnValue(
+    mockUseCluster.mockReturnValue(
       clusterData({
         functions: [
           clusterFunction('my-function', 'Running', 1, 'https://my-function-demo.apps.example.com'),
@@ -496,7 +496,7 @@ describe('FunctionsListPage', () => {
 
     expect(await screen.findByTestId('fn-name')).toHaveTextContent('my-function');
     expect(screen.getByTestId('fn-status')).toHaveTextContent('Running');
-    expect(mockUseClusterService).toHaveBeenLastCalledWith(['my-function']);
+    expect(mockUseCluster).toHaveBeenLastCalledWith(['my-function']);
   });
 
   it('removes a deleted repo from the list after refresh', async () => {
@@ -540,7 +540,7 @@ describe('FunctionsListPage', () => {
         ]);
       }),
     );
-    mockUseClusterService.mockReturnValue(clusterData());
+    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>

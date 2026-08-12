@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
-import { PAT_KEY, USER_KEY } from '../../common/services/types';
+import { PAT_KEY, USER_KEY } from '../../common/types';
 
 const mockNavigate = vi.fn();
 

@@ -18,9 +18,9 @@ import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction, FunctionListItem } from '../../common/services/types';
-import { useClusterService } from '../../common/services/cluster/useClusterService';
-import { useFunctionService } from '../../common/services/function/useFunctionService';
+import { ClusterFunction } from '../../common/types';
+import { useCluster } from '../../common/clients/useCluster';
+import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
@@ -109,7 +109,6 @@ function useFunctionListPage(): {
   error: string;
 } {
   const { isAuthenticated: isConnectedToForge, connectionId } = useContext(AuthContext);
-  const functionService = useFunctionService();
   const navigate = useNavigate();
 
   const [functionItems, setFunctionItems] = useState<FunctionTableItem[]>([]);
@@ -132,7 +131,7 @@ function useFunctionListPage(): {
     setRefreshing(true);
 
     try {
-      const items = await loadFunctionTableItems(functionService);
+      const items = await loadFunctionTableItems();
       setFunctionItems(items);
       setError('');
     } catch (err) {
@@ -152,7 +151,7 @@ function useFunctionListPage(): {
       let items: FunctionTableItem[];
 
       try {
-        items = await loadFunctionTableItems(functionService);
+        items = await loadFunctionTableItems();
       } catch (err) {
         if (!ignore) {
           setReposLoaded(true);
@@ -171,11 +170,11 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [functionService, isConnectedToForge, connectionId]);
+  }, [isConnectedToForge, connectionId]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useClusterService(functionNames);
+  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(functionNames);
 
   const functions = useMemo(
     () =>
@@ -200,12 +199,8 @@ function useFunctionListPage(): {
   };
 }
 
-interface FunctionServiceLike {
-  listFunctions(): Promise<FunctionListItem[]>;
-}
-
-async function loadFunctionTableItems(svc: FunctionServiceLike): Promise<FunctionTableItem[]> {
-  const items = await svc.listFunctions();
+async function loadFunctionTableItems(): Promise<FunctionTableItem[]> {
+  const items = await listFunctions();
   return items.map((item) => {
     const tableItem = newItem(
       item.name || item.repoName,

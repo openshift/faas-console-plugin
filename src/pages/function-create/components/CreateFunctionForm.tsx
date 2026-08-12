@@ -27,7 +27,7 @@ import {
   K8sKeyedResource,
   PlainEnvVar,
   ResourceEnvVar,
-} from '../../../common/services/types';
+} from '../../../common/types';
 import { AuthContext } from '../../../common/context/AuthProvider';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 

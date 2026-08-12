@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useState } from 'react';
-import { AuthUser, PAT_KEY, USER_KEY } from '../services/types';
+import { AuthUser, PAT_KEY, USER_KEY } from '../types';
 
 interface AuthState {
   isAuthenticated: boolean;
