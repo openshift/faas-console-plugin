@@ -33,6 +33,17 @@ if ! command -v ko &>/dev/null; then
   exit 1
 fi
 
+# --- Detect cluster architectures ---
+
+ARCHES=$(oc get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.architecture}{"\n"}{end}' 2>/dev/null | sort -u || true)
+if [[ -z "$ARCHES" ]]; then
+  KO_PLATFORM="linux/amd64"
+  log::warn "Could not detect cluster node architectures, falling back to ${KO_PLATFORM}"
+else
+  KO_PLATFORM=$(echo "$ARCHES" | sed 's/^/linux\//' | paste -sd,)
+  log::info "Cluster architectures detected: ${KO_PLATFORM}"
+fi
+
 # --- Ensure namespace exists ---
 
 oc get namespace "$NAMESPACE" &>/dev/null 2>&1 || oc create namespace "$NAMESPACE"
@@ -60,7 +71,7 @@ export KO_DEFAULTBASEIMAGE="registry.access.redhat.com/ubi9/ubi-micro:latest"
 
 log::info "Building and pushing with ko..."
 export GOFLAGS="${GOFLAGS:-} -buildvcs=false"
-KO_IMAGE=$(cd "${SCRIPT_DIR}/../backend" && ko build --bare --insecure-registry ./cmd/fakegithub)
+KO_IMAGE=$(cd "${SCRIPT_DIR}/../backend" && ko build --bare --insecure-registry --platform="${KO_PLATFORM}" ./cmd/fakegithub)
 
 log::info "ko produced: ${KO_IMAGE}"
 
