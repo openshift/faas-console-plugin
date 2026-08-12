@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -20,6 +21,7 @@ type listItem struct {
 	Name          string `json:"name"`
 	Namespace     string `json:"namespace"`
 	Runtime       string `json:"runtime"`
+	Err           string `json:"err,omitempty"`
 }
 
 type funcYamlFields struct {
@@ -28,12 +30,12 @@ type funcYamlFields struct {
 	Runtime   string `yaml:"runtime"`
 }
 
-func parseFuncYaml(content string) (name, namespace, runtime string) {
+func parseFuncYaml(content string) (name, namespace, runtime string, err error) {
 	var f funcYamlFields
 	if err := yaml.Unmarshal([]byte(content), &f); err != nil {
-		return "", "", ""
+		return "", "", "", fmt.Errorf("invalid func.yaml: %w", err)
 	}
-	return f.Name, f.Namespace, f.Runtime
+	return f.Name, f.Namespace, f.Runtime, nil
 }
 
 func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
@@ -73,9 +75,18 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 			content, err := client.GetFileContent(ctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
 			if err != nil {
 				slog.Warn("failed to read func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", err)
+				items[i].Err = "failed to read func.yaml"
 				return nil
 			}
-			items[i].Name, items[i].Namespace, items[i].Runtime = parseFuncYaml(content)
+			name, namespace, runtime, parseErr := parseFuncYaml(content)
+			if parseErr != nil {
+				slog.Warn("failed to parse func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", parseErr)
+				items[i].Err = "invalid func.yaml"
+				return nil
+			}
+			items[i].Name = name
+			items[i].Namespace = namespace
+			items[i].Runtime = runtime
 			return nil
 		})
 	}

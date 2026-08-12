@@ -206,9 +206,18 @@ interface FunctionServiceLike {
 
 async function loadFunctionTableItems(svc: FunctionServiceLike): Promise<FunctionTableItem[]> {
   const items = await svc.listFunctions();
-  return items.map((item) =>
-    newItem(item.name || item.repoName, item.repoName, item.namespace, item.runtime),
-  );
+  return items.map((item) => {
+    const tableItem = newItem(
+      item.name || item.repoName,
+      item.repoName,
+      item.namespace,
+      item.runtime,
+    );
+    if (item.err) {
+      tableItem.status = 'Error';
+    }
+    return tableItem;
+  });
 }
 
 function newItem(

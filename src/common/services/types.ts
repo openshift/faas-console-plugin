@@ -51,6 +51,7 @@ export interface FunctionListItem {
   name: string;
   namespace: string;
   runtime: string;
+  err?: string;
 }
 
 export interface CreateFunctionRequest {

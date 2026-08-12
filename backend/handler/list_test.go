@@ -45,7 +45,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items[0].Runtime).To(Equal("go"))
 	})
 
-	It("returns items with empty fields when func.yaml cannot be read", func() {
+	It("returns error when func.yaml cannot be read", func() {
 		withSCMStub(&scmStub{
 			listRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{
@@ -70,6 +70,33 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items[0].Name).To(BeEmpty())
 		Expect(items[0].Namespace).To(BeEmpty())
 		Expect(items[0].Runtime).To(BeEmpty())
+		Expect(items[0].Err).To(Equal("failed to read func.yaml"))
+	})
+
+	It("returns error when func.yaml contains invalid YAML", func() {
+		withSCMStub(&scmStub{
+			listRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "bad-yaml", URL: "https://github.com/alice/bad-yaml", DefaultBranch: "main"},
+				}, nil
+			},
+			getFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "}{not yaml", nil
+			},
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/list", nil)
+		req.Header.Set("X-SCM-Token", "valid-pat")
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("bad-yaml"))
+		Expect(items[0].Name).To(BeEmpty())
+		Expect(items[0].Err).To(Equal("invalid func.yaml"))
 	})
 
 	It("returns empty list when no repos found", func() {
