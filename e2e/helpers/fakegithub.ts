@@ -47,7 +47,9 @@ export async function seedRepo(
     body: JSON.stringify({ owner, repo: name, branch, topics, files }),
   });
   if (!resp.ok) {
-    throw new Error(`Failed to seed repo ${owner}/${name} in fake GitHub: ${resp.status} ${await resp.text()}`);
+    throw new Error(
+      `Failed to seed repo ${owner}/${name} in fake GitHub: ${resp.status} ${await resp.text()}`,
+    );
   }
 }
 

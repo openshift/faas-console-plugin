@@ -7,13 +7,19 @@ const BROKEN_REPO = 'broken-func-yaml-repo';
 
 test.describe('Broken func.yaml', () => {
   test.beforeEach(async () => {
-    await seedRepo(E2E_USER, BROKEN_REPO, 'main', ['serverless-function'], [
-      {
-        path: 'func.yaml',
-        mode: '100644',
-        content: '}{not yaml',
-      },
-    ]);
+    await seedRepo(
+      E2E_USER,
+      BROKEN_REPO,
+      'main',
+      ['serverless-function'],
+      [
+        {
+          path: 'func.yaml',
+          mode: '100644',
+          content: '}{not yaml',
+        },
+      ],
+    );
   });
 
   test.afterEach(async () => {
