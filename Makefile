@@ -37,7 +37,7 @@ help: ## Show this help
 
 ##@ Development
 
-dev: ## Start dev environment (also: dev-stop, dev-randomize-ports)
+dev: ## Start dev environment (also: dev-stop, dev-randomize-ports, dev-fake-gh)
 	hack/dev.sh
 
 dev-%:
