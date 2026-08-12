@@ -52,6 +52,8 @@ fi
 log::step "Deploying fake GitHub server"
 
 FAKE_GH_URL=$(hack/deploy-fake-gh.sh | tail -1)
+# deploy.sh passes GH_API_URL to Helm as plugin.ghApiUrl,
+# which sets the --gh-api-url flag on the backend pod.
 export GH_API_URL="${FAKE_GH_URL}"
 
 # Port-forward fake GH for Playwright admin API access (Playwright runs outside cluster)
