@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-22:latest@sha256:2c3bb588fae7d9d1e5acd1afd77a61cc8cbae2d0d3f85bb7ec03bb3275ba2420 AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-22:latest@sha256:0e4e66a6fa295e7d7c13c94d1b4f39cb058a97843ac01e555e72721ac31eefa8 AS nodebuilder
 USER root
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN npm i -g corepack && corepack enable
@@ -16,7 +16,7 @@ COPY config/ config/
 COPY testing/ testing/
 RUN make build-frontend
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1786351949@sha256:0b471eb04868f3d9d90bf3c668f9c6c7a22cef07474ac9fec067909dfd7dec7c AS gobuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1786495588@sha256:32fa030f9ee19f8ab38df8233f217c7f5d666dfa564c015dd7deeeaf57c2719e AS gobuilder
 ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 WORKDIR /opt/app-root/src
