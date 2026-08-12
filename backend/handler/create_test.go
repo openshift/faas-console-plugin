@@ -224,7 +224,6 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "invalid"}}}),
 	)
 
-
 	Describe("rollback on failure", func() {
 		It("rolls back cluster resources when GenerateKubeconfig fails", func() {
 			calls := map[string]int{}
