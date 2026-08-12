@@ -156,7 +156,7 @@ func (s *Server) handleSearchRepos(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	var items []map[string]any
 	for _, rp := range s.repos {
-		if !matchesSearchQuery(q, rp, s.user.Login) {
+		if !matchesSearchQuery(q, rp) {
 			continue
 		}
 		items = append(items, repoJSON(rp))
@@ -715,7 +715,7 @@ func repoJSON(rp *repo) map[string]any {
 	}
 }
 
-func matchesSearchQuery(q string, rp *repo, login string) bool {
+func matchesSearchQuery(q string, rp *repo) bool {
 	// Parse simple search queries like "topic:serverless-function user:e2e-user".
 	parts := strings.Fields(q)
 	for _, part := range parts {
