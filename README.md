@@ -44,28 +44,30 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 ### Prerequisites
 
 - [oc](https://console.redhat.com/openshift/downloads) CLI
-- [Helm](https://helm.sh/docs/intro/install/)
 - An [OpenShift 4.22+ cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content*, *secret* and *workflow* write permissions in all repositories
 
-### Install
+### Quick Install (via Operator)
+
+Installs OpenShift Serverless, Knative Serving, and the Functions operator (which deploys the console plugin). The operator catalog always contains the latest console plugin build, kept current automatically by Konflux.
 
 ```shell
-make deploy
-```
+# 1. Install the operators
+oc apply -f https://raw.githubusercontent.com/openshift/faas-console-plugin/master/install.yaml
 
-To deploy a specific build, use its git commit SHA as the tag:
+# 2. Install Knative Serving (requires the Serverless operator CRDs)
+oc apply -f - <<EOF
+apiVersion: operator.knative.dev/v1beta1
+kind: KnativeServing
+metadata:
+  name: knative-serving
+  namespace: knative-serving
+spec: {}
+EOF
 
-```shell
-make deploy IMAGE=quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin:<commit>
-```
-
-Available image tags are listed in the [container registry](https://quay.io/repository/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin?tab=tags).
-
-To remove the plugin:
-
-```shell
-make undeploy
+# 3. Enable the console plugin - can also be done through the UI
+oc patch consoles.operator.openshift.io cluster --type=json \
+  --patch='[{"op":"add","path":"/spec/plugins/-","value":"console-functions-plugin"}]'
 ```
 
 ## Development
