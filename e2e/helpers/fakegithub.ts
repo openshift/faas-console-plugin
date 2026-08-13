@@ -10,7 +10,7 @@ function readDevEnv(): DevEnv {
   const devEnvPath = path.join(__dirname, '../../.dev-env.json');
   if (!existsSync(devEnvPath)) {
     throw new Error(
-      '.dev-env.json not found. Is the development environment running? Start with: hack/dev.sh --fake-gh',
+      '.dev-env.json not found. Is the development environment running? Start with: make dev-fake-gh',
     );
   }
   return JSON.parse(readFileSync(devEnvPath, 'utf-8'));
@@ -20,9 +20,7 @@ export function fakeGithubUrl(): string {
   if (process.env.FAKE_GITHUB_URL) return process.env.FAKE_GITHUB_URL;
   const env = readDevEnv();
   if (!env.fakeGithubPort) {
-    throw new Error(
-      'fakeGithubPort not found in .dev-env.json. Start dev with: hack/dev.sh --fake-gh',
-    );
+    throw new Error('fakeGithubPort not found in .dev-env.json. Start dev with: make dev-fake-gh');
   }
   return `http://localhost:${env.fakeGithubPort}`;
 }

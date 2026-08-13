@@ -5,7 +5,7 @@ set -euo pipefail
 # Start local dev environment: Go backend + webpack dev server + console container.
 # Prerequisites: oc login
 # Optional: make setup-serverless (for full Knative/Serverless functionality)
-# Usage: make dev | make dev-stop | make dev-randomize-ports | hack/dev.sh --fake-gh
+# Usage: make dev | make dev-stop | make dev-randomize-ports | make dev-fake-gh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
