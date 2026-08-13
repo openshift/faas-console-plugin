@@ -1,7 +1,5 @@
 import { consoleFetch, consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
-import { CreateFunctionRequest, FileEntry, FunctionListItem, PAT_KEY } from '../types';
-
-const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
+import { CreateFunctionRequest, FileEntry, FunctionListItem, PAT_KEY, PROXY_BASE } from '../types';
 
 function scmHeaders(): HeadersInit {
   const pat = sessionStorage.getItem(PAT_KEY);

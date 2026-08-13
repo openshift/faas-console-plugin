@@ -19,12 +19,10 @@ import {
 import { GithubIcon, KeyIcon, UserIcon } from '@patternfly/react-icons';
 import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
 import { useTranslation } from 'react-i18next';
-import { AuthUser, PAT_KEY, USER_KEY } from '../types';
+import { AuthUser, PAT_KEY, PROXY_BASE, USER_KEY } from '../types';
 import { useContext, useState } from 'react';
 import { AuthContext } from '../context/AuthProvider';
 import { errorMessage } from '../utils/utils';
-
-const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
 interface UserAvatarProps {
   enableReconnect: boolean;
