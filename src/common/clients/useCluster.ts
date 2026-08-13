@@ -5,7 +5,16 @@ import { ClusterFunction, FunctionStatus, K8sKeyedResource } from '../types';
 const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
 const REVISION_LABEL = 'serving.knative.dev/revision';
 
-export function useCluster(functionNames: string[] = [], namespace?: string) {
+export function useCluster(
+  functionNames: string[] = [],
+  namespace?: string,
+): {
+  functions: ReadonlyMap<string, ClusterFunction>;
+  secrets: K8sKeyedResource[];
+  configMaps: K8sKeyedResource[];
+  loaded: boolean;
+  error: unknown;
+} {
   const knSvcConfig = useMemo(
     () =>
       functionNames.length > 0
