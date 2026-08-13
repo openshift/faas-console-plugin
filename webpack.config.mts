@@ -1,11 +1,10 @@
 /* eslint-env node */
 
 import * as path from 'path';
-import { Configuration as WebpackConfiguration } from 'webpack';
-import { Configuration as WebpackDevServerConfiguration } from 'webpack-dev-server';
+import type { Configuration as WebpackConfiguration } from 'webpack';
+import type { Configuration as WebpackDevServerConfiguration } from 'webpack-dev-server';
 import { ConsoleRemotePlugin } from '@openshift-console/dynamic-plugin-sdk-webpack';
-
-const CopyWebpackPlugin = require('copy-webpack-plugin');
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -17,9 +16,9 @@ const config: Configuration = {
   mode: isProd ? 'production' : 'development',
   // No regular entry points needed. All plugin related scripts are generated via ConsoleRemotePlugin.
   entry: {},
-  context: path.resolve(__dirname, 'src'),
+  context: path.resolve(import.meta.dirname, 'src'),
   output: {
-    path: path.resolve(__dirname, 'dist'),
+    path: path.resolve(import.meta.dirname, 'dist'),
     filename: isProd ? '[name]-bundle-[hash].min.js' : '[name]-bundle.js',
     chunkFilename: isProd ? '[name]-chunk-[chunkhash].min.js' : '[name]-chunk.js',
   },
@@ -35,7 +34,7 @@ const config: Configuration = {
           {
             loader: 'ts-loader',
             options: {
-              configFile: path.resolve(__dirname, 'tsconfig.json'),
+              configFile: path.resolve(import.meta.dirname, 'tsconfig.json'),
             },
           },
         ],
@@ -76,7 +75,7 @@ const config: Configuration = {
   plugins: [
     new ConsoleRemotePlugin(),
     new CopyWebpackPlugin({
-      patterns: [{ from: path.resolve(__dirname, 'locales'), to: 'locales' }],
+      patterns: [{ from: path.resolve(import.meta.dirname, 'locales'), to: 'locales' }],
     }),
   ],
   devtool: isProd ? false : 'source-map',
