@@ -16,7 +16,7 @@ import (
 type listItem struct {
 	Owner         string `json:"owner"`
 	RepoName      string `json:"repoName"`
-	URL           string `json:"url"`
+	RepoURL       string `json:"repoURL"`
 	DefaultBranch string `json:"defaultBranch"`
 	Name          string `json:"name"`
 	Namespace     string `json:"namespace"`
@@ -55,7 +55,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 		items[i] = listItem{
 			Owner:         repo.Owner,
 			RepoName:      repo.Name,
-			URL:           repo.URL,
+			RepoURL:       repo.URL,
 			DefaultBranch: repo.DefaultBranch,
 		}
 	}

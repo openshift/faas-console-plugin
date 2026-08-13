@@ -38,7 +38,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items).To(HaveLen(1))
 		Expect(items[0].Owner).To(Equal("alice"))
 		Expect(items[0].RepoName).To(Equal("my-func"))
-		Expect(items[0].URL).To(Equal("https://github.com/alice/my-func"))
+		Expect(items[0].RepoURL).To(Equal("https://github.com/alice/my-func"))
 		Expect(items[0].DefaultBranch).To(Equal("main"))
 		Expect(items[0].Name).To(Equal("my-func"))
 		Expect(items[0].Namespace).To(Equal("demo"))

@@ -53,7 +53,7 @@ function FunctionEditPageContent() {
                 <DescriptionListGroup>
                   <DescriptionListTerm>{t('Repository')}</DescriptionListTerm>
                   <DescriptionListDescription>
-                    <a href={state.repoInfo.url} target="_blank" rel="noopener noreferrer">
+                    <a href={state.repoInfo.repoURL} target="_blank" rel="noopener noreferrer">
                       {state.repoInfo.owner}/{state.repoInfo.repoName}
                     </a>
                   </DescriptionListDescription>

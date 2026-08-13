@@ -73,7 +73,7 @@ function setupListHandler() {
         {
           owner: 'twoGiants',
           repoName: 'my-func',
-          url: 'https://github.com/twoGiants/my-func',
+          repoURL: 'https://github.com/twoGiants/my-func',
           defaultBranch: 'main',
           name: 'my-func',
           namespace: 'demo',

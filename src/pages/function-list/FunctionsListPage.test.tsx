@@ -97,7 +97,7 @@ function setupListHandler(
   items: {
     owner: string;
     repoName: string;
-    url: string;
+    repoURL: string;
     name: string;
     namespace: string;
     runtime: string;
@@ -109,7 +109,7 @@ function setupListHandler(
         items.map((i) => ({
           owner: i.owner,
           repoName: i.repoName,
-          url: i.url,
+          repoURL: i.repoURL,
           defaultBranch: 'main',
           name: i.name,
           namespace: i.namespace,
@@ -124,7 +124,7 @@ function listItem(repoName: string, name?: string, namespace = 'demo', runtime =
   return {
     owner: 'twoGiants',
     repoName,
-    url: `https://github.com/twoGiants/${repoName}`,
+    repoURL: `https://github.com/twoGiants/${repoName}`,
     name: name ?? repoName,
     namespace,
     runtime,
@@ -382,7 +382,7 @@ describe('FunctionsListPage', () => {
           {
             owner: 'twoGiants',
             repoName: 'fn-a',
-            url: 'https://github.com/twoGiants/fn-a',
+            repoURL: 'https://github.com/twoGiants/fn-a',
             defaultBranch: 'main',
             name: 'fn-a',
             namespace: 'demo',
@@ -436,7 +436,7 @@ describe('FunctionsListPage', () => {
         {
           owner: 'twoGiants',
           repoName: 'fn-a',
-          url: 'https://github.com/twoGiants/fn-a',
+          repoURL: 'https://github.com/twoGiants/fn-a',
           defaultBranch: 'main',
           name: 'fn-a',
           namespace: 'demo',
@@ -510,7 +510,7 @@ describe('FunctionsListPage', () => {
             {
               owner: 'twoGiants',
               repoName: 'fn-a',
-              url: 'https://github.com/twoGiants/fn-a',
+              repoURL: 'https://github.com/twoGiants/fn-a',
               defaultBranch: 'main',
               name: 'fn-a',
               namespace: 'demo',
@@ -519,7 +519,7 @@ describe('FunctionsListPage', () => {
             {
               owner: 'twoGiants',
               repoName: 'fn-b',
-              url: 'https://github.com/twoGiants/fn-b',
+              repoURL: 'https://github.com/twoGiants/fn-b',
               defaultBranch: 'main',
               name: 'fn-b',
               namespace: 'demo',
@@ -531,7 +531,7 @@ describe('FunctionsListPage', () => {
           {
             owner: 'twoGiants',
             repoName: 'fn-a',
-            url: 'https://github.com/twoGiants/fn-a',
+            repoURL: 'https://github.com/twoGiants/fn-a',
             defaultBranch: 'main',
             name: 'fn-a',
             namespace: 'demo',

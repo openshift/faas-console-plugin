@@ -46,7 +46,7 @@ export interface AuthUser {
 export interface FunctionListItem {
   owner: string;
   repoName: string;
-  url: string;
+  repoURL: string;
   defaultBranch: string;
   name: string;
   namespace: string;
