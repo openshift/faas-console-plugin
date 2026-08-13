@@ -23,6 +23,14 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
         });
         return handleResponse(res);
       },
+      put: async (url: string, body: unknown) => {
+        const res = await fetch(new URL(url, 'http://localhost').href, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        return handleResponse(res);
+      },
     },
   );
 
@@ -91,7 +99,7 @@ describe('OcpClusterService', () => {
     expect(parsed.clusters[0].cluster.server).toBe('https://api.cluster.example.com:6443');
   });
 
-  it('treats 409 Conflict on SA/Role/RoleBinding as success', async () => {
+  it('treats 409 Conflict on SA/RoleBinding as success and updates existing Role', async () => {
     const conflict = { code: 409, reason: 'AlreadyExists', message: 'already exists' };
     server.use(
       http.post(`${K8S_API}/api/v1/namespaces/${namespace}/serviceaccounts`, () =>
@@ -99,6 +107,17 @@ describe('OcpClusterService', () => {
       ),
       http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`, () =>
         HttpResponse.json(conflict, { status: 409 }),
+      ),
+      http.get(
+        `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles/func-github-deployer`,
+        () =>
+          HttpResponse.json({
+            metadata: { name: 'func-github-deployer', namespace, resourceVersion: '12345' },
+          }),
+      ),
+      http.put(
+        `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles/func-github-deployer`,
+        () => HttpResponse.json({}),
       ),
       http.post(
         `${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/rolebindings`,

@@ -42,36 +42,40 @@ export class OcpClusterService {
   }
 
   async #createRole(namespace: string): Promise<void> {
-    await this.#createIgnoringConflict(
-      `/api/kubernetes/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`,
-      {
-        apiVersion: 'rbac.authorization.k8s.io/v1',
-        kind: 'Role',
-        metadata: { name: ROLE_NAME, namespace },
-        rules: [
-          {
-            apiGroups: [''],
-            resources: ['pods', 'pods/exec', 'services', 'configmaps'],
-            verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
-          },
-          {
-            apiGroups: ['apps'],
-            resources: ['deployments'],
-            verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
-          },
-          {
-            apiGroups: ['image.openshift.io'],
-            resources: ['imagestreams', 'imagestreamtags'],
-            verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
-          },
-          {
-            apiGroups: ['serving.knative.dev'],
-            resources: ['services', 'routes', 'revisions'],
-            verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
-          },
-        ],
-      },
-    );
+    const roleURL = `/api/kubernetes/apis/rbac.authorization.k8s.io/v1/namespaces/${namespace}/roles`;
+    const body = {
+      apiVersion: 'rbac.authorization.k8s.io/v1',
+      kind: 'Role',
+      metadata: { name: ROLE_NAME, namespace },
+      rules: [
+        {
+          apiGroups: [''],
+          resources: ['pods', 'pods/exec', 'services', 'configmaps'],
+          verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
+        },
+        {
+          apiGroups: [''],
+          resources: ['secrets', 'serviceaccounts'],
+          verbs: ['get', 'list', 'watch'],
+        },
+        {
+          apiGroups: ['apps'],
+          resources: ['deployments'],
+          verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
+        },
+        {
+          apiGroups: ['image.openshift.io'],
+          resources: ['imagestreams', 'imagestreamtags'],
+          verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
+        },
+        {
+          apiGroups: ['serving.knative.dev'],
+          resources: ['services', 'routes', 'revisions'],
+          verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete'],
+        },
+      ],
+    };
+    await this.#createOrReplace(roleURL, `${roleURL}/${ROLE_NAME}`, body);
   }
 
   async #createRoleBinding(namespace: string): Promise<void> {
@@ -169,6 +173,24 @@ export class OcpClusterService {
         },
       ],
     });
+  }
+
+  async #createOrReplace(createURL: string, itemURL: string, body: unknown): Promise<void> {
+    try {
+      await consoleFetchJSON.post(createURL, body);
+    } catch (err) {
+      if (!this.#isConflict(err)) {
+        throw err;
+      }
+      const existing = await consoleFetchJSON(itemURL);
+      const merged = body as Record<string, unknown>;
+      const meta = merged.metadata as Record<string, unknown>;
+      meta.resourceVersion = (existing as Record<string, unknown>).metadata
+        ? ((existing as Record<string, unknown>).metadata as Record<string, unknown>)
+            .resourceVersion
+        : undefined;
+      await consoleFetchJSON.put(itemURL, merged);
+    }
   }
 
   async #createIgnoringConflict(url: string, body: unknown): Promise<void> {
