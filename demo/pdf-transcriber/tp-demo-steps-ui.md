@@ -6,19 +6,15 @@ This guide walks through deploying the PDF Transcriber function entirely through
 
 Before starting:
 
-- OpenShift cluster with the following operators installed and healthy: 
-  - OpenShift Serverless (KnativeServing configured)
-  - OpenShift Pipelines
-- FaaS Console Plugin installed and enabled
+- OpenShift 4.22+ cluster with:
+  - OpenShift Serverless operator installed and KnativeServing configured (`make setup-serverless`)
+  - FaaS Console Plugin deployed (`make deploy`)
+- `oc` CLI logged into the cluster (`oc login`)
 - GitHub Personal Access Token (PAT) with `repo` scope
-- GCP Application Default Credentials JSON file (`~/.config/gcloud/application_default_credentials.json`)
-- Values from `demo/pdf-transcriber/.env`:
+- GCP Application Default Credentials JSON file. Generate it with `gcloud auth application-default login` (requires `gcloud` CLI, install via `brew install google-cloud-sdk`). The SDK writes the file to `~/.config/gcloud/application_default_credentials.json`.
+- Values for GCP authorization:
   - `ANTHROPIC_VERTEX_PROJECT_ID` (GCP project with Vertex AI / Claude access)
   - `CLOUD_ML_REGION` (e.g. `us-east5`)
-
-## Code Change: Env-var-based credentials
-
-The `demo/pdf-transcriber/Function.java` has been modified to read GCP credentials from the `GCP_CREDENTIALS` environment variable directly (as JSON content), instead of requiring a volume-mounted file. This means the entire deployment can be configured through the Create Function form's env var and secret reference fields, with no volume mounts needed.
 
 ---
 
@@ -95,7 +91,7 @@ The `demo/pdf-transcriber/Function.java` has been modified to read GCP credentia
 
 2. The editor loads showing the scaffolded Function.java and file tree.
 
-3. Replace three files with the PDF transcriber implementation from `demo/pdf-transcriber/`. For each file, click it in the file tree, select all, and paste the replacement content:
+3. Replace three files with the PDF transcriber implementation. Open the source files from this repository's `demo/pdf-transcriber/` directory in a local editor, copy their contents, then paste into the Console editor. For each file, click it in the file tree, select all, and paste the replacement content:
 
    - **`src/main/java/functions/Function.java`** -- the function handler (Anthropic SDK imports, `GCP_CREDENTIALS` env var via `GoogleCredentials.fromStream()`, `POST /upload` endpoint, embedded SPA HTML)
    - **`pom.xml`** -- adds Anthropic Java SDK and Vertex backend dependencies
@@ -103,7 +99,31 @@ The `demo/pdf-transcriber/Function.java` has been modified to read GCP credentia
 
    All three files must be replaced. The scaffolded `pom.xml` does not include the Anthropic SDK dependencies, so the build will fail if only `Function.java` is replaced.
 
-4. Click **Save & Deploy**. A success banner appears: "Pushed to GitHub. Deployment running..."
+4. Replace the scaffolded test files to prevent compilation errors. Click each file in the file tree, select all, and paste the replacement content:
+
+   - **`src/test/java/functions/FunctionTest.java`** -- replace with:
+     ```java
+     package functions;
+
+     import org.junit.jupiter.api.Test;
+
+     class FunctionTest {
+         @Test
+         void placeholder() {
+         }
+     }
+     ```
+   - **`src/test/java/functions/NativeFunctionIT.java`** -- replace with:
+     ```java
+     package functions;
+
+     class NativeFunctionIT extends FunctionTest {
+     }
+     ```
+
+   The scaffolded tests reference `Input` and `Output` classes that no longer exist after replacing `Function.java`, so the build will fail if these are not updated.
+
+5. Click **Save & Deploy**. A success banner appears: "Pushed to GitHub. Deployment running..."
 
 ---
 
@@ -111,9 +131,9 @@ The `demo/pdf-transcriber/Function.java` has been modified to read GCP credentia
 
 1. Click **Back to Functions** to return to the functions list.
 
-2. The function initially shows "NotDeployed" status. The deployment runs via Tekton on the cluster (the Console pushes code to GitHub, and a Tekton pipeline on the cluster builds and deploys the container image).
+2. The function initially shows "NotDeployed" status. The Console pushes code to GitHub, and a GitHub Actions workflow builds and deploys the container image to the cluster.
 
-3. Wait for the status to change to **Running** (this can take several minutes for the first build, as Tekton needs to pull base images and compile the Quarkus application).
+3. Wait for the status to change to **Running** (this can take several minutes for the first build).
 
 4. Once running, a **URL** column will show the function's route. Click it to open the PDF Transcriber web app.
 
@@ -124,9 +144,8 @@ The `demo/pdf-transcriber/Function.java` has been modified to read GCP credentia
 ## Troubleshooting
 
 **Function stays in NotDeployed:**
-- Check the Builds page in the Developer perspective for pipeline run status
-- Ensure the `pipeline` ServiceAccount exists in the namespace (created by Pipelines operator)
-- Check operator health: ensure Serverless and Pipelines CSVs show "Succeeded"
+- Check the GitHub Actions tab on the function's repo for workflow run status
+- Check operator health: ensure Serverless CSV shows "Succeeded" (`oc get csv -A | grep serverless`)
 
 **Build fails with compilation errors:**
 - Verify that all three files were replaced in Step 5 (`Function.java`, `pom.xml`, `application.properties`). The scaffolded `pom.xml` does not include the Anthropic SDK dependencies.
