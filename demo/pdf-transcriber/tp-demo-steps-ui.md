@@ -6,9 +6,7 @@ This guide walks through deploying the PDF Transcriber function entirely through
 
 Before starting:
 
-- OpenShift 4.22+ cluster with:
-  - OpenShift Serverless operator installed and KnativeServing configured (`make setup-serverless`)
-  - FaaS Console Plugin deployed (`make deploy`)
+- OpenShift 4.22+ cluster with OpenShift Serverless and the FaaS Console Plugin installed (see [Quick Install via Operator](https://github.com/openshift/faas-console-plugin#quick-install-via-operator))
 - `oc` CLI logged into the cluster (`oc login`)
 - GitHub Personal Access Token (PAT) with `repo` scope
 - GCP Application Default Credentials JSON file. Generate it with `gcloud auth application-default login` (requires `gcloud` CLI, install via `brew install google-cloud-sdk`). The SDK writes the file to `~/.config/gcloud/application_default_credentials.json`.
