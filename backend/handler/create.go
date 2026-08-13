@@ -22,6 +22,7 @@ var (
 	validRuntimes    = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
 	validSCMName     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 	validEnvVarName  = regexp.MustCompile(`^[-._a-zA-Z][-._a-zA-Z0-9]*$`)
+	validK8sName     = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
 	newClusterClient = cluster.New
 	generateScaffold = scaffold.Generate
 )
@@ -185,8 +186,8 @@ func validateCreateRequest(req createRequest) error {
 		}
 		switch ev.Source {
 		case "secret", "configMap":
-			if ev.ResourceName == "" {
-				return fmt.Errorf("envVars[%d]: resourceName is required for source %q", i, ev.Source)
+			if !validK8sName.MatchString(ev.ResourceName) {
+				return fmt.Errorf("envVars[%d]: invalid resourceName %q", i, ev.ResourceName)
 			}
 			if ev.ResourceKey == "" {
 				return fmt.Errorf("envVars[%d]: resourceKey is required for source %q", i, ev.Source)
