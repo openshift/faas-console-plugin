@@ -18,7 +18,7 @@ import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction } from '../../common/types';
+import { ClusterFunction, FunctionListItem } from '../../common/types';
 import { useCluster } from '../../common/clients/useCluster';
 import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
@@ -201,32 +201,16 @@ function useFunctionListPage(): {
 
 async function loadFunctionTableItems(): Promise<FunctionTableItem[]> {
   const items = await listFunctions();
-  return items.map((item) => {
-    const tableItem = newItem(
-      item.name || item.repoName,
-      item.repoName,
-      item.namespace,
-      item.runtime,
-    );
-    if (item.err) {
-      tableItem.status = 'Error';
-    }
-    return tableItem;
-  });
+  return items.map((item) => newItem(item));
 }
 
-function newItem(
-  name: string,
-  repoName: string,
-  namespace: string,
-  runtime: string,
-): FunctionTableItem {
+function newItem(item: FunctionListItem): FunctionTableItem {
   return {
-    name,
-    repoName,
-    namespace,
-    runtime,
-    status: 'NotDeployed' as const,
+    name: item.name || item.repoName,
+    repoName: item.repoName,
+    namespace: item.namespace,
+    runtime: item.runtime,
+    status: item.err ? 'Error' : 'NotDeployed',
     url: '',
     replicas: 0,
   };
