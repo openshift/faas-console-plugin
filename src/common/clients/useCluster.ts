@@ -1,26 +1,20 @@
 import { K8sResourceKind, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 import { useMemo } from 'react';
 import { ClusterFunction, FunctionStatus, K8sKeyedResource } from '../types';
-import { OcpClusterService } from './OcpClusterService';
-
-const instance = new OcpClusterService();
 
 const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
 const REVISION_LABEL = 'serving.knative.dev/revision';
 
-interface ClusterService {
+export function useCluster(
+  functionNames: string[] = [],
+  namespace?: string,
+): {
   functions: ReadonlyMap<string, ClusterFunction>;
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
   loaded: boolean;
   error: unknown;
-  generateKubeconfig: (namespace: string) => Promise<string>;
-}
-
-export function useClusterService(
-  functionNames: string[] = [],
-  namespace?: string,
-): ClusterService {
+} {
   const knSvcConfig = useMemo(
     () =>
       functionNames.length > 0
@@ -101,7 +95,6 @@ export function useClusterService(
     configMaps,
     loaded,
     error: knError || depError || secretError || cmError,
-    generateKubeconfig: instance.generateKubeconfig.bind(instance),
   };
 }
 

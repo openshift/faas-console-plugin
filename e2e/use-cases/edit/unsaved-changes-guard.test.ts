@@ -1,6 +1,6 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToEditPage } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../mocks/github';
+import { PRESEEDED_FUNC_NAME } from '../../helpers/constants';
 
 test.describe('Unsaved changes guard', () => {
   test('modal prevents accidental navigation loss', async ({ page }) => {

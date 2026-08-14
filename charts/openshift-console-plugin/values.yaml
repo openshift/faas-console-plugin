@@ -4,6 +4,7 @@ plugin:
   description: ""
   image: ""
   apiServerURL: ""
+  ghApiUrl: ""
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   replicas: 2

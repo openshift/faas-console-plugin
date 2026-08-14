@@ -17,21 +17,17 @@ import { Link, useNavigate } from 'react-router';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { UserAvatar } from '../../common/components/UserAvatar';
-import {
-  ForgeConnectionContext,
-  ForgeConnectionProvider,
-} from '../../common/context/ForgeConnectionProvider';
-import { ClusterFunction } from '../../common/services/types';
-import { useClusterService } from '../../common/services/cluster/useClusterService';
-import { SourceControlService } from '../../common/services/source-control/SourceControlService';
-import { useSourceControlService } from '../../common/services/source-control/useSourceControlService';
-import { errorMessage, parseFuncYaml } from '../../common/utils/utils';
+import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
+import { ClusterFunction, FunctionListItem } from '../../common/types';
+import { useCluster } from '../../common/clients/useCluster';
+import { listFunctions } from '../../common/clients/functionsClient';
+import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
   return (
-    <ForgeConnectionProvider>
+    <AuthProvider>
       <FunctionsListPageContent />
-    </ForgeConnectionProvider>
+    </AuthProvider>
   );
 }
 
@@ -112,8 +108,7 @@ function useFunctionListPage(): {
   isConnectedToForge: boolean;
   error: string;
 } {
-  const { isActive: isConnectedToForge, connectionId } = useContext(ForgeConnectionContext);
-  const sourceControl = useSourceControlService();
+  const { isAuthenticated: isConnectedToForge, connectionId } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [functionItems, setFunctionItems] = useState<FunctionTableItem[]>([]);
@@ -136,7 +131,7 @@ function useFunctionListPage(): {
     setRefreshing(true);
 
     try {
-      const items = await loadFunctionTableItems(sourceControl);
+      const items = await loadFunctionTableItems();
       setFunctionItems(items);
       setError('');
     } catch (err) {
@@ -156,7 +151,7 @@ function useFunctionListPage(): {
       let items: FunctionTableItem[];
 
       try {
-        items = await loadFunctionTableItems(sourceControl);
+        items = await loadFunctionTableItems();
       } catch (err) {
         if (!ignore) {
           setReposLoaded(true);
@@ -175,11 +170,11 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [sourceControl, isConnectedToForge, connectionId]);
+  }, [isConnectedToForge, connectionId]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useClusterService(functionNames);
+  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(functionNames);
 
   const functions = useMemo(
     () =>
@@ -204,37 +199,18 @@ function useFunctionListPage(): {
   };
 }
 
-async function loadFunctionTableItems(svc: SourceControlService): Promise<FunctionTableItem[]> {
-  const repos = await svc.listFunctionRepos();
-  const results = await Promise.all(
-    repos.map(async (repo) => {
-      try {
-        const funcYaml = await svc.fetchFileContent(repo, 'func.yaml');
-        const { name, namespace, runtime } = parseFuncYaml(funcYaml);
-        return newItem(name || repo.name, repo.name, namespace, runtime);
-      } catch (err) {
-        console.error(`Failed to load func.yaml for ${repo.name}:`, err);
-        const item = newItem(repo.name, repo.name, '', '');
-        item.status = 'Error';
-        return item;
-      }
-    }),
-  );
-  return results;
+async function loadFunctionTableItems(): Promise<FunctionTableItem[]> {
+  const items = await listFunctions();
+  return items.map((item) => newItem(item));
 }
 
-function newItem(
-  name: string,
-  repoName: string,
-  namespace: string,
-  runtime: string,
-): FunctionTableItem {
+function newItem(item: FunctionListItem): FunctionTableItem {
   return {
-    name,
-    repoName,
-    namespace,
-    runtime,
-    status: 'NotDeployed' as const,
+    name: item.name || item.repoName,
+    repoName: item.repoName,
+    namespace: item.namespace,
+    runtime: item.runtime,
+    status: item.err ? 'Error' : 'NotDeployed',
     url: '',
     replicas: 0,
   };

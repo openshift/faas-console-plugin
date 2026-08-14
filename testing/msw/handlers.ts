@@ -1,16 +1,14 @@
 import { http, HttpResponse } from 'msw';
 
-const GITHUB_API = 'https://api.github.com';
+const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
 
-/** Default GitHub API handlers. Override per test by using server.use(). */
+/** Default backend API handlers. Override per test by using server.use(). */
 export const handlers = [
-  // GET /user - authenticated user
-  http.get(`${GITHUB_API}/user`, () =>
-    HttpResponse.json({ login: 'twoGiants' }),
+  // GET /api/v1/auth/user - authenticated user
+  http.get(`${BACKEND_API}/api/v1/auth/user`, () =>
+    HttpResponse.json({ login: 'twoGiants', avatarUrl: '' }),
   ),
 
-  // GET /search/repositories - search for function repos
-  http.get(`${GITHUB_API}/search/repositories`, () =>
-    HttpResponse.json({ total_count: 0, items: [] }),
-  ),
+  // GET /api/v1/func/list - list function repos
+  http.get(`${BACKEND_API}/api/v1/func/list`, () => HttpResponse.json([])),
 ];

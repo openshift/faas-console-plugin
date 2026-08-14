@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FileTreeView } from './FileTreeView';
-import { FileEntry } from '../../../common/services/types';
+import { FileEntry } from '../../../common/types';
 
 const nodeFuncFiles: FileEntry[] = [
   { path: '.github/workflows/func-deploy.yaml', mode: '100644', content: '', type: 'blob' },

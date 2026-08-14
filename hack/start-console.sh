@@ -62,11 +62,7 @@ if [[ "$BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT" == *"crc.testing"* ]]; then
 fi
 
 BRIDGE_PLUGINS="${PLUGIN_NAME}=http://${PLUGIN_HOST}:${PLUGIN_PORT}"
-BRIDGE_PLUGIN_PROXY='{"services":[{"consoleAPIPath":"/api/proxy/plugin/'"${PLUGIN_NAME}"'/backend/","endpoint":"http://'"${PLUGIN_HOST}"':'"${BACKEND_PORT}"'","authorize":false}]}'
-
-# Allow browser to connect to GitHub API (CSP connect-src).
-# Production uses ConsolePlugin.spec.contentSecurityPolicy instead.
-BRIDGE_CONTENT_SECURITY_POLICY="connect-src=https://api.github.com"
+BRIDGE_PLUGIN_PROXY='{"services":[{"consoleAPIPath":"/api/proxy/plugin/'"${PLUGIN_NAME}"'/backend/","endpoint":"http://'"${PLUGIN_HOST}"':'"${BACKEND_PORT}"'","authorize":true}]}'
 
 echo "BRIDGE_PLUGINS=$BRIDGE_PLUGINS"
 echo "BRIDGE_PLUGIN_PROXY=$BRIDGE_PLUGIN_PROXY"

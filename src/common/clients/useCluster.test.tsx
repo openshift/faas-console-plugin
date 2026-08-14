@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { useClusterService } from './useClusterService';
+import { useCluster } from './useCluster';
 
 type WatchConfig = {
   groupVersionKind?: { group?: string; version?: string; kind: string };
@@ -90,10 +90,7 @@ function TestConsumer({
   functionNames?: string[];
   namespace?: string;
 }) {
-  const { functions, secrets, configMaps, loaded, error } = useClusterService(
-    functionNames,
-    namespace,
-  );
+  const { functions, secrets, configMaps, loaded, error } = useCluster(functionNames, namespace);
   return (
     <>
       <span data-testid="loaded">{String(loaded)}</span>
@@ -168,7 +165,7 @@ function deploymentFixture(
   };
 }
 
-describe('useClusterService', () => {
+describe('useCluster', () => {
   afterEach(() => {
     setFixtures({});
   });

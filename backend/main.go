@@ -12,8 +12,13 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
+	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/github"
 )
+
+const defaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
 //go:embed static/*
 var staticFiles embed.FS
@@ -26,7 +31,18 @@ func main() {
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
 	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
+	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL (for testing with fake server)")
 	flag.Parse()
+
+	if *ghAPIURL != "" {
+		baseURL := *ghAPIURL
+		config.SCMRegistry = scm.Registry{
+			scm.GitHub: func(pat string) scm.Client {
+				return github.NewWithBaseURL(pat, baseURL)
+			},
+		}
+		log.Printf("Using custom GitHub API URL: %s", baseURL)
+	}
 
 	if *kubeAPIServer == "" {
 		log.Fatal("--external-api-server-url is required")
@@ -43,9 +59,8 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/function/create", handleFuncCreate)
-	mux.Handle("GET /api/cluster/ca", &clusterCAHandler{CAPath: *caPath})
 	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
+	mux.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
 	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
 	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
 	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
@@ -94,20 +109,11 @@ func loggingMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Printf("panic: %v", rec)
-				jsonError(w, "internal server error", http.StatusInternalServerError)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"message": "internal server error"})
 			}
 		}()
 		next.ServeHTTP(w, r)
 	})
-}
-
-func jsonError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"message": msg})
-}
-
-func jsonOK(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
 }

@@ -9,54 +9,61 @@ React + TypeScript + PatternFly 6 + OCP Dynamic Plugin SDK
 ```mermaid
 flowchart TB
     TYPES[Types] ---|cross-cutting| UTILS[Utils]
-    SERVICES[Services] ---|cross-cutting| UTILS
+    CLIENTS[Clients] ---|cross-cutting| UTILS
     COMPONENTS[Components] ---|cross-cutting| UTILS
     PAGES[Pages] --> COMPONENTS[Components]
     PAGES --> HOOKS[Hooks]
     COMPONENTS --> HOOKS
     COMPONENTS --> TYPES
-    HOOKS --> SERVICES[Services]
+    HOOKS --> CLIENTS[Clients]
     HOOKS --> TYPES
-    SERVICES --> TYPES[Types]
+    CLIENTS --> TYPES[Types]
 ```
 
 Arrows mean "imports / depends on."
 
 | Layer | Maps to | Depends on |
 |-------|---------|------------|
-| **Types** | `common/services/types.ts` | nothing |
-| **Services** | `common/services/*/Service.ts` + implementations | Types, Utils |
-| **Hooks** | `common/services/*/use*.ts`, `common/hooks/`, `pages/<name>/hooks/` | Services, Types, Utils |
+| **Types** | `common/types.ts` | nothing |
+| **Clients** | `common/clients/` (plain async functions and hooks that wrap SDK calls) | Types, Utils |
+| **Hooks** | `common/clients/use*.ts`, `common/hooks/`, `pages/<name>/hooks/` | Clients, Types, Utils |
 | **Components** | `common/components/` (shared), `pages/<name>/components/` (page-specific) | Hooks, Types, Utils |
 | **Pages** | `pages/<name>/` | Components, Hooks, Utils |
 | **Utils** | `common/utils/` | nothing (cross-cutting) |
 
 ### Dependency Rules
 
-- Unidirectional: Types <- Services <- Hooks <- Components <- Pages
+- Unidirectional: Types <- Clients <- Hooks <- Components <- Pages
 - Utils can be imported by any layer
-- Pages never import Services directly (always through Hooks)
-- Services never import Components or Pages
+- Pages and components may import clients and hooks directly
+- Clients/hooks never import Components or Pages
 - No circular dependencies
 
 ### Co-location Convention
 
 - `src/pages/<name>/` contains the page component, its test, and a `components/` subdir
 - `src/pages/<name>/components/` contains components used only by that page
-- `src/common/` contains everything shared across pages (components, services, utils, context)
+- `src/common/` contains everything shared across pages (components, clients, utils, context)
 - **Ownership rule:** if a component is imported by only one page (test imports don't count), it lives in `pages/<name>/components/`. If imported by multiple pages, it lives in `common/components/`.
 
 ## React
 
 ### Pages
 
-- **Smart for page-specific data** — pages use central hooks (e.g. `useClusterService`, `useSourceControl`) to fetch, prepare, and transform all data needed for downstream components.
+- **Smart for page-specific data** -- pages use hooks (their co-located page hook, `useCluster`) to fetch, prepare, and transform all data needed for downstream components.
 
 ### Components
 
 - **Simple by default** — they receive data via props, render it, and call callbacks. No logic at the top of a component.
-- **May own data when self-contained** — a component may own its own data and state when it encapsulates a self-contained capability that is not specific to any one page (e.g., forge connection, auth flows, notification subscriptions). The component becomes the single owner of that concern. Pages consume it without orchestrating its internals.
+- **May own data when self-contained** -- a component may own its own data and state when it encapsulates a self-contained capability that is not specific to any one page (e.g., auth flows, notification subscriptions). Such components may use hooks directly. The component becomes the single owner of that concern. Pages consume it without orchestrating its internals.
 - **Sub-components** — if a sub-component is only used by one parent, keep it in the parent's file, unexported. Extract to its own file only when the sub-component is used by multiple siblings.
+
+### Clients
+
+`common/clients/` contains thin wrappers around external APIs. Two forms:
+
+- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that hooks call.
+- **Hooks** (e.g., `useCluster.ts`) -- when the client wraps a React-aware SDK call such as `useK8sWatchResource`, it stays as a hook.
 
 ### Hooks
 
@@ -80,7 +87,7 @@ Within a file, put the exported component at the top, then its hook below, then 
 - PatternFly styling and styling rules over custom CSS
 - Error handling through ErrorProvider/addError pattern
 - Shared utilities in `common/utils/`, not hand-rolled per component
-- Services consumed through hooks, never imported directly
+- Clients consumed through hooks, never imported directly
 
 ---
 

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Spinner, TreeView, TreeViewDataItem } from '@patternfly/react-core';
 import { FileIcon, FolderIcon, FolderOpenIcon } from '@patternfly/react-icons';
-import { FileEntry } from '../../../common/services/types';
+import { FileEntry } from '../../../common/types';
 import * as React from 'react';
 
 const emptyTreeData: TreeViewDataItem[] = [{ id: '__empty__', name: 'No files' }];

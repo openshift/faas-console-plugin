@@ -5,7 +5,7 @@ set -euo pipefail
 # Start local dev environment: Go backend + webpack dev server + console container.
 # Prerequisites: oc login
 # Optional: make setup-serverless (for full Knative/Serverless functionality)
-# Usage: make dev | make dev-stop | make dev-randomize-ports
+# Usage: make dev | make dev-stop | make dev-randomize-ports | make dev-fake-gh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
@@ -15,6 +15,8 @@ CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
 BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000
+FAKE_GH=false
+FAKE_GH_PORT=8090
 TIMEOUT=60
 PID_DIR=".dev-pids"
 
@@ -83,13 +85,24 @@ random_free_port() {
 }
 
 write_dev_env() {
-  cat > .dev-env.json <<EOF
+  if $FAKE_GH; then
+    cat > .dev-env.json <<EOF
+{
+  "backendPort": $BACKEND_PORT,
+  "pluginPort": $PLUGIN_PORT,
+  "consolePort": $CONSOLE_PORT,
+  "fakeGithubPort": $FAKE_GH_PORT
+}
+EOF
+  else
+    cat > .dev-env.json <<EOF
 {
   "backendPort": $BACKEND_PORT,
   "pluginPort": $PLUGIN_PORT,
   "consolePort": $CONSOLE_PORT
 }
 EOF
+  fi
 }
 
 build_pages() {
@@ -113,13 +126,19 @@ resolve_kube_api_server() {
   export KUBE_API_SERVER=$(oc whoami --show-server)
 }
 
+backend_gh_flag() {
+  if $FAKE_GH; then
+    echo "--gh-api-url http://localhost:$FAKE_GH_PORT"
+  fi
+}
+
 start_backend() {
   build_pages
   log::info "Building Go backend..."
   make build-backend
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
   log::info "Starting Go backend..."
-  ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
+  ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
@@ -150,7 +169,7 @@ start_backend_watcher() {
 
       if $build_ok; then
         mv bin/plugin-backend-tmp bin/plugin-backend
-        ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" >>"$LOG_DIR/backend.log" 2>&1 &
+        ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
       else
@@ -172,6 +191,18 @@ start_backend_watcher() {
     done
   ) >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend-watcher.pid"
+}
+
+start_fakegithub() {
+  log::info "Building fake GitHub server..."
+  make build-fakegithub
+  log::info "Starting fake GitHub server..."
+  ./bin/fakegithub --port "$FAKE_GH_PORT" >>"$LOG_DIR/fakegithub.log" 2>&1 &
+  echo $! > "$PID_DIR/fakegithub.pid"
+}
+
+stop_fakegithub() {
+  stop_pid "fakegithub.pid" "fake GitHub server"
 }
 
 stop_backend() {
@@ -199,6 +230,7 @@ stop_console() {
 }
 
 stop_dev() {
+  stop_fakegithub
   stop_backend
   stop_plugin
   stop_console
@@ -244,6 +276,9 @@ start_console() {
 print_status() {
   log::step "Dev environment started"
   log::link "Backend" "http://localhost:$BACKEND_PORT"
+  if $FAKE_GH; then
+    log::link "Fake GitHub" "http://localhost:$FAKE_GH_PORT"
+  fi
   log::link "Console" "http://localhost:$CONSOLE_PORT"
   log::link "Logs" "$LOG_DIR/"
   log::hint "To stop: make dev-stop"
@@ -259,7 +294,11 @@ main() {
   write_dev_env
   extract_cluster_ca
   resolve_kube_api_server
-  trap 'stop_dev' EXIT
+  trap 'stop_dev' EXIT INT TERM
+  if $FAKE_GH; then
+    start_fakegithub
+    wait_for_port "$FAKE_GH_PORT" "Fake GitHub server" "$PID_DIR/fakegithub.pid"
+  fi
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"
   start_backend_watcher
@@ -267,31 +306,47 @@ main() {
   wait_for_port "$PLUGIN_PORT" "Plugin dev server" "$PID_DIR/webpack.pid"
   start_console
   wait_for_port "$CONSOLE_PORT" "OpenShift console" "$PID_DIR/console.pid"
-  trap - EXIT
+  trap - EXIT INT TERM
   print_status
 }
 
-case "${1:-}" in
-  --stop)
-    stop_dev
-    ;;
-  --randomize-ports)
-    BACKEND_PORT=$(random_free_port)
+RANDOMIZE_PORTS=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --stop)
+      stop_dev
+      exit 0
+      ;;
+    --fake-gh)
+      FAKE_GH=true
+      ;;
+    --randomize-ports)
+      RANDOMIZE_PORTS=true
+      ;;
+    *)
+      echo "Usage: $0 [--stop] [--randomize-ports] [--fake-gh]"
+      exit 1
+      ;;
+  esac
+done
+
+if $RANDOMIZE_PORTS; then
+  BACKEND_PORT=$(random_free_port)
+  PLUGIN_PORT=$(random_free_port)
+  while [ "$PLUGIN_PORT" -eq "$BACKEND_PORT" ]; do
     PLUGIN_PORT=$(random_free_port)
-    while [ "$PLUGIN_PORT" -eq "$BACKEND_PORT" ]; do
-      PLUGIN_PORT=$(random_free_port)
-    done
+  done
+  CONSOLE_PORT=$(random_free_port)
+  while [ "$CONSOLE_PORT" -eq "$BACKEND_PORT" ] || [ "$CONSOLE_PORT" -eq "$PLUGIN_PORT" ]; do
     CONSOLE_PORT=$(random_free_port)
-    while [ "$CONSOLE_PORT" -eq "$BACKEND_PORT" ] || [ "$CONSOLE_PORT" -eq "$PLUGIN_PORT" ]; do
-      CONSOLE_PORT=$(random_free_port)
+  done
+  if $FAKE_GH; then
+    FAKE_GH_PORT=$(random_free_port)
+    while [ "$FAKE_GH_PORT" -eq "$BACKEND_PORT" ] || [ "$FAKE_GH_PORT" -eq "$PLUGIN_PORT" ] || [ "$FAKE_GH_PORT" -eq "$CONSOLE_PORT" ]; do
+      FAKE_GH_PORT=$(random_free_port)
     done
-    main
-    ;;
-  "")
-    main
-    ;;
-  *)
-    echo "Usage: $0 [--stop | --randomize-ports]"
-    exit 1
-    ;;
-esac
+  fi
+fi
+
+main

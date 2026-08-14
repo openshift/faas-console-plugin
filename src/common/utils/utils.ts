@@ -57,9 +57,9 @@ export const handlerMap: Record<string, string> = {
 };
 
 export function errorMessage(err: unknown): string {
-  if (err instanceof Error && 'status' in err) {
-    return `http code: ${err.status}\nmessage: ${err.message}`;
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    return String((err as { message: unknown }).message);
   }
-
-  return err instanceof Error ? err.message : String(err);
+  return String(err);
 }
