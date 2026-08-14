@@ -143,16 +143,16 @@ start_backend() {
 }
 
 start_backend_watcher() {
-  if ! command -v inotifywait &>/dev/null; then
-    log::warn "inotifywait not found. Install inotify-tools for auto-recompile."
+  if ! command -v fswatch &>/dev/null; then
+    log::warn "fswatch not found. Install fswatch for auto-recompile."
     return
   fi
 
   log::info "Starting backend file watcher..."
   (
     while true; do
-      if ! inotifywait -r -e modify,create,delete,move --include '\.(go|mod|sum)$' backend/ >/dev/null 2>&1; then
-        echo "[watcher] inotifywait failed. Shutting down dev environment."
+      if ! fswatch -1 -E -r -e '.*' -i '\.(go|mod|sum)$' backend/ >/dev/null 2>&1; then
+        echo "[watcher] fswatch failed. Shutting down dev environment."
         stop_dev
         break
       fi
