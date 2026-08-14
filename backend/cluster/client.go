@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -12,7 +11,8 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+
+	"github.com/openshift/faas-console-plugin/backend/kube"
 )
 
 const (
@@ -41,34 +41,12 @@ const DefaultTokenExpiry int64 = 365 * 24 * 60 * 60 // 1 year
 // When host is non-empty (dev/test) it is used as the API server URL directly.
 // When host is empty the standard in-cluster config is used (pod env vars + SA files).
 func New(host, token string, caCert []byte) (Client, error) {
-	var cfg *rest.Config
-	var err error
-
-	if host != "" {
-		cfg = &rest.Config{Host: host, BearerToken: token}
-		if len(caCert) > 0 {
-			cfg.TLSClientConfig = rest.TLSClientConfig{CAData: caCert}
-		}
-	} else {
-		cfg, err = rest.InClusterConfig()
-		if err != nil {
-			return nil, fmt.Errorf("in-cluster config: %w", err)
-		}
-		cfg.BearerToken = token
-		cfg.BearerTokenFile = ""
-	}
-	cfg.ContentConfig = rest.ContentConfig{
-		ContentType:        "application/json",
-		AcceptContentTypes: "application/json",
-	}
-
-	httpClient, err := rest.HTTPClientFor(cfg)
+	cfg, err := kube.RESTConfig(host, token, caCert)
 	if err != nil {
-		return nil, fmt.Errorf("create http client: %w", err)
+		return nil, err
 	}
-	httpClient.Timeout = 30 * time.Second
 
-	clientset, err := kubernetes.NewForConfigAndClient(cfg, httpClient)
+	clientset, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}

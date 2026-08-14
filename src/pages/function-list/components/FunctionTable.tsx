@@ -9,9 +9,9 @@ import {
 } from '@openshift-console/dynamic-plugin-sdk';
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
-import { ActionList, ActionListItem, Button } from '@patternfly/react-core';
+import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
 import { useTranslation } from 'react-i18next';
-import { FunctionStatus } from '../../../common/types';
+import { FunctionSource, FunctionStatus } from '../../../common/types';
 
 export interface FunctionTableItem {
   name: string;
@@ -21,6 +21,7 @@ export interface FunctionTableItem {
   url: string;
   replicas: number;
   namespace: string;
+  source: FunctionSource;
   mainResource?: K8sResourceCommon;
 }
 
@@ -59,7 +60,9 @@ export function FunctionTable({
             <Td dataLabel={t('Namespace')}>
               <TextOrDash value={fn.namespace} />
             </Td>
-            <Td dataLabel={t('Runtime')}>{fn.runtime}</Td>
+            <Td dataLabel={t('Runtime')}>
+              <TextOrDash value={fn.runtime} />
+            </Td>
             <Td dataLabel={t('Status')}>
               <StatusCell status={fn.status} />
             </Td>
@@ -70,12 +73,7 @@ export function FunctionTable({
             <Td dataLabel={t('Actions')} isActionCell>
               <ActionList isIconList>
                 <ActionListItem>
-                  <Button
-                    variant="plain"
-                    aria-label={t('Edit')}
-                    icon={<PencilAltIcon />}
-                    onClick={() => onEdit(fn.repoName)}
-                  />
+                  <EditActionButton source={fn.source} repoName={fn.repoName} onEdit={onEdit} />
                 </ActionListItem>
                 <ActionListItem>
                   <DeleteActionButton mainResource={fn.mainResource} />
@@ -121,6 +119,35 @@ function UrlCell({ url }: { url?: string }) {
       {hostname}
     </a>
   );
+}
+
+function EditActionButton({
+  source,
+  repoName,
+  onEdit,
+}: {
+  source: FunctionSource;
+  repoName: string;
+  onEdit: (name: string) => void;
+}) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+  const isDisabled = source === 'cluster';
+
+  const button = (
+    <Button
+      variant="plain"
+      aria-label={t('Edit')}
+      icon={<PencilAltIcon />}
+      isAriaDisabled={isDisabled}
+      onClick={() => {
+        if (!isDisabled) onEdit(repoName);
+      }}
+    />
+  );
+
+  if (!isDisabled) return button;
+
+  return <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>;
 }
 
 function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {

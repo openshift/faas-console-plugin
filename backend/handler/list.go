@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -10,18 +11,29 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
+	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
+var newFunctionsClient = functions.New
+
+type functionSource string
+
+const (
+	sourceRepo    functionSource = "repo"
+	sourceCluster functionSource = "cluster"
+)
+
 type listItem struct {
-	Owner         string `json:"owner"`
-	RepoName      string `json:"repoName"`
-	RepoURL       string `json:"repoURL"`
-	DefaultBranch string `json:"defaultBranch"`
-	Name          string `json:"name"`
-	Namespace     string `json:"namespace"`
-	Runtime       string `json:"runtime"`
-	Err           string `json:"err,omitempty"`
+	Owner         string         `json:"owner"`
+	RepoName      string         `json:"repoName"`
+	RepoURL       string         `json:"repoURL"`
+	DefaultBranch string         `json:"defaultBranch"`
+	Name          string         `json:"name"`
+	Namespace     string         `json:"namespace"`
+	Runtime       string         `json:"runtime"`
+	Source        functionSource `json:"source"`
+	Err           string         `json:"err,omitempty"`
 }
 
 type funcYamlFields struct {
@@ -36,10 +48,15 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
 		return
 	}
+	ocpToken, ok := extractOCPToken(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Authorization header is required")
+		return
+	}
 
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	namespace := r.URL.Query().Get("namespace")
 
-	repos, err := client.ListRepos(r.Context())
+	repoFunctions, err := listRepoFunctions(r.Context(), pat)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			writeError(w, http.StatusUnauthorized, "invalid SCM token")
@@ -50,6 +67,34 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	clusterFunctions := h.listClusterFunctions(r.Context(), ocpToken, namespace)
+
+	repoNames := make(map[string]bool, len(repoFunctions))
+	for _, rf := range repoFunctions {
+		if rf.Name != "" {
+			repoNames[rf.Name] = true
+		}
+	}
+
+	items := repoFunctions
+	for _, clusterFn := range clusterFunctions {
+		if repoNames[clusterFn.Name] {
+			continue
+		}
+		items = append(items, clusterFn)
+	}
+
+	writeJSON(w, http.StatusOK, items)
+}
+
+func listRepoFunctions(ctx context.Context, pat string) ([]listItem, error) {
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+
+	repos, err := client.ListRepos(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	items := make([]listItem, len(repos))
 	for i, repo := range repos {
 		items[i] = listItem{
@@ -57,14 +102,15 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 			RepoName:      repo.Name,
 			RepoURL:       repo.URL,
 			DefaultBranch: repo.DefaultBranch,
+			Source:        sourceRepo,
 		}
 	}
 
-	g, ctx := errgroup.WithContext(r.Context())
+	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i, repo := range repos {
 		g.Go(func() error {
-			content, err := client.GetFileContent(ctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
+			content, err := client.GetFileContent(gctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
 			if err != nil {
 				slog.Warn("failed to read func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", err)
 				items[i].Err = "failed to read func.yaml"
@@ -84,7 +130,31 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = g.Wait()
 
-	writeJSON(w, http.StatusOK, items)
+	return items, nil
+}
+
+func (h *Handlers) listClusterFunctions(ctx context.Context, ocpToken, namespace string) []listItem {
+	client, err := newFunctionsClient(h.kubeHost, ocpToken, h.caCert)
+	if err != nil {
+		slog.Warn("failed to connect to cluster", "err", err)
+		return nil
+	}
+	funcs, err := client.List(ctx, namespace)
+	if err != nil {
+		slog.Warn("failed to list cluster functions", "err", err)
+		return nil
+	}
+
+	items := make([]listItem, len(funcs))
+	for i, fn := range funcs {
+		items[i] = listItem{
+			Name:      fn.Name,
+			Namespace: fn.Namespace,
+			Runtime:   fn.Runtime,
+			Source:    sourceCluster,
+		}
+	}
+	return items
 }
 
 func parseFuncYaml(content string) (name, namespace, runtime string, err error) {

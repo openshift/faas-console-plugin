@@ -42,6 +42,58 @@ vi.mock('../../common/clients/useCluster', () => ({
   useCluster: (...args: unknown[]) => mockUseCluster(...args),
 }));
 
+vi.mock('./components/FunctionTable', () => ({
+  FunctionTable: ({
+    functions,
+  }: {
+    functions: { name: string; status: string; replicas: number; url?: string }[];
+  }) =>
+    functions.map((f) => (
+      <div key={f.name}>
+        <span data-testid="fn-name">{f.name}</span>
+        <span data-testid="fn-status">{f.status}</span>
+        <span data-testid="fn-replicas">{f.replicas}</span>
+        <span data-testid="fn-url">{f.url}</span>
+      </div>
+    )),
+}));
+
+vi.mock('../../common/components/UserAvatar', () => ({
+  UserAvatar: ({ enableReconnect }: { enableReconnect: boolean }) => (
+    <span data-testid="user-avatar">{enableReconnect ? 'reconnect' : 'no-reconnect'}</span>
+  ),
+}));
+
+function setupListHandler(
+  items: {
+    owner: string;
+    repoName: string;
+    repoURL: string;
+    name: string;
+    namespace: string;
+    runtime: string;
+    source?: string;
+  }[],
+) {
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
+      HttpResponse.json(
+        items.map((i) => ({
+          owner: i.owner,
+          repoName: i.repoName,
+          repoURL: i.repoURL,
+          defaultBranch: 'main',
+          name: i.name,
+          namespace: i.namespace,
+          runtime: i.runtime,
+          source: i.source ?? 'repo',
+        })),
+      ),
+    ),
+  );
+}
+
+
 describe('FunctionsListPage', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -115,6 +167,24 @@ describe('FunctionsListPage', () => {
     );
 
     expect(await screen.findByText('cluster-only')).toBeInTheDocument();
+  });
+
+  it('shows cluster-only functions that have no discoverable repo', async () => {
+    renderAuthenticated();
+    setupListHandler([clusterOnlyListItem('cluster-only')]);
+    mockUseCluster.mockReturnValue(
+      clusterData({
+        functions: [clusterFunction('cluster-only', 'Running', 1)],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId('fn-name')).toHaveTextContent('cluster-only');
   });
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {

@@ -108,7 +108,9 @@ Go + `net/http` standard library. Key dependencies:
 
 | Package | Responsibility |
 |---|---|
-| `cluster` | Kubernetes operations: service account, RBAC provisioning, TokenRequest, kubeconfig generation |
+| `kube` | Shared Kubernetes connection: builds a `*rest.Config` from host/token/caCert (or in-cluster), including the JSON content config and the default request timeout |
+| `cluster` | Kubernetes provisioning: service account, RBAC provisioning, TokenRequest, kubeconfig generation |
+| `functions` | Function lifecycle against the cluster via knative/func, behind the growable `functions.Client` facade (lists today) |
 | `handler` | HTTP handlers: input validation, orchestration, error mapping |
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
 | `scm/github` | go-github implementation of `scm.Client` |
@@ -117,16 +119,21 @@ Go + `net/http` standard library. Key dependencies:
 
 ### Dependency Rules
 
-- `handler` imports `cluster`, `scm`, `scaffold`, `config` — never the reverse
-- `cluster` has no knowledge of SCM or scaffold
+- `handler` imports `cluster`, `functions`, `scm`, `scaffold`, `config` — never the reverse
+- `cluster` and `functions` both import `kube` for connection setup, and have no knowledge of each other, SCM, or scaffold
+- `kube` imports only `k8s.io/client-go/rest`; it depends on no other backend package
+- `cluster` is for provisioning (write RBAC/SA, request tokens); `functions` is for the function lifecycle (list for now). Both talk to the cluster but answer different questions, so they stay separate rather than sharing one client interface
 - `scm` has no knowledge of cluster or scaffold
 - `scaffold` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
 - `config` is imported by `handler` and `main` only — it is the wiring layer
 
 ### Key Decisions
 
+**Cluster access is split by intent: `cluster` (provisioning) vs `functions` (function lifecycle)**
+Both talk to the same API server but answer different questions, so they are separate packages rather than one god-client. `cluster` writes RBAC/service accounts and mints tokens; `functions` manages deployed functions via knative/func and is exposed as the growable `functions.Client` facade (only `List` today; deploy/delete/describe are expected next, hence an interface rather than a bare `Lister`). The shared connection logic lives in `kube.RESTConfig`, which both call, so host resolution, TLS, JSON content config, and the default request timeout are defined once. `kube` is a leaf (depends only on `client-go/rest`), which keeps it importable by any domain package without cycles — unlike `config`, the wiring layer, which is off-limits to domain packages.
+
 **Cluster host resolution: explicit parameter via `--kube-host` flag**
-`cluster.New(host, token, caCert)` accepts the API server URL as an explicit parameter. Empty host triggers `rest.InClusterConfig()` (production pods). In dev, `hack/dev.sh` passes `--kube-host $KUBE_API_SERVER` to the backend binary; in tests, it is passed directly to `cluster.New`. Env var injection (`KUBERNETES_SERVICE_HOST`) was explicitly rejected as it abuses a Kubernetes-standardized variable and creates hidden ambient state.
+`cluster.New(host, token, caCert)` and `functions.New(...)` accept the API server URL as an explicit parameter and pass it to `kube.RESTConfig`. Empty host triggers `rest.InClusterConfig()` (production pods). In dev, `hack/dev.sh` passes `--kube-host $KUBE_API_SERVER` to the backend binary; in tests, it is passed directly. Env var injection (`KUBERNETES_SERVICE_HOST`) was explicitly rejected as it abuses a Kubernetes-standardized variable and creates hidden ambient state.
 
 **External API URL resolved at Helm install time**
 The URL embedded in generated kubeconfigs (`externalAPIServerURL`) comes from the Infrastructure CR (`config.openshift.io/v1/Infrastructure/cluster`) via Helm `lookup` at install time, injected as `--external-api-server-url`. It is not fetched at runtime. This eliminates the need for a `ClusterRole` to query the Infrastructure CR from within the pod.
