@@ -13,9 +13,7 @@ flowchart TB
     COMPONENTS[Components] ---|cross-cutting| UTILS
     PAGES[Pages] --> COMPONENTS[Components]
     PAGES --> HOOKS[Hooks]
-    PAGES --> CLIENTS
     COMPONENTS --> HOOKS
-    COMPONENTS --> CLIENTS
     COMPONENTS --> TYPES
     HOOKS --> CLIENTS[Clients]
     HOOKS --> TYPES
@@ -29,8 +27,8 @@ Arrows mean "imports / depends on."
 | **Types** | `common/types.ts` | nothing |
 | **Clients** | `common/clients/` (plain async functions and hooks that wrap SDK calls) | Types, Utils |
 | **Hooks** | `common/clients/use*.ts`, `common/hooks/`, `pages/<name>/hooks/` | Clients, Types, Utils |
-| **Components** | `common/components/` (shared), `pages/<name>/components/` (page-specific) | Hooks, Clients, Types, Utils |
-| **Pages** | `pages/<name>/` | Components, Hooks, Clients, Utils |
+| **Components** | `common/components/` (shared), `pages/<name>/components/` (page-specific) | Hooks, Types, Utils |
+| **Pages** | `pages/<name>/` | Components, Hooks, Utils |
 | **Utils** | `common/utils/` | nothing (cross-cutting) |
 
 ### Dependency Rules
@@ -52,19 +50,19 @@ Arrows mean "imports / depends on."
 
 ### Pages
 
-- **Smart for page-specific data** -- pages import clients (`functionsClient`) and hooks (`useCluster`) to fetch, prepare, and transform all data needed for downstream components.
+- **Smart for page-specific data** -- pages use hooks (their co-located page hook, `useCluster`) to fetch, prepare, and transform all data needed for downstream components.
 
 ### Components
 
 - **Simple by default** — they receive data via props, render it, and call callbacks. No logic at the top of a component.
-- **May own data when self-contained** -- a component may own its own data and state when it encapsulates a self-contained capability that is not specific to any one page (e.g., auth flows, notification subscriptions). Such components may use clients and hooks directly. The component becomes the single owner of that concern. Pages consume it without orchestrating its internals.
+- **May own data when self-contained** -- a component may own its own data and state when it encapsulates a self-contained capability that is not specific to any one page (e.g., auth flows, notification subscriptions). Such components may use hooks directly. The component becomes the single owner of that concern. Pages consume it without orchestrating its internals.
 - **Sub-components** — if a sub-component is only used by one parent, keep it in the parent's file, unexported. Extract to its own file only when the sub-component is used by multiple siblings.
 
 ### Clients
 
 `common/clients/` contains thin wrappers around external APIs. Two forms:
 
-- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that pages and components import directly.
+- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that hooks call.
 - **Hooks** (e.g., `useCluster.ts`) -- when the client wraps a React-aware SDK call such as `useK8sWatchResource`, it stays as a hook.
 
 ### Hooks
@@ -89,7 +87,7 @@ Within a file, put the exported component at the top, then its hook below, then 
 - PatternFly styling and styling rules over custom CSS
 - Error handling through ErrorProvider/addError pattern
 - Shared utilities in `common/utils/`, not hand-rolled per component
-- Backend calls go through `common/clients/`, either as plain async functions or hooks
+- Clients consumed through hooks, never imported directly
 
 ---
 
