@@ -33,6 +33,8 @@ import org.jboss.resteasy.reactive.multipart.FileUpload;
 
 import com.google.auth.oauth2.GoogleCredentials;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.Base64;
@@ -52,12 +54,20 @@ public class Function {
             region = "us-east5";
         }
 
+        String gcpCredentials = System.getenv("GCP_CREDENTIALS");
+        if (gcpCredentials == null || gcpCredentials.isEmpty()) {
+            throw new RuntimeException("GCP_CREDENTIALS environment variable is not set");
+        }
+
         try {
+            GoogleCredentials credentials = GoogleCredentials.fromStream(
+                new ByteArrayInputStream(gcpCredentials.getBytes(StandardCharsets.UTF_8)));
+
             client = AnthropicOkHttpClient.builder()
                 .backend(VertexBackend.builder()
                     .project(projectId)
                     .region(region)
-                    .googleCredentials(GoogleCredentials.getApplicationDefault())
+                    .googleCredentials(credentials)
                     .build())
                 .timeout(Duration.ofMinutes(5))
                 .build();
