@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	ghlib "github.com/google/go-github/v72/github"
+	ghlib "github.com/google/go-github/v90/github"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
