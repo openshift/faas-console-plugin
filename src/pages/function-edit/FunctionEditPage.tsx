@@ -22,7 +22,7 @@ import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthProvider } from '../../common/context/AuthProvider';
 import { getFiles, listFunctions, putFiles } from '../../common/clients/functionsClient';
 import { FileEntry, FunctionListItem } from '../../common/types';
-import { getLanguageFromPath, handlerMap, parseFuncYaml } from '../../common/utils/utils';
+import { getLanguageFromPath, handlerMap } from '../../common/utils/utils';
 
 // --- page component ---
 
@@ -164,7 +164,7 @@ function useFunctionEditPage(): FunctionEditPageState {
       setFiles(repo.content);
       setOriginalFiles(repo.content.map((f) => ({ ...f })));
       setRepoInfo(repo.info);
-      setSelectedPath(determineHandler(repo.content));
+      setSelectedPath(determineHandler(repo.content, repo.info.runtime));
       setIsLoading(false);
     }
 
@@ -223,13 +223,8 @@ async function resolveRepoContent(
   };
 }
 
-function determineHandler(loadedFiles: FileEntry[]): string {
-  const funcYaml = loadedFiles.find((f) => f.path === 'func.yaml');
-  if (!funcYaml) return '';
-
-  const { runtime } = parseFuncYaml(funcYaml.content);
-
+function determineHandler(loadedFiles: FileEntry[], runtime: string): string {
   const handlerPath = handlerMap[runtime];
-  if (loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;
+  if (handlerPath && loadedFiles.find((f) => f.path === handlerPath)) return handlerPath;
   return '';
 }
