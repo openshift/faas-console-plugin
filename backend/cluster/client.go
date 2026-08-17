@@ -228,6 +228,11 @@ func roleBody(namespace string) *rbacv1.Role {
 				Verbs:     allVerbs,
 			},
 			{
+				APIGroups: []string{""},
+				Resources: []string{"secrets", "serviceaccounts"},
+				Verbs:     []string{"get", "list", "watch"},
+			},
+			{
 				APIGroups: []string{"apps"},
 				Resources: []string{"deployments"},
 				Verbs:     allVerbs,
