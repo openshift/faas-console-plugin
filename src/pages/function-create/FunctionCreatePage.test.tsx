@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
-import { PAT_KEY, USER_KEY } from '../../common/services/types';
+import { PAT_KEY, USER_KEY } from '../../common/types';
 
 const mockNavigate = vi.fn();
 
@@ -20,8 +20,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
   }
 
   const consoleFetchJSON = Object.assign(
-    async (url: string) => {
-      const res = await fetch(new URL(url, 'http://localhost').href);
+    async (url: string, _method?: string, options?: RequestInit) => {
+      const res = await fetch(new URL(url, 'http://localhost').href, options);
       return handleResponse(res);
     },
     {
@@ -36,6 +36,12 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
     },
   );
 
+  const consoleFetch = async (url: string, options?: RequestInit) => {
+    const res = await fetch(new URL(url, 'http://localhost').href, options);
+    if (!res.ok) throw await res.json();
+    return res;
+  };
+
   return {
     DocumentTitle: ({ children }: { children: string }) => children,
     ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
@@ -45,6 +51,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
       </>
     ),
     consoleFetchJSON,
+    consoleFetch,
     useK8sWatchResource: vi.fn().mockReturnValue([[], true, null]),
   };
 });
@@ -60,107 +67,11 @@ vi.mock('../../common/components/UserAvatar', () => ({
   ),
 }));
 
-vi.mock('libsodium-wrappers', () => ({
-  default: {
-    ready: Promise.resolve(),
-    base64_variants: { ORIGINAL: 1 },
-    from_base64: () => new Uint8Array([10, 20, 30]),
-    from_string: () => new Uint8Array([5, 6, 7]),
-    crypto_box_seal: () => new Uint8Array([1, 2, 3, 4]),
-    to_base64: () => 'AQIDBA==',
-  },
-}));
-
-const GITHUB_API = 'https://api.github.com';
-const K8S_API = 'http://localhost/api/kubernetes';
 const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
 
 function setupCreateFlowHandlers() {
-  const repoName = 'my-repo';
-  const owner = 'testuser';
-
   server.use(
-    // Backend: generate function files
-    http.post(`${BACKEND_API}/api/function/create`, () =>
-      HttpResponse.json([{ path: 'func.yaml', mode: '100644', content: 'name: f', type: 'blob' }]),
-    ),
-
-    // Backend: cluster CA
-    http.get(`${BACKEND_API}/api/cluster/ca`, () => HttpResponse.json({ ca: 'dGVzdC1jYQ==' })),
-
-    // GitHub: check repo doesn't exist
-    http.get(`${GITHUB_API}/repos/${owner}/${repoName}`, () =>
-      HttpResponse.json({ message: 'Not Found' }, { status: 404 }),
-    ),
-
-    // GitHub: create repo
-    http.post(`${GITHUB_API}/user/repos`, () =>
-      HttpResponse.json({ name: repoName, owner: { login: owner }, default_branch: 'main' }),
-    ),
-
-    // GitHub: get public key for secrets
-    http.get(`${GITHUB_API}/repos/${owner}/${repoName}/actions/secrets/public-key`, () =>
-      HttpResponse.json({ key_id: 'key-1', key: btoa('x'.repeat(32)) }),
-    ),
-
-    // GitHub: create secret
-    http.put(
-      `${GITHUB_API}/repos/${owner}/${repoName}/actions/secrets/:name`,
-      () => new HttpResponse(null, { status: 204 }),
-    ),
-
-    // GitHub: set topics
-    http.put(`${GITHUB_API}/repos/${owner}/${repoName}/topics`, () =>
-      HttpResponse.json({ names: ['serverless-function'] }),
-    ),
-
-    // GitHub: create blob
-    http.post(`${GITHUB_API}/repos/${owner}/${repoName}/git/blobs`, () =>
-      HttpResponse.json({ sha: 'blob-sha' }),
-    ),
-
-    // GitHub: get ref
-    http.get(`${GITHUB_API}/repos/${owner}/${repoName}/git/ref/:ref+`, () =>
-      HttpResponse.json({ object: { sha: 'head-sha' } }),
-    ),
-
-    // GitHub: get commit
-    http.get(`${GITHUB_API}/repos/${owner}/${repoName}/git/commits/:sha`, () =>
-      HttpResponse.json({ sha: 'head-sha', tree: { sha: 'parent-tree-sha' } }),
-    ),
-
-    // GitHub: create tree
-    http.post(`${GITHUB_API}/repos/${owner}/${repoName}/git/trees`, () =>
-      HttpResponse.json({ sha: 'tree-sha' }),
-    ),
-
-    // GitHub: create commit
-    http.post(`${GITHUB_API}/repos/${owner}/${repoName}/git/commits`, () =>
-      HttpResponse.json({ sha: 'commit-sha' }),
-    ),
-
-    // GitHub: update ref
-    http.patch(`${GITHUB_API}/repos/${owner}/${repoName}/git/refs/:ref+`, () =>
-      HttpResponse.json({}),
-    ),
-
-    // K8s: create SA
-    http.post(`${K8S_API}/api/v1/namespaces/:ns/serviceaccounts`, () => HttpResponse.json({})),
-
-    // K8s: create Role
-    http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/:ns/roles`, () =>
-      HttpResponse.json({}),
-    ),
-
-    // K8s: create RoleBindings
-    http.post(`${K8S_API}/apis/rbac.authorization.k8s.io/v1/namespaces/:ns/rolebindings`, () =>
-      HttpResponse.json({}),
-    ),
-
-    // K8s: token request
-    http.post(`${K8S_API}/api/v1/namespaces/:ns/serviceaccounts/func-github/token`, () =>
-      HttpResponse.json({ status: { token: 'sa-token-value' } }),
-    ),
+    http.post(`${BACKEND_API}/api/v1/func/create`, () => new HttpResponse(null, { status: 201 })),
   );
 }
 
@@ -181,14 +92,10 @@ const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
 describe('FunctionCreatePage', () => {
   beforeEach(() => {
     sessionStorage.clear();
-    (window as unknown as Record<string, unknown>).SERVER_FLAGS = {
-      kubeAPIServerURL: 'https://api.cluster.example.com:6443',
-    };
   });
 
   afterEach(() => {
     vi.clearAllMocks();
-    delete (window as unknown as Record<string, unknown>).SERVER_FLAGS;
   });
 
   afterAll(() => {
@@ -204,9 +111,9 @@ describe('FunctionCreatePage', () => {
     expect(screen.getByRole('button', { name: /Create/ })).toBeInTheDocument();
   });
 
-  it('generates function, creates repo with secrets, then navigates on submit', async () => {
+  it('creates function via backend, then navigates on submit', async () => {
     sessionStorage.setItem(PAT_KEY, 'ghp_test');
-    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser' }));
+    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser', avatarUrl: '' }));
     const user = userEvent.setup();
     setupCreateFlowHandlers();
 
@@ -222,12 +129,12 @@ describe('FunctionCreatePage', () => {
 
   it('shows an alert on error', async () => {
     sessionStorage.setItem(PAT_KEY, 'ghp_test');
-    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser' }));
+    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser', avatarUrl: '' }));
     const user = userEvent.setup();
 
     server.use(
-      http.post(`${BACKEND_API}/api/function/create`, () =>
-        HttpResponse.json('Backend error', { status: 500 }),
+      http.post(`${BACKEND_API}/api/v1/func/create`, () =>
+        HttpResponse.json({ message: 'Backend error' }, { status: 500 }),
       ),
     );
 
@@ -258,16 +165,13 @@ describe('FunctionCreatePage', () => {
 
   it('sends environment variables to backend during submission', async () => {
     sessionStorage.setItem(PAT_KEY, 'ghp_test');
-    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser' }));
+    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser', avatarUrl: '' }));
     const user = userEvent.setup();
     let capturedRequest: Record<string, unknown> | null = null;
-    setupCreateFlowHandlers();
     server.use(
-      http.post(`${BACKEND_API}/api/function/create`, async ({ request }) => {
+      http.post(`${BACKEND_API}/api/v1/func/create`, async ({ request }) => {
         capturedRequest = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json([
-          { path: 'func.yaml', mode: '100644', content: 'name: my-func', type: 'blob' },
-        ]);
+        return new HttpResponse(null, { status: 201 });
       }),
     );
 

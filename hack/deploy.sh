@@ -17,13 +17,15 @@ source "${SCRIPT_DIR}/lib/log.sh"
 PLUGIN_NAME="${PLUGIN_NAME:-console-functions-plugin}"
 NAMESPACE="${NAMESPACE:-console-functions-plugin}"
 IMAGE="${IMAGE:-quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin:latest}"
+GH_API_URL="${GH_API_URL:-}"
 
 log::step "Deploying plugin"
 
 log::info "Installing Helm chart..."
 helm upgrade -i "$PLUGIN_NAME" charts/openshift-console-plugin \
   -n "$NAMESPACE" --create-namespace \
-  --set "plugin.image=$IMAGE"
+  --set "plugin.image=$IMAGE" \
+  ${GH_API_URL:+--set "plugin.ghApiUrl=$GH_API_URL"}
 
 log::info "Waiting for rollout..."
 oc rollout status deployment/"$PLUGIN_NAME" -n "$NAMESPACE" --timeout=300s

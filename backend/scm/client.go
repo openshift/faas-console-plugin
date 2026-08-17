@@ -42,11 +42,20 @@ func (r Registry) Client(platform Platform, token string) Client {
 
 type Client interface {
 	GetUser(ctx context.Context) (*User, error)
+	ListRepos(ctx context.Context) ([]Repo, error)
+	GetFileContent(ctx context.Context, owner, repo, ref, path string) (string, error)
 	GetFiles(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
 	PushFiles(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
+}
+
+type Repo struct {
+	Owner         string `json:"owner"`
+	Name          string `json:"name"`
+	URL           string `json:"url"`
+	DefaultBranch string `json:"defaultBranch"`
 }
 
 type User struct {

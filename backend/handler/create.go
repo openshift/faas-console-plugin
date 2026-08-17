@@ -21,18 +21,21 @@ var (
 	validBranch      = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
 	validRuntimes    = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
 	validSCMName     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+	validEnvVarName  = regexp.MustCompile(`^[-._a-zA-Z][-._a-zA-Z0-9]*$`)
+	validK8sName     = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
 	newClusterClient = cluster.New
 	generateScaffold = scaffold.Generate
 )
 
 type createRequest struct {
-	Name      string `json:"name"`
-	Runtime   string `json:"runtime"`
-	Registry  string `json:"registry"`
-	Namespace string `json:"namespace"`
-	Branch    string `json:"branch"`
-	Owner     string `json:"owner"`
-	Repo      string `json:"repo"`
+	Name      string            `json:"name"`
+	Runtime   string            `json:"runtime"`
+	Registry  string            `json:"registry"`
+	Namespace string            `json:"namespace"`
+	Branch    string            `json:"branch"`
+	Owner     string            `json:"owner"`
+	Repo      string            `json:"repo"`
+	EnvVars   []scaffold.EnvVar `json:"envVars,omitempty"`
 }
 
 // errUpstream marks errors that originated from an upstream API (SCM, cluster)
@@ -90,6 +93,7 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		Branch:           req.Branch,
 		SCM:              scm.DefaultPlatform,
 		InternalRegistry: strings.HasPrefix(req.Registry, config.OCPInternalRegistry),
+		EnvVars:          req.EnvVars,
 	})
 	if err != nil {
 		return fmt.Errorf("generate scaffold: %w", err)
@@ -175,6 +179,24 @@ func validateCreateRequest(req createRequest) error {
 	}
 	if !validSCMName.MatchString(req.Repo) {
 		return fmt.Errorf("invalid repo name")
+	}
+	for i, ev := range req.EnvVars {
+		if !validEnvVarName.MatchString(ev.Name) {
+			return fmt.Errorf("envVars[%d]: invalid name %q", i, ev.Name)
+		}
+		switch ev.Source {
+		case "secret", "configMap":
+			if !validK8sName.MatchString(ev.ResourceName) {
+				return fmt.Errorf("envVars[%d]: invalid resourceName %q", i, ev.ResourceName)
+			}
+			if ev.ResourceKey == "" {
+				return fmt.Errorf("envVars[%d]: resourceKey is required for source %q", i, ev.Source)
+			}
+		case "value":
+			// plain key/value, no extra validation
+		default:
+			return fmt.Errorf("envVars[%d]: invalid source %q", i, ev.Source)
+		}
 	}
 	return nil
 }

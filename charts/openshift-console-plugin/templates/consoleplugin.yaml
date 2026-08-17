@@ -17,6 +17,7 @@ spec:
       basePath: {{ .Values.plugin.basePath }}
   proxy:
     - alias: backend
+      authorization: UserToken
       endpoint:
         type: Service
         service:

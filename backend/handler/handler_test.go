@@ -14,12 +14,14 @@ import (
 )
 
 type scmStub struct {
-	getUser     func(ctx context.Context) (*scm.User, error)
-	getFiles    func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error)
-	pushFiles   func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error
-	initRepo    func(ctx context.Context, owner, name, branch string, topics []string) error
-	storeSecret func(ctx context.Context, owner, repo, name, value string) error
-	deleteRepo  func(ctx context.Context, owner, repo string) error
+	getUser        func(ctx context.Context) (*scm.User, error)
+	listRepos      func(ctx context.Context) ([]scm.Repo, error)
+	getFileContent func(ctx context.Context, owner, repo, ref, path string) (string, error)
+	getFiles       func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error)
+	pushFiles      func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error
+	initRepo       func(ctx context.Context, owner, name, branch string, topics []string) error
+	storeSecret    func(ctx context.Context, owner, repo, name, value string) error
+	deleteRepo     func(ctx context.Context, owner, repo string) error
 }
 
 func (s *scmStub) GetUser(ctx context.Context) (*scm.User, error) {
@@ -27,6 +29,20 @@ func (s *scmStub) GetUser(ctx context.Context) (*scm.User, error) {
 		return s.getUser(ctx)
 	}
 	return &scm.User{}, nil
+}
+
+func (s *scmStub) ListRepos(ctx context.Context) ([]scm.Repo, error) {
+	if s.listRepos != nil {
+		return s.listRepos(ctx)
+	}
+	return nil, nil
+}
+
+func (s *scmStub) GetFileContent(ctx context.Context, owner, repo, ref, path string) (string, error) {
+	if s.getFileContent != nil {
+		return s.getFileContent(ctx, owner, repo, ref, path)
+	}
+	return "", nil
 }
 
 func (s *scmStub) GetFiles(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {

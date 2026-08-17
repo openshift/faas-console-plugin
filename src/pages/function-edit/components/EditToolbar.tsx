@@ -14,6 +14,7 @@ import { ArrowLeftIcon } from '@patternfly/react-icons';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { errorMessage } from '../../../common/utils/utils';
 
 interface EditToolbarProps {
   hasChanges: boolean;
@@ -102,7 +103,7 @@ function useEditToolbar(
       setSuccessMsg('Pushed to GitHub. Deployment running...');
       dismissTimer.current = setTimeout(() => setSuccessMsg(''), 2000);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setErrorMsg(errorMessage(err));
     } finally {
       setIsSaving(false);
     }

@@ -12,11 +12,11 @@ test.describe('Create go function', () => {
   test('user creates a go function and is redirected to the overview', async ({ page }) => {
     test.setTimeout(600_000);
 
-    // Track GitHub API calls so we can assert the repo creation POST was made
-    const githubRequests: Request[] = [];
+    // Track backend create calls so we can assert the function creation POST was made
+    const createRequests: Request[] = [];
     page.on('request', (req) => {
-      if (req.url().includes('api.github.com')) {
-        githubRequests.push(req);
+      if (req.url().includes('/api/v1/func/create') && req.method() === 'POST') {
+        createRequests.push(req);
       }
     });
 
@@ -75,11 +75,8 @@ test.describe('Create go function', () => {
       await expect(page).toHaveURL(/\/faas$/, { timeout: 30_000 });
     });
 
-    await test.step('verify GitHub repo creation route was hit', async () => {
-      const repoCreated = githubRequests.some(
-        (r) => r.url().includes('/user/repos') && r.method() === 'POST',
-      );
-      expect(repoCreated).toBe(true);
+    await test.step('verify function creation request was made', async () => {
+      expect(createRequests).toHaveLength(1);
     });
 
     await test.step('simulate GitHub Actions deployment', async () => {

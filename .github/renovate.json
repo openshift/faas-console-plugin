@@ -13,8 +13,13 @@
   },
   "packageRules": [
     {
-      "groupName": "misc",
+      "groupName": "nodejs",
       "matchManagers": ["npm"]
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     },
     {
       "groupName": "patternfly",
@@ -49,47 +54,6 @@
         "react-router",
         "react-i18next"
       ],
-      "enabled": false
-    },
-    {
-      "groupName": "lint",
-      "matchPackageNames": [
-        "eslint",
-        "eslint-*",
-        "prettier",
-        "stylelint",
-        "stylelint-*",
-        "typescript-eslint"
-      ],
-      "schedule": ["before 7am on Monday"]
-    },
-    {
-      "groupName": "test",
-      "matchPackageNames": [
-        "vitest",
-        "@vitest/*",
-        "@playwright/*",
-        "@testing-library/*",
-        "jsdom",
-        "msw"
-      ],
-      "schedule": ["before 7am on Monday"]
-    },
-    {
-      "groupName": "webpack",
-      "matchPackageNames": [
-        "webpack",
-        "webpack-cli",
-        "webpack-dev-server",
-        "ts-loader",
-        "css-loader",
-        "style-loader",
-        "copy-webpack-plugin"
-      ]
-    },
-    {
-      "matchPackageNames": ["@types/node", "@types/react"],
-      "matchUpdateTypes": ["major"],
       "enabled": false
     },
     {
