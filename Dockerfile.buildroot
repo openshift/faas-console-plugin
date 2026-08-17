@@ -2,7 +2,14 @@ FROM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1786522985@sha256:444e81b
 
 USER root
 
-# Corepack + Yarn 4 (Node.js 22 is already in the base image)
+# Switch to Node.js 24 (base image ships Node 22; webpack-cli 7 needs
+# native TS type stripping for .mts configs, unflagged since Node 23.6)
+RUN dnf module reset nodejs -y \
+    && dnf module enable nodejs:24 -y \
+    && dnf module install nodejs:24/common -y \
+    && dnf clean all
+
+# Corepack + Yarn 4
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
     COREPACK_HOME=/tmp/corepack
 RUN npm i -g corepack && corepack enable

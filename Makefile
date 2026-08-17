@@ -140,7 +140,7 @@ lint-commits: install-frontend ## Lint commit messages (against master or PR bas
 		git rev-parse --verify upstream/master >/dev/null 2>&1 || \
 			{ echo "Error: upstream/master not found. Run: git remote add upstream git@github.com:openshift/faas-console-plugin.git && git fetch upstream"; exit 1; }; \
 	fi
-	yarn commitlint --from $${PULL_BASE_SHA:-$$(git merge-base upstream/master HEAD)} --to $${PULL_HEAD_SHA:-HEAD}
+	yarn commitlint --from $${PULL_BASE_SHA:-$$(git merge-base upstream/master HEAD)} --to HEAD
 
 ##@ Aggregate
 
