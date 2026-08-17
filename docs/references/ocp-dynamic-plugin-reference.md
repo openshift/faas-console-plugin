@@ -26,7 +26,7 @@ The plugin runs inside the Console's React app but is loaded dynamically via web
 
 - `console-extensions.json`: Declares what the plugin adds to console (routes, nav items, etc.)
 - `package.json` `consolePlugin` section: Plugin metadata and exposed modules mapping
-- `webpack.config.ts`: Configures module federation and build
+- `webpack.config.mts`: Configures module federation and build
 
 **Critical:** Any component referenced in `console-extensions.json` must have a corresponding entry in `package.json` under `consolePlugin.exposedModules`.
 

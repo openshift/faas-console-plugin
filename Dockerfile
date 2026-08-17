@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-22:latest@sha256:0e4e66a6fa295e7d7c13c94d1b4f39cb058a97843ac01e555e72721ac31eefa8 AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:fe35989e8393843ac6945d4f29539addb77b65b91c5076c41ea5493e4f9debb4 AS nodebuilder
 USER root
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN npm i -g corepack && corepack enable
@@ -9,7 +9,7 @@ COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/ .yarn/
 RUN yarn install --immutable
 
-COPY console-extensions.json tsconfig.json webpack.config.ts ./
+COPY console-extensions.json tsconfig.json webpack.config.mts ./
 COPY src/ src/
 COPY locales/ locales/
 COPY config/ config/

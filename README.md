@@ -74,7 +74,7 @@ oc patch consoles.operator.openshift.io cluster --type=json \
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/en/) (v22+)
+- [Node.js](https://nodejs.org/en/) (v24+)
 - [Yarn](https://yarnpkg.com) (v4)
 - [Go](https://go.dev/dl/) (v1.26+)
 - [Helm](https://helm.sh/docs/intro/install/)
