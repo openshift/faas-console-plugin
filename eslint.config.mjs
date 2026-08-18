@@ -7,10 +7,17 @@ import globals from 'globals';
 
 export default tseslint.config(
   {
-    ignores: ['dist/', 'node_modules/'],
+    ignores: ['dist/', 'node_modules/', '.claude/'],
   },
   eslint.configs.recommended,
   tseslint.configs.recommended,
+  {
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
   reactHooks.configs.flat.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],
