@@ -16,7 +16,7 @@ COPY config/ config/
 COPY testing/ testing/
 RUN yarn build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1786522985@sha256:444e81b3e88d8a68b92a081a7b3abc7d3fed2450f8473ea6b3caebf3bb73a0b8 AS gobuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1786971605@sha256:1a9bbbfa854931a97dbff276bd69dc0e32b36cb2fbce3b9813b2cf9892aa8d43 AS gobuilder
 ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 WORKDIR /opt/app-root/src
