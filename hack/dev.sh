@@ -105,16 +105,6 @@ EOF
   fi
 }
 
-build_pages() {
-  if ! command -v helm &>/dev/null; then
-    echo "Error: helm not found. Install from https://helm.sh/docs/intro/install/"
-    exit 1
-  fi
-  log::info "Building pages assets..."
-  make manifests
-  cp pages/index.html backend/static/index.html
-}
-
 extract_cluster_ca() {
   log::info "Extracting cluster CA certificate..."
   CA_FILE=$(mktemp -t cluster-ca.XXXXXX).crt
@@ -133,7 +123,6 @@ backend_gh_flag() {
 }
 
 start_backend() {
-  build_pages
   log::info "Building Go backend..."
   make build-backend
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)

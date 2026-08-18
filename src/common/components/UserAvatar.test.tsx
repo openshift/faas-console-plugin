@@ -6,6 +6,7 @@ import { UserAvatar } from './UserAvatar';
 import { PAT_KEY, USER_KEY } from '../types';
 import { AuthContext } from '../context/AuthProvider';
 import { ReactNode } from 'react';
+import { BACKEND_API } from '../../../testing/setup';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -21,8 +22,6 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
 
   return { consoleFetchJSON };
 });
-
-const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
 
 const testUser = { name: 'twoGiants', avatarUrl: '' };
 

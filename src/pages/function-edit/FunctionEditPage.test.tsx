@@ -4,8 +4,7 @@ import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import FunctionEditPage from './FunctionEditPage';
-
-const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
+import { BACKEND_API } from '../../../testing/setup';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
