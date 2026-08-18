@@ -15,7 +15,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var newFunctionsClient = functions.New
+var newFunctionsClient = functions.NewClient
 
 type functionSource string
 

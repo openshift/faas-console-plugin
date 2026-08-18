@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/openshift/faas-console-plugin/backend/kube"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/openshift/faas-console-plugin/backend/kube"
 )
 
 const (

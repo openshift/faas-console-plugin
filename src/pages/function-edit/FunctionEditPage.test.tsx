@@ -78,6 +78,7 @@ function setupListHandler() {
           name: 'my-func',
           namespace: 'demo',
           runtime: 'node',
+          source: 'repo',
         },
       ]),
     ),

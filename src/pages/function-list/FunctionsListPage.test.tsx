@@ -391,6 +391,7 @@ describe('FunctionsListPage', () => {
             name: 'fn-a',
             namespace: 'demo',
             runtime: 'go',
+            source: 'repo',
           },
         ]);
       }),
@@ -445,6 +446,7 @@ describe('FunctionsListPage', () => {
           name: 'fn-a',
           namespace: 'demo',
           runtime: 'go',
+          source: 'repo',
         },
       ]);
     }
@@ -519,6 +521,7 @@ describe('FunctionsListPage', () => {
               name: 'fn-a',
               namespace: 'demo',
               runtime: 'go',
+              source: 'repo',
             },
             {
               owner: 'twoGiants',
@@ -528,6 +531,7 @@ describe('FunctionsListPage', () => {
               name: 'fn-b',
               namespace: 'demo',
               runtime: 'go',
+              source: 'repo',
             },
           ]);
         }
@@ -540,6 +544,7 @@ describe('FunctionsListPage', () => {
             name: 'fn-a',
             namespace: 'demo',
             runtime: 'go',
+            source: 'repo',
           },
         ]);
       }),

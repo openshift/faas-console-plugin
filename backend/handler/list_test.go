@@ -10,10 +10,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	fn "knative.dev/func/pkg/functions"
-
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	fn "knative.dev/func/pkg/functions"
 )
 
 func listRequest() *http.Request {

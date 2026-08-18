@@ -12,7 +12,7 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
-	"github.com/openshift/faas-console-plugin/backend/scaffold"
+	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
@@ -24,18 +24,18 @@ var (
 	validEnvVarName  = regexp.MustCompile(`^[-._a-zA-Z][-._a-zA-Z0-9]*$`)
 	validK8sName     = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`)
 	newClusterClient = cluster.New
-	generateScaffold = scaffold.Generate
+	generateScaffold = functions.Generate
 )
 
 type createRequest struct {
-	Name      string            `json:"name"`
-	Runtime   string            `json:"runtime"`
-	Registry  string            `json:"registry"`
-	Namespace string            `json:"namespace"`
-	Branch    string            `json:"branch"`
-	Owner     string            `json:"owner"`
-	Repo      string            `json:"repo"`
-	EnvVars   []scaffold.EnvVar `json:"envVars,omitempty"`
+	Name      string             `json:"name"`
+	Runtime   string             `json:"runtime"`
+	Registry  string             `json:"registry"`
+	Namespace string             `json:"namespace"`
+	Branch    string             `json:"branch"`
+	Owner     string             `json:"owner"`
+	Repo      string             `json:"repo"`
+	EnvVars   []functions.EnvVar `json:"envVars,omitempty"`
 }
 
 // errUpstream marks errors that originated from an upstream API (SCM, cluster)
@@ -85,7 +85,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, ocpToken string) (retErr error) {
-	files, err := generateScaffold(scaffold.Config{
+	files, err := generateScaffold(functions.ScaffoldConfig{
 		Name:             req.Name,
 		Runtime:          req.Runtime,
 		Registry:         req.Registry,

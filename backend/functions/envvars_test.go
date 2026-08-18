@@ -1,10 +1,10 @@
-package scaffold
+package functions
 
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"knative.dev/func/pkg/functions"
+	fn "knative.dev/func/pkg/functions"
 )
 
 var _ = Describe("envVarToFuncEnv", func() {
@@ -41,7 +41,7 @@ var _ = Describe("injectEnvVars", func() {
 	It("appends env vars to an initialized function", func() {
 		root := GinkgoT().TempDir()
 
-		_, err := functions.New().Init(functions.Function{
+		_, err := fn.New().Init(fn.Function{
 			Name:    "test-func",
 			Root:    root,
 			Runtime: "node",
@@ -54,12 +54,12 @@ var _ = Describe("injectEnvVars", func() {
 		}
 		Expect(injectEnvVars(root, envs)).To(Succeed())
 
-		fn, err := functions.NewFunction(root)
+		f, err := fn.NewFunction(root)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(fn.Run.Envs).To(HaveLen(2))
-		Expect(*fn.Run.Envs[0].Name).To(Equal("PORT"))
-		Expect(*fn.Run.Envs[0].Value).To(Equal("8080"))
-		Expect(*fn.Run.Envs[1].Name).To(Equal("DB_PASS"))
-		Expect(*fn.Run.Envs[1].Value).To(Equal("{{ secret:db-creds:password }}"))
+		Expect(f.Run.Envs).To(HaveLen(2))
+		Expect(*f.Run.Envs[0].Name).To(Equal("PORT"))
+		Expect(*f.Run.Envs[0].Value).To(Equal("8080"))
+		Expect(*f.Run.Envs[1].Name).To(Equal("DB_PASS"))
+		Expect(*f.Run.Envs[1].Value).To(Equal("{{ secret:db-creds:password }}"))
 	})
 })
