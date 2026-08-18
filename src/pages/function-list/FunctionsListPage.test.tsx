@@ -281,7 +281,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('button', { name: 'View setup guide' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
   });
 
   it('empty state receives hint and isCreateDisabled when not authenticated', async () => {

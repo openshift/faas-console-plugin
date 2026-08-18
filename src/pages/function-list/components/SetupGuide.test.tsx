@@ -10,7 +10,7 @@ describe('SetupGuide', () => {
   it('renders the guide trigger button', () => {
     render(<SetupGuide />);
 
-    expect(screen.getByRole('button', { name: 'View setup guide' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
   });
 
   it('does not show the guide content until the button is clicked', () => {
@@ -23,7 +23,7 @@ describe('SetupGuide', () => {
     const user = userEvent.setup();
     render(<SetupGuide />);
 
-    await user.click(screen.getByRole('button', { name: 'View setup guide' }));
+    await user.click(screen.getByRole('button', { name: 'View setup guide.' }));
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('Connect GitHub')).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe('SetupGuide', () => {
     const user = userEvent.setup();
     render(<SetupGuide />);
 
-    await user.click(screen.getByRole('button', { name: 'View setup guide' }));
+    await user.click(screen.getByRole('button', { name: 'View setup guide.' }));
     expect(screen.getByText('Connect GitHub')).toBeInTheDocument();
 
     await user.click(screen.getByText('Close'));
