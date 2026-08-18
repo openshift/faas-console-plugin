@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"go.yaml.in/yaml/v3"
 	"golang.org/x/sync/errgroup"
+	"sigs.k8s.io/yaml"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
@@ -37,9 +37,9 @@ type listItem struct {
 }
 
 type funcYamlFields struct {
-	Name      string `yaml:"name"`
-	Namespace string `yaml:"namespace"`
-	Runtime   string `yaml:"runtime"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Runtime   string `json:"runtime"`
 }
 
 func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
