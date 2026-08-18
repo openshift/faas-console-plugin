@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:fe35989e8393843ac6945d4f29539addb77b65b91c5076c41ea5493e4f9debb4 AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:89f5b13beb2b4b0e97e55434eb56a18a5939d373ef466445f46f98f85f107b57 AS nodebuilder
 USER root
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN npm i -g corepack && corepack enable
