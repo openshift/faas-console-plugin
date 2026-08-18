@@ -297,7 +297,7 @@ E2e tests also run in CI via Prow/ci-operator against an ephemeral OCP cluster o
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile.buildroot` | Builder image (Go 1.26 + Node 22 + Yarn 4 + Helm for the `src` container) |
+| `Dockerfile.buildroot` | Builder image (Go 1.26 + Node 24 + Yarn 4 + Helm for the `src` container) |
 | `hack/test-prow-e2e.sh` | Prow e2e test entrypoint (reads cluster credentials, deploys plugin, runs tests) |
 
 The ci-operator job config lives in the `openshift/release` repo at `ci-operator/config/openshift/faas-console-plugin/`.
