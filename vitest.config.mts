@@ -7,5 +7,6 @@ export default defineConfig({
     setupFiles: ['./testing/setup.ts'],
     css: false,
     exclude: ['node_modules', 'dist', 'e2e'],
+    execArgv: ['--localstorage-file=.tmp/vitest-localstorage'],
   },
 });

@@ -52,7 +52,7 @@ export function UserAvatar({ enableReconnect }: UserAvatarProps) {
 }
 
 function useUserAvatar(enableReconnect: boolean) {
-  const onLogin = useContext(AuthContext).onLogin;
+  const { onLogin } = useContext(AuthContext);
   const [user, setUser] = useState<AuthUser | null>(() => readStoredUser());
   const [isModalOpen, setIsModalOpen] = useState(
     () => enableReconnect && !sessionStorage.getItem(PAT_KEY),

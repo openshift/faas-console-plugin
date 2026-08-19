@@ -264,7 +264,7 @@ start_console() {
 
 print_status() {
   log::step "Dev environment started"
-  log::link "Backend" "http://localhost:$BACKEND_PORT"
+  log::link "Backend" "http://localhost:$BACKEND_PORT/api/v1/..."
   if $FAKE_GH; then
     log::link "Fake GitHub" "http://localhost:$FAKE_GH_PORT"
   fi

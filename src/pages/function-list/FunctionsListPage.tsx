@@ -23,19 +23,15 @@ import { useCluster } from '../../common/clients/useCluster';
 import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
 
-export default function FunctionsListPage({
-  enableReconnect = true,
-}: {
-  enableReconnect?: boolean;
-}) {
+export default function FunctionsListPage() {
   return (
     <AuthProvider>
-      <FunctionsListPageContent enableReconnect={enableReconnect} />
+      <FunctionsListPageContent />
     </AuthProvider>
   );
 }
 
-function FunctionsListPageContent({ enableReconnect }: { enableReconnect: boolean }) {
+function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
   const { functions, loaded, refreshing, onEdit, onRefresh, isAuthenticated, error } =
     useFunctionListPage();
@@ -44,7 +40,7 @@ function FunctionsListPageContent({ enableReconnect }: { enableReconnect: boolea
     <>
       <DocumentTitle>{t('Functions')}</DocumentTitle>
       <ListPageHeader title={t('Functions')}>
-        <UserAvatar enableReconnect={enableReconnect} />
+        <UserAvatar enableReconnect />
       </ListPageHeader>
       <PageSection>
         {error && (
@@ -65,7 +61,6 @@ function FunctionsListPageContent({ enableReconnect }: { enableReconnect: boolea
                 'Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.',
               )}
             </Content>
-            {/* TODO: extract toolbar into component */}
             <Toolbar>
               <ToolbarContent>
                 <ToolbarItem>

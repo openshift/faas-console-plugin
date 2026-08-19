@@ -172,11 +172,13 @@ describe('FunctionsListPage', () => {
 
     render(
       <MemoryRouter>
-        <FunctionsListPage enableReconnect={false} />
+        <FunctionsListPage />
       </MemoryRouter>,
     );
 
-    await screen.findByRole('heading', { name: 'No functions found' });
+    expect(
+      await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
+    ).toBeInTheDocument();
   });
 
   it('renders UserAvatar in header', () => {
@@ -198,14 +200,14 @@ describe('FunctionsListPage', () => {
 
     render(
       <MemoryRouter>
-        <FunctionsListPage enableReconnect={false} />
+        <FunctionsListPage />
       </MemoryRouter>,
     );
 
-    await screen.findByRole('heading', { name: 'No functions found' });
-
-    const button = screen.getByRole('button', { name: 'Create function' });
-    expect(button).toBeDisabled();
+    expect(
+      await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create function', hidden: true })).toBeDisabled();
   });
 
   it('enriches function with status, replicas, and URL from ClusterFunction', async () => {

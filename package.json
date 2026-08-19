@@ -14,6 +14,7 @@
     "build-dev": "yarn clean && yarn webpack",
     "start": "yarn webpack serve --progress",
     "test": "vitest run",
+    "test:silent": "vitest run --reporter=dot",
     "i18n": "i18next-cli extract",
     "lint": "yarn eslint src e2e && stylelint 'src/**/*.css' --allow-empty-input",
     "lint:fix": "yarn eslint src e2e --fix && stylelint 'src/**/*.css' --allow-empty-input --fix",

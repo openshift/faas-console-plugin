@@ -60,6 +60,7 @@ function renderEditPage(name: string) {
     <MemoryRouter initialEntries={[{ pathname: `/faas/edit/${name}` }]}>
       <Routes>
         <Route path="/faas/edit/:name" element={<FunctionEditPage />} />
+        <Route path="/faas" element={<div>Functions list</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -109,20 +110,23 @@ describe('FunctionEditPage', () => {
     sessionStorage.clear();
   });
 
-  it('shows loading state in tree while fetching files', () => {
-    setupListHandler();
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
-        await delay('infinite');
-        return HttpResponse.json([]);
-      }),
-    );
+  it(
+    'shows loading state in tree while fetching files',
+    server.boundary(async () => {
+      setupListHandler();
+      server.use(
+        http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
+          await delay('infinite');
+          return HttpResponse.json([]);
+        }),
+      );
 
-    renderEditPage('my-func');
+      renderEditPage('my-func');
 
-    expect(screen.getByText('Loading source...')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
-  });
+      expect(screen.getByText('Loading source...')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+    }),
+  );
 
   it('loads files from backend', async () => {
     setupFetchHandlers();
@@ -181,6 +185,7 @@ describe('FunctionEditPage', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: /Back to Functions/ }));
 
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+    expect(screen.getByText('Functions list')).toBeInTheDocument();
   });
 
   it('shows selected file content in editor when tree item is clicked', async () => {
@@ -422,11 +427,11 @@ describe('FunctionEditPage', () => {
       expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
     });
 
-    vi.advanceTimersByTime(2000);
-
-    await waitFor(() => {
-      expect(screen.queryByText('Pushed to GitHub. Deployment running...')).not.toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
     });
+
+    expect(screen.queryByText('Pushed to GitHub. Deployment running...')).not.toBeInTheDocument();
 
     vi.useRealTimers();
   });
