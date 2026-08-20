@@ -13,7 +13,7 @@ import {
   SidebarPanel,
 } from '@patternfly/react-core';
 import { CodeIcon } from '@patternfly/react-icons';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { EditToolbar } from './components/EditToolbar';
@@ -72,6 +72,7 @@ function FunctionEditPageContent() {
               dirtyPaths={state.dirtyPaths}
               isLoading={state.isLoading}
               onSelect={state.onFileSelect}
+              onDelete={state.onFileDelete}
             />
           </SidebarPanel>
           <SidebarContent>
@@ -119,6 +120,7 @@ interface FunctionEditPageState {
   repoInfo: FunctionListItem | undefined;
   onFileSelect: (path: string) => void;
   onFileChange: (content: string) => void;
+  onFileDelete: (path: string) => void;
   saveFiles: () => Promise<void>;
 }
 
@@ -131,13 +133,31 @@ function useFunctionEditPage(): FunctionEditPageState {
   const [selectedPath, setSelectedPath] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
-  const dirtyFiles = new Set(
-    files
-      // Guard: originalFiles is empty during initial render before fetch completes.
-      .filter((f, i) => originalFiles[i] && f.content !== originalFiles[i].content)
-      .map((f) => f.path),
+  const originalByPath = useMemo(
+    () => new Map(originalFiles.map((f) => [f.path, f])),
+    [originalFiles],
   );
-  const hasChanges = dirtyFiles.size > 0;
+  const currentPaths = useMemo(() => new Set(files.map((f) => f.path)), [files]);
+  const deletedFiles = useMemo(
+    () =>
+      originalFiles
+        .filter((f) => !currentPaths.has(f.path))
+        .map((f) => ({ ...f, deleted: true as const })),
+    [originalFiles, currentPaths],
+  );
+  const dirtyFiles = useMemo(
+    () =>
+      new Set(
+        files
+          .filter((f) => {
+            const orig = originalByPath.get(f.path);
+            return orig && f.content !== orig.content;
+          })
+          .map((f) => f.path),
+      ),
+    [files, originalByPath],
+  );
+  const hasChanges = dirtyFiles.size > 0 || deletedFiles.length > 0;
 
   const selectedFile = files.find((f) => f.path === selectedPath);
   const selectedContent = selectedFile?.content ?? '';
@@ -183,12 +203,25 @@ function useFunctionEditPage(): FunctionEditPageState {
     setFiles((prev) => prev.map((f) => (f.path === selectedPath ? { ...f, content } : f)));
   };
 
+  const onFileDelete = useCallback(
+    (path: string) => {
+      const dirPrefix = path + '/';
+      const pathsToDelete = new Set(
+        files.filter((f) => f.path === path || f.path.startsWith(dirPrefix)).map((f) => f.path),
+      );
+      if (pathsToDelete.size === 0) return;
+      setFiles((prev) => prev.filter((f) => !pathsToDelete.has(f.path)));
+      if (selectedPath && pathsToDelete.has(selectedPath)) setSelectedPath('');
+    },
+    [files, selectedPath],
+  );
+
   const saveFiles = async () => {
     if (!repoInfo) return;
     await putFiles(
       repoInfo.owner,
       repoInfo.repoName,
-      files,
+      [...files, ...deletedFiles],
       'Update function files',
       repoInfo.defaultBranch,
     );
@@ -206,6 +239,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     repoInfo,
     onFileSelect,
     onFileChange,
+    onFileDelete,
     saveFiles,
   };
 }

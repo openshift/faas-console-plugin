@@ -9,6 +9,7 @@ export interface FileEntry {
   mode: '100644' | '100755' | '120000';
   content: string;
   type: 'blob';
+  deleted?: boolean;
 }
 
 export type EnvVarSource = 'value' | 'secret' | 'configMap';
