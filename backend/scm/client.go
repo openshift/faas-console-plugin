@@ -68,4 +68,5 @@ type FileEntry struct {
 	Mode    string `json:"mode"` // Git modes: "100644" regular, "100755" executable, "120000" symlink
 	Content string `json:"content"`
 	Type    string `json:"type"`
+	Deleted bool   `json:"deleted,omitempty"`
 }

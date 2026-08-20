@@ -1,8 +1,21 @@
-import { useMemo } from 'react';
-import { Spinner, TreeView, TreeViewDataItem } from '@patternfly/react-core';
-import { FileIcon, FolderIcon, FolderOpenIcon } from '@patternfly/react-icons';
+import { useMemo, useState, useContext, createContext } from 'react';
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownList,
+  MenuToggle,
+  Spinner,
+  TreeView,
+  TreeViewDataItem,
+} from '@patternfly/react-core';
+import { EllipsisVIcon, FileIcon, FolderIcon, FolderOpenIcon } from '@patternfly/react-icons';
 import { FileEntry } from '../../../common/types';
 import * as React from 'react';
+
+const OpenMenuContext = createContext<{
+  openPath: string | null;
+  setOpenPath: (path: string | null) => void;
+}>({ openPath: null, setOpenPath: () => {} });
 
 const emptyTreeData: TreeViewDataItem[] = [{ id: '__empty__', name: 'No files' }];
 const loadingTreeData: TreeViewDataItem[] = [
@@ -22,6 +35,7 @@ interface FileTreeViewProps {
   dirtyPaths: Set<string>;
   isLoading?: boolean;
   onSelect: (path: string) => void;
+  onDelete?: (path: string) => void;
 }
 
 export const FileTreeView = React.memo(function FileTreeView({
@@ -30,23 +44,35 @@ export const FileTreeView = React.memo(function FileTreeView({
   dirtyPaths,
   isLoading = false,
   onSelect,
+  onDelete,
 }: FileTreeViewProps) {
+  const [openMenuPath, setOpenMenuPath] = useState<string | null>(null);
   const { treeData, activeItems, handleSelect, selectable } = useFileTreeView(
     files,
     selectedPath,
     dirtyPaths,
     isLoading,
     onSelect,
+    onDelete,
   );
 
   return (
-    <TreeView
-      aria-label="File tree"
-      data={treeData}
-      activeItems={activeItems}
-      onSelect={selectable ? handleSelect : undefined}
-      hasGuides
-    />
+    <OpenMenuContext.Provider value={{ openPath: openMenuPath, setOpenPath: setOpenMenuPath }}>
+      <style>{`
+        .file-actions-btn { visibility: hidden; }
+        .pf-v6-c-tree-view__list-item:hover > .pf-v6-c-tree-view__content .file-actions-btn { visibility: visible; }
+        .pf-v6-c-tree-view__list-item:hover:has(.pf-v6-c-tree-view__list-item:hover) > .pf-v6-c-tree-view__content .file-actions-btn { visibility: hidden; }
+        .pf-v6-c-tree-view__list-item:has(> .pf-v6-c-tree-view__content > .pf-v6-c-tree-view__node.pf-m-current) > .pf-v6-c-tree-view__content .file-actions-btn { visibility: visible; }
+        .pf-v6-c-tree-view__action { margin-inline-end: 0; }
+      `}</style>
+      <TreeView
+        aria-label="File tree"
+        data={treeData}
+        activeItems={activeItems}
+        onSelect={selectable ? handleSelect : undefined}
+        hasGuides
+      />
+    </OpenMenuContext.Provider>
   );
 });
 
@@ -58,13 +84,17 @@ function useFileTreeView(
   dirtyPaths: Set<string>,
   isLoading: boolean = false,
   onSelect: (path: string) => void,
+  onDelete?: (path: string) => void,
 ): {
   treeData: TreeViewDataItem[];
   activeItems: TreeViewDataItem[];
   handleSelect: (_: React.MouseEvent, item: TreeViewDataItem) => void;
   selectable: boolean;
 } {
-  const treeData = useMemo(() => buildFileTree(files, dirtyPaths), [files, dirtyPaths]);
+  const treeData = useMemo(
+    () => buildFileTree(files, dirtyPaths, onDelete),
+    [files, dirtyPaths, onDelete],
+  );
 
   const activeItems = useMemo(() => {
     if (!selectedPath) return [];
@@ -88,6 +118,57 @@ function useFileTreeView(
 }
 
 // --- helpers ---
+
+function TreeItemMenu({
+  path,
+  label,
+  isDir,
+  onDelete,
+}: {
+  path: string;
+  label: string;
+  isDir: boolean;
+  onDelete: (path: string) => void;
+}) {
+  const { openPath, setOpenPath } = useContext(OpenMenuContext);
+  const isOpen = openPath === path;
+  return (
+    <Dropdown
+      isOpen={isOpen}
+      onOpenChange={(open) => setOpenPath(open ? path : null)}
+      popperProps={{ position: 'right' }}
+      toggle={(toggleRef) => (
+        <MenuToggle
+          ref={toggleRef}
+          variant="plain"
+          aria-label={`${label} actions`}
+          className="file-actions-btn"
+          style={{ visibility: isOpen ? 'visible' : undefined }}
+          onClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            setOpenPath(isOpen ? null : path);
+          }}
+          isExpanded={isOpen}
+        >
+          <EllipsisVIcon />
+        </MenuToggle>
+      )}
+    >
+      <DropdownList>
+        <DropdownItem
+          onClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            setOpenPath(null);
+            onDelete(path);
+          }}
+        >
+          {isDir ? 'Delete Folder' : 'Delete File'}
+        </DropdownItem>
+      </DropdownList>
+    </Dropdown>
+  );
+}
+
 function findItemByPath(items: TreeViewDataItem[], path: string): TreeViewDataItem[] {
   for (const item of items) {
     if (item.id === path) return [item];
@@ -99,7 +180,11 @@ function findItemByPath(items: TreeViewDataItem[], path: string): TreeViewDataIt
   return [];
 }
 
-function buildFileTree(files: FileEntry[], dirtyPaths: Set<string>): TreeViewDataItem[] {
+function buildFileTree(
+  files: FileEntry[],
+  dirtyPaths: Set<string>,
+  onDelete?: (path: string) => void,
+): TreeViewDataItem[] {
   const root: TreeViewDataItem[] = [];
 
   for (const file of files) {
@@ -146,6 +231,9 @@ function buildFileTree(files: FileEntry[], dirtyPaths: Set<string>): TreeViewDat
       id,
       name: dirtyPaths.has(id) ? `${name} \u25CF` : name,
       defaultExpanded: true,
+      action: onDelete ? (
+        <TreeItemMenu path={id} label={name} isDir={isDir} onDelete={onDelete} />
+      ) : undefined,
     };
     if (isDir) {
       item.children = [];

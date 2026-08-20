@@ -204,4 +204,71 @@ describe('FileTreeView', () => {
     expect(screen.getByText(/func\.yaml \u25CF/)).toBeInTheDocument();
     expect(screen.queryByText(/index\.js \u25CF/)).not.toBeInTheDocument();
   });
+
+  it('does not render action buttons when onDelete is not provided', () => {
+    render(
+      <FileTreeView
+        files={nodeFuncFiles}
+        selectedPath={null}
+        dirtyPaths={new Set()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/actions/i)).not.toBeInTheDocument();
+  });
+
+  it('renders an action button for each tree item when onDelete is provided', () => {
+    render(
+      <FileTreeView
+        files={nodeFuncFiles}
+        selectedPath={null}
+        dirtyPaths={new Set()}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByLabelText(/actions/i).length).toBeGreaterThan(0);
+  });
+
+  it('calls onDelete with the file path when Delete File is clicked', async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+
+    render(
+      <FileTreeView
+        files={nodeFuncFiles}
+        selectedPath={null}
+        dirtyPaths={new Set()}
+        onSelect={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('func.yaml actions'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete File' }));
+
+    expect(onDelete).toHaveBeenCalledWith('func.yaml');
+  });
+
+  it('calls onDelete with the folder path when Delete Folder is clicked', async () => {
+    const user = userEvent.setup();
+    const onDelete = vi.fn();
+
+    render(
+      <FileTreeView
+        files={nodeFuncFiles}
+        selectedPath={null}
+        dirtyPaths={new Set()}
+        onSelect={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await user.click(screen.getByLabelText('test actions'));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete Folder' }));
+
+    expect(onDelete).toHaveBeenCalledWith('test');
+  });
 });
