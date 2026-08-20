@@ -5,6 +5,7 @@ import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
 import { PAT_KEY, USER_KEY } from '../../common/types';
+import { BACKEND_API } from '../../../testing/setup';
 
 const mockNavigate = vi.fn();
 
@@ -66,8 +67,6 @@ vi.mock('../../common/components/UserAvatar', () => ({
     <span data-testid="user-avatar">{enableReconnect ? 'reconnect' : 'no-reconnect'}</span>
   ),
 }));
-
-const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
 
 function setupCreateFlowHandlers() {
   server.use(

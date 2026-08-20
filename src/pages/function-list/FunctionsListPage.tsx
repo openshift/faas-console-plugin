@@ -33,7 +33,7 @@ export default function FunctionsListPage() {
 
 function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { functions, loaded, refreshing, onEdit, onRefresh, isConnectedToForge, error } =
+  const { functions, loaded, refreshing, onEdit, onRefresh, isAuthenticated, error } =
     useFunctionListPage();
 
   return (
@@ -52,7 +52,7 @@ function FunctionsListPageContent() {
           <Spinner aria-label={t('Loading')} style={{ display: 'block', margin: '4rem auto' }} />
         )}
         {loaded && functions.length === 0 && (
-          <FunctionsEmptyState isCreateDisabled={!isConnectedToForge} />
+          <FunctionsEmptyState isCreateDisabled={!isAuthenticated} />
         )}
         {loaded && functions.length > 0 && (
           <>
@@ -64,7 +64,7 @@ function FunctionsListPageContent() {
             <Toolbar>
               <ToolbarContent>
                 <ToolbarItem>
-                  {!isConnectedToForge ? (
+                  {!isAuthenticated ? (
                     <Button variant="primary" isDisabled>
                       {t('Create new function')}
                     </Button>
@@ -105,14 +105,14 @@ function useFunctionListPage(): {
   refreshing: boolean;
   onEdit: (name: string) => void;
   onRefresh: () => void;
-  isConnectedToForge: boolean;
+  isAuthenticated: boolean;
   error: string;
 } {
-  const { isAuthenticated: isConnectedToForge, connectionId } = useContext(AuthContext);
+  const { isAuthenticated, connectionId } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [functionItems, setFunctionItems] = useState<FunctionTableItem[]>([]);
-  const [reposLoaded, setReposLoaded] = useState(!isConnectedToForge);
+  const [reposLoaded, setReposLoaded] = useState(!isAuthenticated);
   const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
 
   const [error, setError] = useState<string>('');
@@ -127,7 +127,7 @@ function useFunctionListPage(): {
   }
 
   async function onRefresh() {
-    if (!isConnectedToForge) return;
+    if (!isAuthenticated) return;
     setRefreshing(true);
 
     try {
@@ -143,7 +143,7 @@ function useFunctionListPage(): {
   }
 
   useEffect(() => {
-    if (!isConnectedToForge) return;
+    if (!isAuthenticated) return;
 
     let ignore = false;
 
@@ -170,7 +170,7 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [isConnectedToForge, connectionId]);
+  }, [isAuthenticated, connectionId]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
@@ -188,13 +188,14 @@ function useFunctionListPage(): {
   const loaded = reposLoaded && clusterLoaded;
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
+
   return {
     functions,
     loaded,
     refreshing,
     onEdit,
     onRefresh,
-    isConnectedToForge,
+    isAuthenticated,
     error,
   };
 }
