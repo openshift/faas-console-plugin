@@ -3,6 +3,14 @@ set -euo pipefail
 
 source "$(dirname "$0")/../hack/lib/log.sh"
 
+logMsg() {
+  echo ""
+  echo "--- Your commit message ---"
+  echo "$1"
+  echo "---"
+  echo ""
+}
+
 MSG_FILE="$1"
 
 log::info "Validating commit message..."
@@ -15,7 +23,10 @@ if [ -z "$(echo "$MSG" | tr -d '[:space:]')" ]; then
   exit 0
 fi
 
-yarn commitlint --edit "$MSG_FILE"
+if ! yarn commitlint --edit "$MSG_FILE"; then
+  logMsg "$MSG"
+  exit 1
+fi
 
 # Custom checks (not covered by commitlint)
 SUBJECT=$(echo "$MSG" | head -1)
@@ -40,7 +51,7 @@ fi
 
 if [ -n "$ERRORS" ]; then
   log::error "Commit message validation failed:$ERRORS"
-  echo ""
+  logMsg "$MSG"
   exit 1
 fi
 
