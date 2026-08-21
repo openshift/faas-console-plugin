@@ -1,11 +1,11 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
-import { PAT_KEY, USER_KEY } from '../../common/types';
-import { BACKEND_API } from '../../../testing/setup';
+import { BACKEND_API } from '../../common/testing/constants';
+import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { server } from '../../common/testing/mswServer';
 
 const mockNavigate = vi.fn();
 
@@ -90,7 +90,8 @@ const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
 
 describe('FunctionCreatePage', () => {
   beforeEach(() => {
-    sessionStorage.clear();
+    logoutGithubFake();
+    authenticateGithubFake();
   });
 
   afterEach(() => {
@@ -98,12 +99,10 @@ describe('FunctionCreatePage', () => {
   });
 
   afterAll(() => {
-    sessionStorage.clear();
+    logoutGithubFake();
   });
 
   it('renders CreateFunctionForm', () => {
-    sessionStorage.setItem(PAT_KEY, 'ghp_test');
-
     renderPage();
 
     expect(screen.getByRole('textbox', { name: /Owner/ })).toBeInTheDocument();
@@ -111,8 +110,6 @@ describe('FunctionCreatePage', () => {
   });
 
   it('creates function via backend, then navigates on submit', async () => {
-    sessionStorage.setItem(PAT_KEY, 'ghp_test');
-    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser', avatarUrl: '' }));
     const user = userEvent.setup();
     setupCreateFlowHandlers();
 
@@ -127,8 +124,6 @@ describe('FunctionCreatePage', () => {
   });
 
   it('shows an alert on error', async () => {
-    sessionStorage.setItem(PAT_KEY, 'ghp_test');
-    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser', avatarUrl: '' }));
     const user = userEvent.setup();
 
     server.use(
@@ -148,12 +143,14 @@ describe('FunctionCreatePage', () => {
   });
 
   it('renders UserAvatar in header', () => {
+    logoutGithubFake();
     renderPage();
 
     expect(screen.getByTestId('user-avatar')).toBeInTheDocument();
   });
 
   it('shows warning and hides form when no PAT is set', () => {
+    logoutGithubFake();
     renderPage();
 
     expect(
@@ -163,8 +160,6 @@ describe('FunctionCreatePage', () => {
   });
 
   it('sends environment variables to backend during submission', async () => {
-    sessionStorage.setItem(PAT_KEY, 'ghp_test');
-    sessionStorage.setItem(USER_KEY, JSON.stringify({ name: 'testuser', avatarUrl: '' }));
     const user = userEvent.setup();
     let capturedRequest: Record<string, unknown> | null = null;
     server.use(
