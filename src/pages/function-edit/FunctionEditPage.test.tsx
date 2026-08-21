@@ -66,42 +66,6 @@ function renderEditPage(name: string) {
   );
 }
 
-function setupListHandler() {
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
-      HttpResponse.json([
-        {
-          owner: 'twoGiants',
-          repoName: 'my-func',
-          repoURL: 'https://github.com/twoGiants/my-func',
-          defaultBranch: 'main',
-          name: 'my-func',
-          namespace: 'demo',
-          runtime: 'node',
-          source: 'repo',
-        },
-      ]),
-    ),
-  );
-}
-
-function setupFetchHandlers() {
-  setupListHandler();
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
-      HttpResponse.json([
-        {
-          path: 'func.yaml',
-          mode: '100644',
-          content: 'name: my-func\nruntime: node',
-          type: 'blob',
-        },
-        { path: 'index.js', mode: '100644', content: 'module.exports = {}', type: 'blob' },
-      ]),
-    ),
-  );
-}
-
 describe('FunctionEditPage', () => {
   beforeAll(() => {
     sessionStorage.setItem('func-console-pat', 'test-pat');
@@ -443,6 +407,42 @@ function setupPutHandler() {
     http.put(
       `${BACKEND_API}/api/v1/func/twoGiants/my-func/files`,
       () => new HttpResponse(null, { status: 204 }),
+    ),
+  );
+}
+
+function setupListHandler() {
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
+      HttpResponse.json([
+        {
+          owner: 'twoGiants',
+          repoName: 'my-func',
+          repoURL: 'https://github.com/twoGiants/my-func',
+          defaultBranch: 'main',
+          name: 'my-func',
+          namespace: 'demo',
+          runtime: 'node',
+          source: 'repo',
+        },
+      ]),
+    ),
+  );
+}
+
+function setupFetchHandlers() {
+  setupListHandler();
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
+      HttpResponse.json([
+        {
+          path: 'func.yaml',
+          mode: '100644',
+          content: 'name: my-func\nruntime: node',
+          type: 'blob',
+        },
+        { path: 'index.js', mode: '100644', content: 'module.exports = {}', type: 'blob' },
+      ]),
     ),
   );
 }

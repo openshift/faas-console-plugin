@@ -42,58 +42,6 @@ vi.mock('../../common/clients/useCluster', () => ({
   useCluster: (...args: unknown[]) => mockUseCluster(...args),
 }));
 
-vi.mock('./components/FunctionTable', () => ({
-  FunctionTable: ({
-    functions,
-  }: {
-    functions: { name: string; status: string; replicas: number; url?: string }[];
-  }) =>
-    functions.map((f) => (
-      <div key={f.name}>
-        <span data-testid="fn-name">{f.name}</span>
-        <span data-testid="fn-status">{f.status}</span>
-        <span data-testid="fn-replicas">{f.replicas}</span>
-        <span data-testid="fn-url">{f.url}</span>
-      </div>
-    )),
-}));
-
-vi.mock('../../common/components/UserAvatar', () => ({
-  UserAvatar: ({ enableReconnect }: { enableReconnect: boolean }) => (
-    <span data-testid="user-avatar">{enableReconnect ? 'reconnect' : 'no-reconnect'}</span>
-  ),
-}));
-
-function setupListHandler(
-  items: {
-    owner: string;
-    repoName: string;
-    repoURL: string;
-    name: string;
-    namespace: string;
-    runtime: string;
-    source?: string;
-  }[],
-) {
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
-      HttpResponse.json(
-        items.map((i) => ({
-          owner: i.owner,
-          repoName: i.repoName,
-          repoURL: i.repoURL,
-          defaultBranch: 'main',
-          name: i.name,
-          namespace: i.namespace,
-          runtime: i.runtime,
-          source: i.source ?? 'repo',
-        })),
-      ),
-    ),
-  );
-}
-
-
 describe('FunctionsListPage', () => {
   beforeEach(() => {
     sessionStorage.clear();
@@ -169,12 +117,15 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByText('cluster-only')).toBeInTheDocument();
   });
 
-  it('shows cluster-only functions that have no discoverable repo', async () => {
+  it('shows repo and cluster-only functions together in a union list', async () => {
     renderAuthenticated();
-    setupListHandler([clusterOnlyListItem('cluster-only')]);
+    setupBackendListAPIResponse([listItem('repo-func'), clusterOnlyListItem('cluster-func')]);
     mockUseCluster.mockReturnValue(
       clusterData({
-        functions: [clusterFunction('cluster-only', 'Running', 1)],
+        functions: [
+          clusterFunction('repo-func', 'Running', 1),
+          clusterFunction('cluster-func', 'Running', 1),
+        ],
       }),
     );
 
@@ -184,7 +135,27 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByTestId('fn-name')).toHaveTextContent('cluster-only');
+    expect(await screen.findByText('repo-func')).toBeInTheDocument();
+    expect(screen.getByText('cluster-func')).toBeInTheDocument();
+  });
+
+  it('disables Edit button for cluster-only functions', async () => {
+    renderAuthenticated();
+    setupBackendListAPIResponse([clusterOnlyListItem('cluster-func')]);
+    mockUseCluster.mockReturnValue(
+      clusterData({
+        functions: [clusterFunction('cluster-func', 'Running', 1)],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('cluster-func');
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {
@@ -585,6 +556,7 @@ function setupBackendListAPIResponse(
     name: string;
     namespace: string;
     runtime: string;
+    source?: string;
   }[],
 ) {
   server.use(
@@ -598,6 +570,7 @@ function setupBackendListAPIResponse(
           name: i.name,
           namespace: i.namespace,
           runtime: i.runtime,
+          source: i.source ?? 'repo',
         })),
       ),
     ),
