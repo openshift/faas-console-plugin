@@ -1,12 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
-import { server } from '../../../testing/msw/server';
 import { UserAvatar } from './UserAvatar';
 import { PAT_KEY, USER_KEY } from '../types';
 import { AuthContext } from '../context/AuthProvider';
 import { ReactNode } from 'react';
-import { BACKEND_API } from '../../../testing/setup';
+import { authenticateGithubFake, logoutGithubFake } from '../testing/authFake';
+import { BACKEND_API } from '../testing/constants';
+import { server } from '../testing/mswServer';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -39,11 +40,7 @@ function renderWithContext(
 
 describe('UserAvatar', () => {
   beforeEach(() => {
-    sessionStorage.clear();
-  });
-
-  afterAll(() => {
-    sessionStorage.clear();
+    logoutGithubFake();
   });
 
   describe('rendering', () => {
@@ -54,8 +51,7 @@ describe('UserAvatar', () => {
     });
 
     it('renders username when user is stored in sessionStorage', () => {
-      sessionStorage.setItem(PAT_KEY, 'ghp_test');
-      sessionStorage.setItem(USER_KEY, JSON.stringify(testUser));
+      authenticateGithubFake();
 
       renderWithContext(<UserAvatar enableReconnect />);
 
@@ -64,8 +60,7 @@ describe('UserAvatar', () => {
 
     it('button is clickable when enableReconnect is true', async () => {
       const user = userEvent.setup();
-      sessionStorage.setItem(PAT_KEY, 'ghp_test');
-      sessionStorage.setItem(USER_KEY, JSON.stringify(testUser));
+      authenticateGithubFake();
 
       renderWithContext(<UserAvatar enableReconnect />);
 
@@ -96,8 +91,7 @@ describe('UserAvatar', () => {
     });
 
     it('does not auto-open modal when PAT is already stored', () => {
-      sessionStorage.setItem(PAT_KEY, 'ghp_test');
-      sessionStorage.setItem(USER_KEY, JSON.stringify(testUser));
+      authenticateGithubFake();
 
       renderWithContext(<UserAvatar enableReconnect />);
 

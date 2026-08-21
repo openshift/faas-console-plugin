@@ -11,7 +11,6 @@ COPY console-extensions.json tsconfig.json webpack.config.mts ./
 COPY src/ src/
 COPY locales/ locales/
 COPY config/ config/
-COPY testing/ testing/
 RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node ./.yarn/releases/yarn-4.18.0.cjs build
 
 FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1787559109@sha256:643754d95cf8907b109b3e9182932e9c6e05334c97a74bb5cd991617e3d03080 AS gobuilder
