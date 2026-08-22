@@ -174,7 +174,7 @@ func (c *ghClient) PushFiles(ctx context.Context, owner, repo, branch, message s
 	}
 	parentTreeSHA := commit.GetTree().GetSHA()
 
-	treeEntries, err := c.createBlobs(ctx, owner, repo, files)
+	treeEntries, err := c.buildTreeEntries(ctx, owner, repo, files)
 	if err != nil {
 		return err
 	}
@@ -203,28 +203,32 @@ func (c *ghClient) PushFiles(ctx context.Context, owner, repo, branch, message s
 	return nil
 }
 
-func (c *ghClient) createBlobs(ctx context.Context, owner, repo string, files []scm.FileEntry) ([]*ghlib.TreeEntry, error) {
+func (c *ghClient) buildTreeEntries(ctx context.Context, owner, repo string, files []scm.FileEntry) ([]*ghlib.TreeEntry, error) {
 	entries := make([]*ghlib.TreeEntry, len(files))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i, f := range files {
 		g.Go(func() error {
-			blob, _, err := c.client.Git.CreateBlob(ctx, owner, repo, &ghlib.Blob{
-				Content:  new(f.Content),
-				Encoding: new("utf-8"),
-			})
-			if err != nil {
-				return mapErr(err)
-			}
-			if blob.GetSHA() == "" {
-				return fmt.Errorf("GitHub returned empty blob SHA")
+			var sha *string
+			if !f.Deleted {
+				blob, _, err := c.client.Git.CreateBlob(ctx, owner, repo, &ghlib.Blob{
+					Content:  new(f.Content),
+					Encoding: new("utf-8"),
+				})
+				if err != nil {
+					return mapErr(err)
+				}
+				if blob.GetSHA() == "" {
+					return fmt.Errorf("GitHub returned empty blob SHA")
+				}
+				sha = blob.SHA
 			}
 			mode := f.Mode
 			entries[i] = &ghlib.TreeEntry{
 				Path: new(f.Path),
 				Mode: &mode,
 				Type: new("blob"),
-				SHA:  blob.SHA,
+				SHA:  sha,
 			}
 			return nil
 		})
