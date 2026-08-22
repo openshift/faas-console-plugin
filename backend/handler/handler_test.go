@@ -8,8 +8,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	fn "knative.dev/func/pkg/functions"
+
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
+	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -169,6 +172,33 @@ func withClusterStub(stub cluster.Client) {
 		return stub, nil
 	}
 	DeferCleanup(func() { newClusterClient = orig })
+}
+
+type functionsClientStub struct {
+	list func(ctx context.Context, namespace string) ([]fn.ListItem, error)
+}
+
+func (s *functionsClientStub) List(ctx context.Context, namespace string) ([]fn.ListItem, error) {
+	if s.list != nil {
+		return s.list(ctx, namespace)
+	}
+	return nil, nil
+}
+
+func withFunctionsClient(stub functions.Client) {
+	orig := newFunctionsClient
+	newFunctionsClient = func(host, token string, caCert []byte) (functions.Client, error) {
+		return stub, nil
+	}
+	DeferCleanup(func() { newFunctionsClient = orig })
+}
+
+func withFunctionsClientError(err error) {
+	orig := newFunctionsClient
+	newFunctionsClient = func(host, token string, caCert []byte) (functions.Client, error) {
+		return nil, err
+	}
+	DeferCleanup(func() { newFunctionsClient = orig })
 }
 
 var _ = Describe("extractOCPToken", func() {

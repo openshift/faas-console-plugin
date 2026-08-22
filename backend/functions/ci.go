@@ -1,4 +1,4 @@
-package scaffold
+package functions
 
 import (
 	"context"
@@ -6,16 +6,16 @@ import (
 	"io"
 
 	cigithub "knative.dev/func/pkg/ci/github"
-	"knative.dev/func/pkg/functions"
+	fn "knative.dev/func/pkg/functions"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
-var ciGenerators = map[scm.Platform]func(string, Config) error{
+var ciGenerators = map[scm.Platform]func(string, ScaffoldConfig) error{
 	scm.GitHub: generateGithubCIFiles,
 }
 
-func generateGithubCIFiles(dir string, cfg Config) error {
+func generateGithubCIFiles(dir string, cfg ScaffoldConfig) error {
 	gen := cigithub.NewWorkflowGenerator(
 		cigithub.WithWorkflowConfig(cigithub.WorkflowConfig{
 			Branch:        cfg.Branch,
@@ -24,7 +24,7 @@ func generateGithubCIFiles(dir string, cfg Config) error {
 		}),
 		cigithub.WithMessageWriter(io.Discard),
 	)
-	if err := gen.Generate(context.Background(), functions.Function{
+	if err := gen.Generate(context.Background(), fn.Function{
 		Root:    dir,
 		Runtime: cfg.Runtime,
 	}); err != nil {

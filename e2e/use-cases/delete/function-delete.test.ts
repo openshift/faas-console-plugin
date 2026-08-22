@@ -10,6 +10,7 @@ import {
 } from '../../helpers/cluster';
 
 const NAMESPACE = 'delete-test';
+const RUNTIME = 'node';
 test.describe('Delete function', () => {
   test.describe.configure({ mode: 'serial' });
 
@@ -29,7 +30,7 @@ test.describe('Delete function', () => {
 
     await test.step('make sure deletion target function is deployed in cluster', async () => {
       await ensureNamespace(page, NAMESPACE);
-      await simulateGitHubActionsDeploy(page, PRESEEDED_FUNC_NAME, NAMESPACE);
+      await simulateGitHubActionsDeploy(page, PRESEEDED_FUNC_NAME, NAMESPACE, RUNTIME);
     });
 
     await test.step('navigate to list page', async () => {

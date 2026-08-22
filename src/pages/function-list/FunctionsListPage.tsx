@@ -214,6 +214,7 @@ function newItem(item: FunctionListItem): FunctionTableItem {
     status: item.err ? 'Error' : 'NotDeployed',
     url: '',
     replicas: 0,
+    source: item.source,
   };
 }
 

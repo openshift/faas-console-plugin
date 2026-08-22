@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
-	"github.com/openshift/faas-console-plugin/backend/scaffold"
+	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -81,7 +81,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		},
 		Entry("scaffold generation fails", func() {
 			orig := generateScaffold
-			generateScaffold = func(cfg scaffold.Config) ([]scm.FileEntry, error) {
+			generateScaffold = func(cfg functions.ScaffoldConfig) ([]scm.FileEntry, error) {
 				return nil, errors.New("disk full")
 			}
 			DeferCleanup(func() { generateScaffold = orig })
@@ -211,17 +211,17 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("missing owner", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "", Repo: "r"}),
 		Entry("missing repo", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: ""}),
 		Entry("env var missing name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "", Value: "v"}}}),
+			EnvVars: []functions.EnvVar{{Name: "", Value: "v"}}}),
 		Entry("env var invalid name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "123BAD", Source: "value", Value: "v"}}}),
+			EnvVars: []functions.EnvVar{{Name: "123BAD", Source: "value", Value: "v"}}}),
 		Entry("secret env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceKey: "k"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "secret", ResourceKey: "k"}}}),
 		Entry("secret env var missing resourceKey", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceName: "s"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "secret", ResourceName: "s"}}}),
 		Entry("configMap env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "configMap", ResourceKey: "k"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "configMap", ResourceKey: "k"}}}),
 		Entry("invalid env var source", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "invalid"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "invalid"}}}),
 	)
 
 	Describe("rollback on failure", func() {

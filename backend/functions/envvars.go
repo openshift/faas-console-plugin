@@ -1,12 +1,12 @@
-package scaffold
+package functions
 
 import (
 	"fmt"
 
-	"knative.dev/func/pkg/functions"
+	fn "knative.dev/func/pkg/functions"
 )
 
-func envVarToFuncEnv(ev EnvVar) functions.Env {
+func envVarToFuncEnv(ev EnvVar) fn.Env {
 	name := ev.Name
 	var value string
 	switch ev.Source {
@@ -17,18 +17,18 @@ func envVarToFuncEnv(ev EnvVar) functions.Env {
 	default:
 		value = ev.Value
 	}
-	return functions.Env{Name: &name, Value: &value}
+	return fn.Env{Name: &name, Value: &value}
 }
 
 func injectEnvVars(root string, envs []EnvVar) error {
-	fn, err := functions.NewFunction(root)
+	f, err := fn.NewFunction(root)
 	if err != nil {
 		return fmt.Errorf("load function: %w", err)
 	}
 	for _, ev := range envs {
-		fn.Run.Envs = append(fn.Run.Envs, envVarToFuncEnv(ev))
+		f.Run.Envs = append(f.Run.Envs, envVarToFuncEnv(ev))
 	}
-	if err := fn.Write(); err != nil {
+	if err := f.Write(); err != nil {
 		return fmt.Errorf("write function: %w", err)
 	}
 	return nil

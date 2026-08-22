@@ -43,6 +43,7 @@ const mockFunctions: FunctionTableItem[] = [
     url: 'http://my-func.demo.svc',
     replicas: 1,
     namespace: 'demo',
+    source: 'repo',
     mainResource: mockKnativeService,
   },
   {
@@ -53,8 +54,21 @@ const mockFunctions: FunctionTableItem[] = [
     url: '',
     replicas: 0,
     namespace: '',
+    source: 'repo',
   },
 ];
+
+const clusterOnlyFunction: FunctionTableItem = {
+  name: 'cluster-only',
+  repoName: '',
+  runtime: 'node',
+  status: 'Running',
+  url: 'http://cluster-only.demo.svc',
+  replicas: 1,
+  namespace: 'demo',
+  source: 'cluster',
+  mainResource: mockKnativeService,
+};
 
 describe('FunctionTable', () => {
   afterEach(() => {
@@ -70,6 +84,29 @@ describe('FunctionTable', () => {
 
     expect(screen.getAllByText('my-func').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('idle-func')).toBeInTheDocument();
+  });
+
+  it('renders runtime with dash for empty value', () => {
+    const noRuntime: FunctionTableItem = {
+      name: 'cluster-only',
+      repoName: '',
+      runtime: '',
+      status: 'Running',
+      url: 'http://cluster-only.demo.svc',
+      replicas: 1,
+      namespace: 'demo',
+      source: 'cluster',
+      mainResource: mockKnativeService,
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[noRuntime]} onEdit={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Runtime')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
   });
 
   it('renders namespace with dash for empty value', () => {
@@ -141,6 +178,7 @@ describe('FunctionTable', () => {
       url: '',
       replicas: 1,
       namespace: 'demo',
+      source: 'repo',
     };
 
     render(
@@ -182,5 +220,52 @@ describe('FunctionTable', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+  });
+
+  it('disables edit button for cluster-only functions', () => {
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not call onEdit when the disabled edit button is clicked', async () => {
+    const onEdit = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[clusterOnlyFunction]} onEdit={onEdit} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(onEdit).not.toHaveBeenCalled();
+  });
+
+  it('explains why edit is disabled on hover for cluster-only functions', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.hover(screen.getByRole('button', { name: 'Edit' }));
+    expect(await screen.findByText('No source repository to edit')).toBeInTheDocument();
+  });
+
+  it('enables edit button for functions with a repo source', () => {
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
   });
 });

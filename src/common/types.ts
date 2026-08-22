@@ -44,6 +44,8 @@ export interface AuthUser {
   avatarUrl: string;
 }
 
+export type FunctionSource = 'repo' | 'cluster';
+
 export interface FunctionListItem {
   owner: string;
   repoName: string;
@@ -52,6 +54,7 @@ export interface FunctionListItem {
   name: string;
   namespace: string;
   runtime: string;
+  source: FunctionSource;
   err?: string;
 }
 

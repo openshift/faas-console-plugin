@@ -117,6 +117,47 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByText('cluster-only')).toBeInTheDocument();
   });
 
+  it('shows repo and cluster-only functions together in a union list', async () => {
+    renderAuthenticated();
+    setupBackendListAPIResponse([listItem('repo-func'), clusterOnlyListItem('cluster-func')]);
+    mockUseCluster.mockReturnValue(
+      clusterData({
+        functions: [
+          clusterFunction('repo-func', 'Running', 1),
+          clusterFunction('cluster-func', 'Running', 1),
+        ],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('repo-func')).toBeInTheDocument();
+    expect(screen.getByText('cluster-func')).toBeInTheDocument();
+  });
+
+  it('disables Edit button for cluster-only functions', async () => {
+    renderAuthenticated();
+    setupBackendListAPIResponse([clusterOnlyListItem('cluster-func')]);
+    mockUseCluster.mockReturnValue(
+      clusterData({
+        functions: [clusterFunction('cluster-func', 'Running', 1)],
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByText('cluster-func');
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('shows NotDeployed status for repos without cluster deployment', async () => {
     renderAuthenticated();
     setupBackendListAPIResponse([listItem('orphan-func', 'orphan-func', 'demo', 'node')]);
@@ -321,6 +362,7 @@ describe('FunctionsListPage', () => {
             name: 'fn-a',
             namespace: 'demo',
             runtime: 'go',
+            source: 'repo',
           },
         ]);
       }),
@@ -375,6 +417,7 @@ describe('FunctionsListPage', () => {
           name: 'fn-a',
           namespace: 'demo',
           runtime: 'go',
+          source: 'repo',
         },
       ]);
     }
@@ -449,6 +492,7 @@ describe('FunctionsListPage', () => {
               name: 'fn-a',
               namespace: 'demo',
               runtime: 'go',
+              source: 'repo',
             },
             {
               owner: 'twoGiants',
@@ -458,6 +502,7 @@ describe('FunctionsListPage', () => {
               name: 'fn-b',
               namespace: 'demo',
               runtime: 'go',
+              source: 'repo',
             },
           ]);
         }
@@ -470,6 +515,7 @@ describe('FunctionsListPage', () => {
             name: 'fn-a',
             namespace: 'demo',
             runtime: 'go',
+            source: 'repo',
           },
         ]);
       }),
@@ -510,6 +556,7 @@ function setupBackendListAPIResponse(
     name: string;
     namespace: string;
     runtime: string;
+    source?: string;
   }[],
 ) {
   server.use(
@@ -523,6 +570,7 @@ function setupBackendListAPIResponse(
           name: i.name,
           namespace: i.namespace,
           runtime: i.runtime,
+          source: i.source ?? 'repo',
         })),
       ),
     ),

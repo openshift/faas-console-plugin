@@ -49,9 +49,9 @@ test.describe('Broken func.yaml', () => {
     await test.step('verify namespace and runtime show placeholder values', async () => {
       const grid = page.getByRole('grid', { name: 'Functions' });
       const row = grid.locator(`tbody tr:has(td:text-is("${BROKEN_REPO}"))`);
-      // Namespace shows em dash via TextOrDash, runtime renders as empty string
+      // Namespace and runtime both show an em dash via TextOrDash when empty
       await expect(row.locator('td[data-label="Namespace"]')).toHaveText('\u2014');
-      await expect(row.locator('td[data-label="Runtime"]')).toHaveText('');
+      await expect(row.locator('td[data-label="Runtime"]')).toHaveText('\u2014');
     });
   });
 });
