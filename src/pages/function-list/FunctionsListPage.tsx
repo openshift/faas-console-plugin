@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
+import { SetupGuide } from './components/SetupGuide';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { ClusterFunction, FunctionListItem } from '../../common/types';
@@ -59,7 +60,8 @@ function FunctionsListPageContent() {
             <Content component={ContentVariants.p}>
               {t(
                 'Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.',
-              )}
+              )}{' '}
+              <SetupGuide />
             </Content>
             <Toolbar>
               <ToolbarContent>
