@@ -16,8 +16,8 @@
   },
   "include": [
     "src",
-    "testing",
-    "config/i18next"
+    "config/i18next",
+    "config/msw/setup.ts"
   ],
   "exclude": [
     "node_modules"

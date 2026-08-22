@@ -45,7 +45,7 @@ If it makes an HTTP or WebSocket call, mock it with MSW, not `vi.mock`.
 | Page tests | `src/pages/<name>/*.test.ts\|tsx` |
 | Service / Hook / Util tests | `src/common/**/*.test.ts\|tsx` |
 | E2e specs | `e2e/use-cases/<feature-name>/*.test.ts` |
-| MSW handlers | `testing/msw/handlers.ts` |
+| MSW handlers | `src/common/testing/mswServer.ts` |
 
 ## What Gets Tested
 

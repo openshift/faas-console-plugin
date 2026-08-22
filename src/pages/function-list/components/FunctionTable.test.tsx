@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { FunctionTable, FunctionTableItem } from './FunctionTable';
+import { FUNCTION_NAME_LABEL } from '../../../common/types';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -30,7 +31,7 @@ const mockKnativeService = {
   metadata: {
     name: 'my-func',
     namespace: 'demo',
-    labels: { 'function.knative.dev/name': 'my-func' },
+    labels: { [FUNCTION_NAME_LABEL]: 'my-func' },
   },
 };
 

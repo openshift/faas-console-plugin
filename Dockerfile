@@ -13,7 +13,6 @@ COPY console-extensions.json tsconfig.json webpack.config.mts ./
 COPY src/ src/
 COPY locales/ locales/
 COPY config/ config/
-COPY testing/ testing/
 RUN yarn build
 
 FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.5-1787080706@sha256:71e89a1a51ab32cc30634d89ee4dc8ea40ad9991057fa1eae3b1af32bc7db73f AS gobuilder

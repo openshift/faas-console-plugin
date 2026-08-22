@@ -1,9 +1,12 @@
 import { K8sResourceKind, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 import { useMemo } from 'react';
-import { ClusterFunction, FunctionStatus, K8sKeyedResource } from '../types';
-
-const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
-const REVISION_LABEL = 'serving.knative.dev/revision';
+import {
+  ClusterFunction,
+  FUNCTION_NAME_LABEL,
+  FunctionStatus,
+  K8sKeyedResource,
+  REVISION_LABEL,
+} from '../types';
 
 export function useCluster(
   functionNames: string[] = [],
@@ -13,7 +16,7 @@ export function useCluster(
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
   loaded: boolean;
-  error: unknown;
+  error: Error;
 } {
   const knSvcConfig = useMemo(
     () =>
@@ -87,7 +90,8 @@ export function useCluster(
   const secrets = useMemo(() => toKeyedResources(rawSecrets), [rawSecrets]);
   const configMaps = useMemo(() => toKeyedResources(rawConfigMaps), [rawConfigMaps]);
 
-  const loaded = knLoaded && depLoaded && (!namespace || (secretLoaded && cmLoaded));
+  let loaded = knLoaded && depLoaded;
+  if (namespace) loaded = loaded && secretLoaded && cmLoaded;
 
   return {
     functions,

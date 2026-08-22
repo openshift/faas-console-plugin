@@ -1,10 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
-import { server } from '../../../testing/msw/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import FunctionEditPage from './FunctionEditPage';
-import { BACKEND_API } from '../../../testing/setup';
+import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { BACKEND_API } from '../../common/testing/constants';
+import { server } from '../../common/testing/mswServer';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -102,12 +103,13 @@ function setupFetchHandlers() {
 }
 
 describe('FunctionEditPage', () => {
-  beforeAll(() => {
-    sessionStorage.setItem('func-console-pat', 'test-pat');
+  beforeEach(() => {
+    logoutGithubFake();
+    authenticateGithubFake();
   });
 
   afterAll(() => {
-    sessionStorage.clear();
+    logoutGithubFake();
   });
 
   it(
