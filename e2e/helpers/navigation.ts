@@ -34,3 +34,16 @@ export async function navigateToEditPage(page: Page, repoName?: string): Promise
     await page.getByRole('heading', { name: 'Edit function' }).waitFor({ timeout: 10_000 });
   }
 }
+
+export async function selectNamespace(page: Page, namespace: string): Promise<void> {
+  await page.locator('[data-test="namespace-bar-dropdown"] button').click();
+  await page.getByRole('searchbox', { name: 'Select project...' }).fill(namespace);
+  await page.getByRole('menuitem', { name: namespace, exact: true }).click();
+  await waitForLoadingComplete(page);
+}
+
+export async function selectAllNamespaces(page: Page): Promise<void> {
+  await page.locator('[data-test="namespace-bar-dropdown"] button').click();
+  await page.getByRole('menuitem', { name: 'All Projects', exact: true }).click();
+  await waitForLoadingComplete(page);
+}

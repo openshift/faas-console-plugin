@@ -1,4 +1,10 @@
-import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  DocumentTitle,
+  isAllNamespacesKey,
+  ListPageHeader,
+  NamespaceBar,
+  useActiveNamespace,
+} from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
   Button,
@@ -34,12 +40,21 @@ export default function FunctionsListPage() {
 
 function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { functions, loaded, refreshing, onEdit, onRefresh, isAuthenticated, error } =
-    useFunctionListPage();
+  const {
+    functions,
+    loaded,
+    refreshing,
+    onEdit,
+    onRefresh,
+    isAuthenticated,
+    error,
+    showNamespace,
+  } = useFunctionListPage();
 
   return (
     <>
       <DocumentTitle>{t('Functions')}</DocumentTitle>
+      <NamespaceBar />
       <ListPageHeader title={t('Functions')}>
         <UserAvatar enableReconnect />
       </ListPageHeader>
@@ -93,7 +108,7 @@ function FunctionsListPageContent() {
                 </ToolbarItem>
               </ToolbarContent>
             </Toolbar>
-            <FunctionTable functions={functions} onEdit={onEdit} />
+            <FunctionTable functions={functions} onEdit={onEdit} showNamespace={showNamespace} />
           </>
         )}
       </PageSection>
@@ -109,12 +124,17 @@ function useFunctionListPage(): {
   onRefresh: () => void;
   isAuthenticated: boolean;
   error: string;
+  showNamespace: boolean;
 } {
   const { isAuthenticated, connectionId } = useContext(AuthContext);
   const navigate = useNavigate();
 
+  const [namespace] = useActiveNamespace();
+
   const [functionItems, setFunctionItems] = useState<FunctionTableItem[]>([]);
-  const [reposLoaded, setReposLoaded] = useState(!isAuthenticated);
+  const [namespaceLoaded, setNamespaceLoaded] = useState(isAuthenticated ? false : true);
+  const [prevNamespace, setPrevNamespace] = useState(namespace);
+
   const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
 
   const [error, setError] = useState<string>('');
@@ -125,7 +145,15 @@ function useFunctionListPage(): {
     setPrevConnectionId(connectionId);
     setFunctionItems([]);
     setError('');
-    setReposLoaded(false);
+    setNamespaceLoaded(false);
+  }
+
+  // Reset state when namespace changes
+  if (namespace !== prevNamespace) {
+    setPrevNamespace(namespace);
+    setFunctionItems([]);
+    setError('');
+    setNamespaceLoaded(false);
   }
 
   async function onRefresh() {
@@ -133,13 +161,13 @@ function useFunctionListPage(): {
     setRefreshing(true);
 
     try {
-      const items = await loadFunctionTableItems();
+      const items = await loadFunctionTableItems(namespace);
       setFunctionItems(items);
+      setNamespaceLoaded(true);
       setError('');
     } catch (err) {
       setError(errorMessage(err));
     } finally {
-      setReposLoaded(true);
       setRefreshing(false);
     }
   }
@@ -153,10 +181,10 @@ function useFunctionListPage(): {
       let items: FunctionTableItem[];
 
       try {
-        items = await loadFunctionTableItems();
+        items = await loadFunctionTableItems(namespace);
       } catch (err) {
         if (!ignore) {
-          setReposLoaded(true);
+          setNamespaceLoaded(true);
           setError(errorMessage(err));
         }
         return;
@@ -164,7 +192,7 @@ function useFunctionListPage(): {
       if (ignore) return;
 
       setFunctionItems(items);
-      setReposLoaded(true);
+      setNamespaceLoaded(true);
       setError('');
     }
 
@@ -172,11 +200,16 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [isAuthenticated, connectionId]);
+  }, [isAuthenticated, connectionId, namespace]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(functionNames);
+  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(
+    functionNames,
+    // if namespace === #ALL_NS# then we pass 'undefined' to watcher which equals
+    // to 'get resources from all namespaces'
+    isAllNamespacesKey(namespace) ? undefined : namespace,
+  );
 
   const functions = useMemo(
     () =>
@@ -188,6 +221,7 @@ function useFunctionListPage(): {
     [functionItems, clusterFunctions],
   );
 
+  const reposLoaded = !isAuthenticated || (namespaceLoaded && prevNamespace === namespace);
   const loaded = reposLoaded && clusterLoaded;
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
@@ -200,11 +234,12 @@ function useFunctionListPage(): {
     onRefresh,
     isAuthenticated,
     error,
+    showNamespace: isAllNamespacesKey(namespace),
   };
 }
 
-async function loadFunctionTableItems(): Promise<FunctionTableItem[]> {
-  const items = await listFunctions();
+async function loadFunctionTableItems(namespace: string): Promise<FunctionTableItem[]> {
+  const items = await listFunctions(namespace);
   return items.map((item) => newItem(item));
 }
 

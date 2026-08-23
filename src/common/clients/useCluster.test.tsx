@@ -4,10 +4,11 @@ import {
   deploymentFixture,
   funcFixture,
   ksvcFixture,
+  reset,
   secretFixture,
-  setFixtures,
+  setWatchFixtures,
   useK8sWatchResourceStub,
-} from '../testing/useK8sWatchResourceStub';
+} from '../testing/sdkTestDoubles';
 import { FUNCTION_NAME_LABEL } from '../types';
 import { useCluster } from './useCluster';
 
@@ -20,12 +21,12 @@ describe('useCluster', () => {
   const funcName = 'my-func';
 
   afterEach(() => {
-    setFixtures({});
+    reset();
   });
 
   describe('loading', () => {
     it('reports not loaded while watches are pending', () => {
-      setFixtures({ knLoaded: false, depLoaded: false });
+      setWatchFixtures({ knLoaded: false, depLoaded: false });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -41,7 +42,7 @@ describe('useCluster', () => {
     });
 
     it('reports not loaded when secret watch is pending', () => {
-      setFixtures({ secretLoaded: false });
+      setWatchFixtures({ secretLoaded: false });
 
       const { result } = renderHook(() => useCluster([funcName], namespace));
 
@@ -49,7 +50,7 @@ describe('useCluster', () => {
     });
 
     it('reports not loaded when configmap watch is pending', () => {
-      setFixtures({ cmLoaded: false });
+      setWatchFixtures({ cmLoaded: false });
 
       const { result } = renderHook(() => useCluster([funcName], namespace));
 
@@ -60,7 +61,7 @@ describe('useCluster', () => {
   describe('error', () => {
     it('surfaces knative service watch error', () => {
       const errMsg = 'ksvc watch failed';
-      setFixtures({ knError: new Error(errMsg) });
+      setWatchFixtures({ knError: new Error(errMsg) });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -69,7 +70,7 @@ describe('useCluster', () => {
 
     it('surfaces deployment watch error', () => {
       const errMsg = 'deployment watch failed';
-      setFixtures({ depError: new Error(errMsg) });
+      setWatchFixtures({ depError: new Error(errMsg) });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -78,7 +79,7 @@ describe('useCluster', () => {
 
     it('surfaces secret watch error', () => {
       const errMsg = 'secret watch failed';
-      setFixtures({ secretError: new Error(errMsg) });
+      setWatchFixtures({ secretError: new Error(errMsg) });
 
       const { result } = renderHook(() => useCluster([funcName], namespace));
 
@@ -87,7 +88,7 @@ describe('useCluster', () => {
 
     it('surfaces configmap watch error', () => {
       const errMsg = 'cm watch failed';
-      setFixtures({ cmError: new Error(errMsg) });
+      setWatchFixtures({ cmError: new Error(errMsg) });
 
       const { result } = renderHook(() => useCluster([funcName], namespace));
 
@@ -95,7 +96,7 @@ describe('useCluster', () => {
     });
 
     it('reports no error when watches succeed', () => {
-      setFixtures(funcFixture(funcName));
+      setWatchFixtures(funcFixture(funcName));
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -105,7 +106,7 @@ describe('useCluster', () => {
 
   describe('pairing', () => {
     it('pairs ksvc with deployment by revision label', () => {
-      setFixtures(funcFixture(funcName));
+      setWatchFixtures(funcFixture(funcName));
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -117,7 +118,7 @@ describe('useCluster', () => {
       const func = funcFixture(funcName);
       func.knSvcs![0].status!.latestReadyRevisionName = undefined;
       func.deps![0].metadata!.labels = { [FUNCTION_NAME_LABEL]: funcName };
-      setFixtures(func);
+      setWatchFixtures(func);
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -129,11 +130,11 @@ describe('useCluster', () => {
       const ksvcV2 = ksvcFixture(funcName, 'True');
       ksvcV2.status!.latestReadyRevisionName = 'my-func-00002';
 
-      setFixtures({
+      setWatchFixtures({
         knSvcs: [ksvcV2],
         deps: [
-          deploymentFixture(funcName, 0, 0, 'my-func-00001'),
-          deploymentFixture(funcName, 1, 1, 'my-func-00002'),
+          deploymentFixture(funcName, 0, 0, 'demo', 'my-func-00001'),
+          deploymentFixture(funcName, 1, 1, 'demo', 'my-func-00002'),
         ],
       });
 
@@ -152,7 +153,7 @@ describe('useCluster', () => {
     it('handles multiple functions independently', () => {
       const funcAName = 'func-a';
       const funcBName = 'func-b';
-      setFixtures({
+      setWatchFixtures({
         knSvcs: [ksvcFixture(funcAName, 'True'), ksvcFixture(funcBName, 'False')],
         deps: [deploymentFixture(funcAName, 1, 1), deploymentFixture(funcBName, 0, 0)],
       });
@@ -184,10 +185,10 @@ describe('useCluster', () => {
       ksvcB.status!.latestReadyRevisionName = sharedRevision;
 
       // Only ns-b has a deployment for the shared revision
-      const depB = deploymentFixture('shared-func', 1, 1, sharedRevision);
+      const depB = deploymentFixture('shared-func', 1, 1, 'demo', sharedRevision);
       depB.metadata!.namespace = nsB;
 
-      setFixtures({ knSvcs: [ksvcA, ksvcB], deps: [depB] });
+      setWatchFixtures({ knSvcs: [ksvcA, ksvcB], deps: [depB] });
 
       const { result } = renderHook(() => useCluster(['shared-func']));
 
@@ -200,7 +201,7 @@ describe('useCluster', () => {
 
   describe('name', () => {
     it('uses function.knative.dev/name label', () => {
-      setFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
+      setWatchFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -210,7 +211,7 @@ describe('useCluster', () => {
 
   describe('status', () => {
     it('returns Deploying when deployment is undefined', () => {
-      setFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
+      setWatchFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -218,7 +219,7 @@ describe('useCluster', () => {
     });
 
     it('returns Running when Ready=True and replicas > 0', () => {
-      setFixtures(funcFixture(funcName));
+      setWatchFixtures(funcFixture(funcName));
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -226,7 +227,7 @@ describe('useCluster', () => {
     });
 
     it('returns ScaledToZero when Ready=True and replicas are 0', () => {
-      setFixtures({
+      setWatchFixtures({
         knSvcs: [ksvcFixture(funcName, 'True')],
         deps: [deploymentFixture(funcName, 0, 0)],
       });
@@ -237,7 +238,7 @@ describe('useCluster', () => {
     });
 
     it('returns Error when Ready=False', () => {
-      setFixtures({
+      setWatchFixtures({
         knSvcs: [ksvcFixture(funcName, 'False')],
         deps: [deploymentFixture(funcName, 0, 0)],
       });
@@ -248,7 +249,7 @@ describe('useCluster', () => {
     });
 
     it('returns Deploying when Ready=Unknown', () => {
-      setFixtures({
+      setWatchFixtures({
         knSvcs: [ksvcFixture(funcName, 'Unknown')],
         deps: [deploymentFixture(funcName, 1, 0)],
       });
@@ -261,7 +262,7 @@ describe('useCluster', () => {
     it('returns Deploying when no Ready condition exists', () => {
       const func = funcFixture(funcName);
       func.knSvcs![0].status!.conditions[0].type = 'ConfigurationsReady';
-      setFixtures(func);
+      setWatchFixtures(func);
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -271,7 +272,7 @@ describe('useCluster', () => {
 
   describe('url', () => {
     it('returns ksvc status url', () => {
-      setFixtures(funcFixture(funcName));
+      setWatchFixtures(funcFixture(funcName));
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -283,7 +284,7 @@ describe('useCluster', () => {
     it('returns empty url when ksvc has no status url', () => {
       const ksvc = ksvcFixture(funcName, 'True');
       ksvc.status = {};
-      setFixtures({ knSvcs: [ksvc] });
+      setWatchFixtures({ knSvcs: [ksvc] });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -293,7 +294,7 @@ describe('useCluster', () => {
 
   describe('replicas', () => {
     it('returns readyReplicas from deployment', () => {
-      setFixtures({
+      setWatchFixtures({
         knSvcs: [ksvcFixture(funcName, 'True')],
         deps: [deploymentFixture(funcName, 2, 2)],
       });
@@ -304,7 +305,7 @@ describe('useCluster', () => {
     });
 
     it('returns 0 when deployment is undefined', () => {
-      setFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
+      setWatchFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -314,7 +315,7 @@ describe('useCluster', () => {
 
   describe('mainResource', () => {
     it('returns the knative service', () => {
-      setFixtures(funcFixture(funcName));
+      setWatchFixtures(funcFixture(funcName));
 
       const { result } = renderHook(() => useCluster([funcName]));
 
@@ -329,7 +330,7 @@ describe('useCluster', () => {
     const secretData = { username: 'dXNlcg==', password: 'cGFzcw==' };
     it('watches Secrets in the given namespace', () => {
       const apiKey = 'api-key';
-      setFixtures({
+      setWatchFixtures({
         secrets: [secretFixture(dbCreds, secretData), secretFixture(apiKey, { key: 'c2VjcmV0' })],
       });
 
@@ -341,7 +342,7 @@ describe('useCluster', () => {
     });
 
     it('returns data keys for secrets', () => {
-      setFixtures({
+      setWatchFixtures({
         secrets: [secretFixture(dbCreds, secretData)],
       });
 
@@ -363,7 +364,7 @@ describe('useCluster', () => {
     const appConfig = 'app-config';
     const configData = { 'log-level': 'info', region: 'us-east-1' };
     it('watches ConfigMaps in the given namespace', () => {
-      setFixtures({
+      setWatchFixtures({
         configMaps: [configMapFixture(appConfig, configData)],
       });
 
@@ -373,7 +374,7 @@ describe('useCluster', () => {
     });
 
     it('returns data keys for configmaps', () => {
-      setFixtures({
+      setWatchFixtures({
         configMaps: [configMapFixture(appConfig, configData)],
       });
 

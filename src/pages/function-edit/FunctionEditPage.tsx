@@ -1,4 +1,9 @@
-import { CodeEditor, DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  CodeEditor,
+  DocumentTitle,
+  ListPageHeader,
+  useActiveNamespace,
+} from '@openshift-console/dynamic-plugin-sdk';
 import type { Language } from '@patternfly/react-code-editor';
 import {
   DescriptionList,
@@ -133,6 +138,8 @@ function useFunctionEditPage(): FunctionEditPageState {
   const [selectedPath, setSelectedPath] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
+  const [namespace] = useActiveNamespace();
+
   const originalByPath = new Map(originalFiles.map((f) => [f.path, f]));
   const currentPaths = new Set(files.map((f) => f.path));
   const deletedFiles = originalFiles
@@ -158,7 +165,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     async function loadFiles() {
       let repo: { content: FileEntry[]; info: FunctionListItem };
       try {
-        repo = await resolveRepoContent(repoName!);
+        repo = await resolveRepoContent(repoName!, namespace);
       } catch {
         if (!ignore) setIsLoading(false);
         return;
@@ -181,7 +188,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     return () => {
       ignore = true;
     };
-  }, [repoName]);
+  }, [repoName, namespace]);
 
   const onFileSelect = (path: string) => {
     setSelectedPath(path);
@@ -235,8 +242,9 @@ function useFunctionEditPage(): FunctionEditPageState {
 
 async function resolveRepoContent(
   repoName: string,
+  namespace: string,
 ): Promise<{ content: FileEntry[]; info: FunctionListItem }> {
-  const items = await listFunctions();
+  const items = await listFunctions(namespace);
   const item = items.find((r) => r.repoName === repoName);
   if (!item) throw new Error(`repository ${repoName} not found`);
 

@@ -7,6 +7,11 @@ import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/a
 import { BACKEND_API } from '../../common/testing/constants';
 import { server } from '../../common/testing/mswServer';
 
+// vi.mock is hoisted above imports, so regular imports aren't available in the factory.
+// vi.hoisted runs before vi.mock, making the clusterStub available to the factory.
+// https://vitest.dev/api/vi.html#vi-hoisted
+const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -53,6 +58,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
     },
     consoleFetchJSON,
     consoleFetch,
+    useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
+    isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
   };
 });
 

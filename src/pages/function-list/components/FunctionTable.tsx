@@ -1,15 +1,15 @@
 import {
-  K8sResourceCommon,
-  SuccessStatus,
-  ProgressStatus,
   ErrorStatus,
   InfoStatus,
+  K8sResourceCommon,
+  ProgressStatus,
   StatusIconAndText,
+  SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
-import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
+import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import { FunctionSource, FunctionStatus } from '../../../common/types';
 
@@ -28,15 +28,17 @@ export interface FunctionTableItem {
 export function FunctionTable({
   functions,
   onEdit,
+  showNamespace,
 }: {
   functions: FunctionTableItem[];
   onEdit: (name: string) => void;
+  showNamespace: boolean;
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   const columns = [
     t('Name'),
-    t('Namespace'),
+    ...(showNamespace ? [t('Namespace')] : []),
     t('Runtime'),
     t('Status'),
     t('URL'),
@@ -57,9 +59,11 @@ export function FunctionTable({
         {functions.map((fn) => (
           <Tr key={`${fn.namespace}/${fn.name}`}>
             <Td dataLabel={t('Name')}>{fn.name}</Td>
-            <Td dataLabel={t('Namespace')}>
-              <TextOrDash value={fn.namespace} />
-            </Td>
+            {showNamespace && (
+              <Td dataLabel={t('Namespace')}>
+                <TextOrDash value={fn.namespace} />
+              </Td>
+            )}
             <Td dataLabel={t('Runtime')}>
               <TextOrDash value={fn.runtime} />
             </Td>
