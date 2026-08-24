@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
-	"strings"
 	"time"
 
-	ghlib "github.com/google/go-github/v72/github"
+	ghlib "github.com/google/go-github/v90/github"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
@@ -21,16 +19,16 @@ func New(pat string) scm.Client {
 
 func NewWithBaseURL(pat, baseURL string) scm.Client {
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	client := ghlib.NewClient(httpClient).WithAuthToken(pat)
+	opts := []ghlib.ClientOptionsFunc{
+		ghlib.WithHTTPClient(httpClient),
+		ghlib.WithAuthToken(pat),
+	}
 	if baseURL != "" {
-		u, err := url.Parse(baseURL)
-		if err != nil {
-			panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
-		}
-		if !strings.HasSuffix(u.Path, "/") {
-			u.Path += "/"
-		}
-		client.BaseURL = u
+		opts = append(opts, ghlib.WithURLs(&baseURL, nil))
+	}
+	client, err := ghlib.NewClient(opts...)
+	if err != nil {
+		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
 	return &ghClient{client: client}
 }
@@ -61,6 +59,13 @@ func isRepoExists(err error) bool {
 		}
 	}
 	return false
+}
+
+// branchRef returns the fully qualified Git reference for a branch, e.g.
+// "refs/heads/main". No equivalent helper is provided by go-github; its ref
+// methods accept a plain ref string that must be constructed by the caller.
+func branchRef(branch string) string {
+	return "refs/heads/" + branch
 }
 
 func (c *ghClient) GetUser(ctx context.Context) (*scm.User, error) {
@@ -162,7 +167,7 @@ func (c *ghClient) GetFiles(ctx context.Context, owner, repo, ref string) ([]scm
 }
 
 func (c *ghClient) PushFiles(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
-	ref, _, err := c.client.Git.GetRef(ctx, owner, repo, "heads/"+branch)
+	ref, _, err := c.client.Git.GetRef(ctx, owner, repo, branchRef(branch))
 	if err != nil {
 		return fmt.Errorf("get ref: %w", mapErr(err))
 	}
@@ -184,7 +189,7 @@ func (c *ghClient) PushFiles(ctx context.Context, owner, repo, branch, message s
 		return fmt.Errorf("create tree: %w", mapErr(err))
 	}
 
-	newCommit, _, err := c.client.Git.CreateCommit(ctx, owner, repo, &ghlib.Commit{
+	newCommit, _, err := c.client.Git.CreateCommit(ctx, owner, repo, ghlib.Commit{
 		Message: new(message),
 		Tree:    &ghlib.Tree{SHA: newTree.SHA},
 		Parents: []*ghlib.Commit{{SHA: new(headSHA)}},
@@ -193,10 +198,9 @@ func (c *ghClient) PushFiles(ctx context.Context, owner, repo, branch, message s
 		return fmt.Errorf("create commit: %w", mapErr(err))
 	}
 
-	_, _, err = c.client.Git.UpdateRef(ctx, owner, repo, &ghlib.Reference{
-		Ref:    new("refs/heads/" + branch),
-		Object: &ghlib.GitObject{SHA: newCommit.SHA},
-	}, false)
+	_, _, err = c.client.Git.UpdateRef(ctx, owner, repo, branchRef(branch), ghlib.UpdateRef{
+		SHA: newCommit.GetSHA(),
+	})
 	if err != nil {
 		return fmt.Errorf("update ref: %w", mapErr(err))
 	}
@@ -211,7 +215,7 @@ func (c *ghClient) buildTreeEntries(ctx context.Context, owner, repo string, fil
 		g.Go(func() error {
 			var sha *string
 			if !f.Deleted {
-				blob, _, err := c.client.Git.CreateBlob(ctx, owner, repo, &ghlib.Blob{
+				blob, _, err := c.client.Git.CreateBlob(ctx, owner, repo, ghlib.Blob{
 					Content:  new(f.Content),
 					Encoding: new("utf-8"),
 				})
@@ -277,8 +281,7 @@ func (c *ghClient) StoreSecret(ctx context.Context, owner, repo, name, value str
 	if err != nil {
 		return fmt.Errorf("encrypt secret: %w", err)
 	}
-	_, err = c.client.Actions.CreateOrUpdateRepoSecret(ctx, owner, repo, &ghlib.EncryptedSecret{
-		Name:           name,
+	_, err = c.client.Actions.CreateOrUpdateRepoSecret(ctx, owner, repo, name, ghlib.SecretRequest{
 		KeyID:          pubKey.GetKeyID(),
 		EncryptedValue: encrypted,
 	})
