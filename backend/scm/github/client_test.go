@@ -227,7 +227,7 @@ var _ = Describe("GitHub SCM client", func() {
 			Force bool   `json:"force"`
 		}
 
-		pushStub := func(failAt string, lastRequest *updateRefBody) http.HandlerFunc {
+		pushStub := func(failAt string, lastRequest *updateRefBody, blobCount *int, treeEntries *[]map[string]any) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
 				switch {
 				case strings.Contains(r.URL.Path, "/git/ref/"):
@@ -250,6 +250,9 @@ var _ = Describe("GitHub SCM client", func() {
 						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
 						return
 					}
+					if blobCount != nil {
+						*blobCount++
+					}
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(map[string]string{"sha": "blobsha"})
 				case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/git/trees"):
@@ -257,6 +260,13 @@ var _ = Describe("GitHub SCM client", func() {
 						w.WriteHeader(http.StatusInternalServerError)
 						json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
 						return
+					}
+					if treeEntries != nil {
+						var body struct {
+							Tree []map[string]any `json:"tree"`
+						}
+						json.NewDecoder(r.Body).Decode(&body)
+						*treeEntries = body.Tree
 					}
 					w.WriteHeader(http.StatusCreated)
 					json.NewEncoder(w).Encode(map[string]string{"sha": "newtreesha"})
@@ -289,45 +299,82 @@ var _ = Describe("GitHub SCM client", func() {
 
 		It("commits all files and updates the ref to the new commit SHA", func() {
 			var refUpdate updateRefBody
-			cl := newClient(pushStub("", &refUpdate))
+			cl := newClient(pushStub("", &refUpdate, nil, nil))
 
 			Expect(pushFiles(cl)).To(Succeed())
 			Expect(refUpdate.SHA).To(Equal("newcommitsha"))
 		})
 
 		It("returns an error when getting the branch ref fails", func() {
-			err := pushFiles(newClient(pushStub("getRef", nil)))
+			err := pushFiles(newClient(pushStub("getRef", nil, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("get ref"))
 		})
 
 		It("returns an error when getting the head commit fails", func() {
-			err := pushFiles(newClient(pushStub("getCommit", nil)))
+			err := pushFiles(newClient(pushStub("getCommit", nil, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("get commit"))
 		})
 
 		It("returns an error when creating a blob fails", func() {
-			err := pushFiles(newClient(pushStub("createBlob", nil)))
+			err := pushFiles(newClient(pushStub("createBlob", nil, nil, nil)))
 			Expect(err).To(HaveOccurred())
 		})
 
 		It("returns an error when creating the tree fails", func() {
-			err := pushFiles(newClient(pushStub("createTree", nil)))
+			err := pushFiles(newClient(pushStub("createTree", nil, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("create tree"))
 		})
 
 		It("returns an error when creating the commit fails", func() {
-			err := pushFiles(newClient(pushStub("createCommit", nil)))
+			err := pushFiles(newClient(pushStub("createCommit", nil, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("create commit"))
 		})
 
 		It("returns an error when updating the ref fails", func() {
-			err := pushFiles(newClient(pushStub("updateRef", nil)))
+			err := pushFiles(newClient(pushStub("updateRef", nil, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("update ref"))
+		})
+
+		It("does not create a blob and sends a nil SHA for a deleted file", func() {
+			var blobCount int
+			var entries []map[string]any
+			files := []scm.FileEntry{{Path: "remove.go", Mode: "100644", Content: "", Type: "blob", Deleted: true}}
+			cl := newClient(pushStub("", nil, &blobCount, &entries))
+
+			Expect(cl.PushFiles(context.Background(), "alice", "my-func", "main", "Delete file", files)).To(Succeed())
+			Expect(blobCount).To(Equal(0), "blob should not be created for a deleted file")
+			Expect(entries).To(HaveLen(1))
+			Expect(entries[0]["path"]).To(Equal("remove.go"))
+			Expect(entries[0]["sha"]).To(BeNil())
+		})
+
+		It("creates blobs only for non-deleted files in a mixed batch", func() {
+			var blobCount int
+			var entries []map[string]any
+			files := []scm.FileEntry{
+				{Path: "keep.go", Mode: "100644", Content: "package main", Type: "blob"},
+				{Path: "remove.go", Mode: "100644", Content: "", Type: "blob", Deleted: true},
+			}
+			cl := newClient(pushStub("", nil, &blobCount, &entries))
+
+			Expect(cl.PushFiles(context.Background(), "alice", "my-func", "main", "Partial delete", files)).To(Succeed())
+			Expect(blobCount).To(Equal(1), "only non-deleted files should create blobs")
+			Expect(entries).To(HaveLen(2))
+			var keepSHA, removeSHA any
+			for _, e := range entries {
+				if e["path"] == "keep.go" {
+					keepSHA = e["sha"]
+				} else {
+					removeSHA = e["sha"]
+				}
+			}
+			Expect(keepSHA).NotTo(BeNil())
+			Expect(removeSHA).To(BeNil())
 		})
 	})
 
