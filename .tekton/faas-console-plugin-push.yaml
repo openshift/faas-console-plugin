@@ -35,6 +35,8 @@ spec:
     value: "true"
   - name: prefetch-input
     value: '[{"type": "yarn", "path": "."}, {"type": "gomod", "path": "backend"}]'
+  - name: build-source-image
+    value: "true"
   pipelineSpec:
     description: |
       This pipeline is ideal for building multi-arch container images from a Containerfile while maintaining trust after pipeline customization.
