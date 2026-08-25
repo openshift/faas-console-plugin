@@ -1,17 +1,26 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
-import { server } from '../../../testing/msw/server';
 import { MemoryRouter } from 'react-router';
+import { BACKEND_API } from '../../common/testing/constants';
+import { FunctionListItem } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
-import { PAT_KEY, USER_KEY } from '../../common/types';
-import { BACKEND_API } from '../../../testing/setup';
+import userEvent from '@testing-library/user-event';
+import { server } from '../../common/testing/mswServer';
+import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+
+// vi.mock is hoisted above imports, so regular imports aren't available in the factory.
+// vi.hoisted runs before vi.mock, making the clusterStub available to the factory.
+// https://vitest.dev/api/vi.html#vi-hoisted
+const clusterStub = await vi.hoisted(
+  async () => import('../../common/testing/useK8sWatchResourceStub'),
+);
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
+vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
   const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
     const res = await fetch(new URL(url, 'http://localhost').href, options);
     const json = await res.json();
@@ -34,27 +43,27 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
     InfoStatus: ({ title }: { title: string }) => `Info: ${title}`,
     StatusIconAndText: ({ title }: { title: string }) => `Warning: ${title}`,
     useDeleteModal: () => () => {},
+    useK8sWatchResource: clusterStub.useK8sWatchResourceStub,
   };
 });
 
-const mockUseCluster = vi.fn();
-vi.mock('../../common/clients/useCluster', () => ({
-  useCluster: (...args: unknown[]) => mockUseCluster(...args),
-}));
-
 describe('FunctionsListPage', () => {
+  const funcName = 'my-func';
+
   beforeEach(() => {
-    sessionStorage.clear();
+    logoutGithubFake();
+    authenticateGithubFake();
   });
 
+  afterEach(() => clusterStub.setFixtures({}));
+
   afterAll(() => {
-    sessionStorage.clear();
+    logoutGithubFake();
   });
 
   it('renders a spinner while loading', () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([]);
-    mockUseCluster.mockReturnValue(clusterData({ loaded: false }));
+    listFunctionsStub();
+    clusterStub.setFixtures({ knLoaded: false, depLoaded: false });
 
     render(
       <MemoryRouter>
@@ -66,9 +75,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders the empty state when loaded with no functions', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([]);
-    mockUseCluster.mockReturnValue(clusterData());
+    listFunctionsStub();
 
     render(
       <MemoryRouter>
@@ -80,15 +87,8 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders table when functions are loaded', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-func')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [
-          clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
-        ],
-      }),
-    );
+    listFunctionsStub({ response: repoListItem(funcName) });
+    clusterStub.setFixtures(clusterStub.funcFixture(funcName));
 
     render(
       <MemoryRouter>
@@ -96,17 +96,13 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('my-func')).toBeInTheDocument();
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
   });
 
   it('shows cluster-only functions that have no discoverable repo', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([clusterOnlyListItem('cluster-only')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [clusterFunction('cluster-only', 'Running', 1)],
-      }),
-    );
+    const funcName = 'cluster-only';
+    listFunctionsStub({ response: clusterListItem(funcName) });
+    clusterStub.setFixtures(clusterStub.funcFixture(funcName));
 
     render(
       <MemoryRouter>
@@ -114,13 +110,11 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('cluster-only')).toBeInTheDocument();
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
   });
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('orphan-func', 'orphan-func', 'demo', 'node')]);
-    mockUseCluster.mockReturnValue(clusterData());
+    listFunctionsStub({ response: repoListItem('orphan-func', 'orphan-func', 'demo', 'node') });
 
     render(
       <MemoryRouter>
@@ -132,13 +126,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows error alert when listing functions fails', async () => {
-    renderAuthenticated();
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/list`, () =>
-        HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
-      ),
-    );
-    mockUseCluster.mockReturnValue(clusterData());
+    listFunctionsStub({ errorResponse: { message: 'Bad credentials', status: 401 } });
 
     render(
       <MemoryRouter>
@@ -150,13 +138,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders empty state when API fails', async () => {
-    renderAuthenticated();
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/list`, () =>
-        HttpResponse.json({ message: 'Requires authentication' }, { status: 401 }),
-      ),
-    );
-    mockUseCluster.mockReturnValue(clusterData());
+    listFunctionsStub({ errorResponse: { message: 'Requires authentication', status: 401 } });
 
     render(
       <MemoryRouter>
@@ -168,8 +150,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('does not call backend API when not authenticated', async () => {
-    mockUseCluster.mockReturnValue(clusterData());
-
+    logoutGithubFake();
     render(
       <MemoryRouter>
         <FunctionsListPage />
@@ -182,9 +163,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders UserAvatar in header', () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([]);
-    mockUseCluster.mockReturnValue(clusterData());
+    listFunctionsStub();
 
     render(
       <MemoryRouter>
@@ -196,8 +175,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
-    mockUseCluster.mockReturnValue(clusterData());
-
+    logoutGithubFake();
     render(
       <MemoryRouter>
         <FunctionsListPage />
@@ -211,15 +189,8 @@ describe('FunctionsListPage', () => {
   });
 
   it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-func')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [
-          clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
-        ],
-      }),
-    );
+    listFunctionsStub({ response: repoListItem(funcName) });
+    clusterStub.setFixtures(clusterStub.funcFixture(funcName));
 
     render(
       <MemoryRouter>
@@ -236,13 +207,11 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-func')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [clusterFunction('my-func', 'ScaledToZero', 0)],
-      }),
-    );
+    listFunctionsStub({ response: repoListItem(funcName) });
+    clusterStub.setFixtures({
+      knSvcs: [clusterStub.ksvcFixture(funcName, 'True')],
+      deps: [clusterStub.deploymentFixture(funcName, 0, 0)],
+    });
 
     render(
       <MemoryRouter>
@@ -255,13 +224,8 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows Deploying status from ClusterFunction', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-func')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [clusterFunction('my-func', 'Deploying', 0)],
-      }),
-    );
+    listFunctionsStub({ response: repoListItem(funcName) });
+    clusterStub.setFixtures({ knSvcs: [clusterStub.ksvcFixture(funcName, 'True')] });
 
     render(
       <MemoryRouter>
@@ -273,13 +237,11 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows Error status from ClusterFunction', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-func')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [clusterFunction('my-func', 'Error', 0)],
-      }),
-    );
+    listFunctionsStub({ response: repoListItem(funcName) });
+    clusterStub.setFixtures({
+      knSvcs: [clusterStub.ksvcFixture(funcName, 'False')],
+      deps: [clusterStub.deploymentFixture(funcName, 0, 0)],
+    });
 
     render(
       <MemoryRouter>
@@ -290,24 +252,7 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByText('Error: Error')).toBeInTheDocument();
   });
 
-  it('passes function names to useCluster', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('fn-a')]);
-    mockUseCluster.mockReturnValue(clusterData());
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText('fn-a');
-
-    expect(mockUseCluster).toHaveBeenLastCalledWith(['fn-a']);
-  });
-
   it('re-fetches functions when refresh button is clicked', async () => {
-    renderAuthenticated();
     let callCount = 0;
     server.use(
       http.get(`${BACKEND_API}/api/v1/func/list`, () => {
@@ -318,14 +263,13 @@ describe('FunctionsListPage', () => {
             repoName: 'fn-a',
             repoURL: 'https://github.com/twoGiants/fn-a',
             defaultBranch: 'main',
-            name: 'fn-a',
+            name: funcName,
             namespace: 'demo',
             runtime: 'go',
           },
         ]);
       }),
     );
-    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -333,7 +277,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText('fn-a');
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
     expect(callCount).toBe(1);
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -344,9 +288,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('does not show spinner on refresh button during initial page load', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('fn-a')]);
-    mockUseCluster.mockReturnValue(clusterData());
+    listFunctionsStub({ response: repoListItem(funcName) });
 
     render(
       <MemoryRouter>
@@ -354,14 +296,12 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText('fn-a');
-
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
     const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
     expect(refreshBtn.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
   });
 
   it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
-    renderAuthenticated();
     let resolveList: (() => void) | undefined;
     let firstCall = true;
 
@@ -390,7 +330,6 @@ describe('FunctionsListPage', () => {
         });
       }),
     );
-    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -398,7 +337,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText('fn-a');
+    expect(await screen.findByText('fn-a')).toBeInTheDocument();
 
     const refreshBtn = screen.getByRole('button', { name: 'Refresh' });
 
@@ -412,29 +351,19 @@ describe('FunctionsListPage', () => {
   });
 
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-repo', 'my-function', 'demo', 'node')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [
-          clusterFunction('my-function', 'Running', 1, 'https://my-function-demo.apps.example.com'),
-        ],
-      }),
-    );
-
+    listFunctionsStub({ response: repoListItem('my-repo', funcName, 'demo', 'node') });
+    clusterStub.setFixtures(clusterStub.funcFixture(funcName));
     render(
       <MemoryRouter>
         <FunctionsListPage />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('my-function')).toBeInTheDocument();
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
     expect(screen.getByText('Success: Running')).toBeInTheDocument();
-    expect(mockUseCluster).toHaveBeenLastCalledWith(['my-function']);
   });
 
   it('removes a deleted repo from the list after refresh', async () => {
-    renderAuthenticated();
     let callCount = 0;
     server.use(
       http.get(`${BACKEND_API}/api/v1/func/list`, () => {
@@ -474,7 +403,6 @@ describe('FunctionsListPage', () => {
         ]);
       }),
     );
-    mockUseCluster.mockReturnValue(clusterData());
 
     render(
       <MemoryRouter>
@@ -482,7 +410,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText('fn-a');
+    expect(await screen.findByText('fn-a')).toBeInTheDocument();
     expect(screen.getByText('fn-b')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
@@ -494,91 +422,34 @@ describe('FunctionsListPage', () => {
   });
 });
 
-function renderAuthenticated() {
-  sessionStorage.setItem(PAT_KEY, 'ghp_test');
-  sessionStorage.setItem(
-    USER_KEY,
-    JSON.stringify({ name: 'twoGiants', avatarUrl: 'https://valid.url' }),
-  );
-}
-
-function setupBackendListAPIResponse(
-  items: {
-    owner: string;
-    repoName: string;
-    repoURL: string;
-    name: string;
-    namespace: string;
-    runtime: string;
-  }[],
-) {
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
-      HttpResponse.json(
-        items.map((i) => ({
-          owner: i.owner,
-          repoName: i.repoName,
-          repoURL: i.repoURL,
-          defaultBranch: 'main',
-          name: i.name,
-          namespace: i.namespace,
-          runtime: i.runtime,
-        })),
-      ),
-    ),
-  );
-}
-
-function clusterOnlyListItem(name: string, namespace = 'demo', runtime = 'node') {
+// -----------------------------------------------------------------------------
+// Test data factories ---------------------------------------------------------
+// -----------------------------------------------------------------------------
+function clusterListItem(name: string, namespace = 'demo', runtime = 'node'): FunctionListItem {
   return {
     owner: '',
     repoName: '',
     repoURL: '',
+    defaultBranch: 'main',
     name,
     namespace,
     runtime,
-    source: 'cluster',
   };
 }
 
-function listItem(repoName: string, name?: string, namespace = 'demo', runtime = 'go') {
+function repoListItem(
+  repoName: string,
+  name?: string,
+  namespace = 'demo',
+  runtime = 'go',
+): FunctionListItem {
   return {
     owner: 'twoGiants',
     repoName,
     repoURL: `https://github.com/twoGiants/${repoName}`,
+    defaultBranch: 'main',
     name: name ?? repoName,
     namespace,
     runtime,
-    source: 'repo',
-  };
-}
-
-function clusterData(
-  overrides: Partial<{
-    functions: { name: string }[];
-    loaded: boolean;
-    error: unknown;
-  }> = {},
-) {
-  const { functions: list = [], ...rest } = overrides;
-  return {
-    functions: new Map(list.map((cf) => [cf.name, cf])),
-    loaded: true,
-    error: null,
-    ...rest,
-  };
-}
-
-function clusterFunction(name: string, status: string, replicas: number, url?: string) {
-  return {
-    name,
-    status,
-    url,
-    replicas,
-    mainResource: {
-      apiVersion: 'serving.knative.dev/v1',
-      kind: 'Service',
-      metadata: { name, namespace: 'demo' },
-    },
   };
 }

@@ -6,6 +6,12 @@ function scmHeaders(): HeadersInit {
   return pat ? { 'X-SCM-Token': pat } : {};
 }
 
+/**
+ * listFunctions returns a list of function metadata.
+ *
+ * Test doubles for this function are in src/common/testing/functionsClientStub.ts
+ *
+ */
 export async function listFunctions(): Promise<FunctionListItem[]> {
   return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list`, 'GET', {
     headers: scmHeaders(),

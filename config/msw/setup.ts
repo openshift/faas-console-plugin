@@ -1,7 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { server } from '../testing/msw/server';
-
-export const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
+import { server } from '../../src/common/testing/mswServer';
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());

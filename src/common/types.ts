@@ -4,6 +4,9 @@ export const PAT_KEY = 'func-console-pat';
 export const USER_KEY = 'func-console-user';
 export const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
+export const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
+export const REVISION_LABEL = 'serving.knative.dev/revision';
+
 export interface FileEntry {
   path: string;
   mode: '100644' | '100755' | '120000';
@@ -44,6 +47,8 @@ export interface AuthUser {
   name: string;
   avatarUrl: string;
 }
+
+export type FunctionSource = 'repo' | 'cluster';
 
 export interface FunctionListItem {
   owner: string;
