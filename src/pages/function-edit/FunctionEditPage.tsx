@@ -13,7 +13,7 @@ import {
   SidebarPanel,
 } from '@patternfly/react-core';
 import { CodeIcon } from '@patternfly/react-icons';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
 import { EditToolbar } from './components/EditToolbar';
@@ -133,29 +133,18 @@ function useFunctionEditPage(): FunctionEditPageState {
   const [selectedPath, setSelectedPath] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
-  const originalByPath = useMemo(
-    () => new Map(originalFiles.map((f) => [f.path, f])),
-    [originalFiles],
-  );
-  const currentPaths = useMemo(() => new Set(files.map((f) => f.path)), [files]);
-  const deletedFiles = useMemo(
-    () =>
-      originalFiles
-        .filter((f) => !currentPaths.has(f.path))
-        .map((f) => ({ ...f, deleted: true as const })),
-    [originalFiles, currentPaths],
-  );
-  const dirtyFiles = useMemo(
-    () =>
-      new Set(
-        files
-          .filter((f) => {
-            const orig = originalByPath.get(f.path);
-            return orig && f.content !== orig.content;
-          })
-          .map((f) => f.path),
-      ),
-    [files, originalByPath],
+  const originalByPath = new Map(originalFiles.map((f) => [f.path, f]));
+  const currentPaths = new Set(files.map((f) => f.path));
+  const deletedFiles = originalFiles
+    .filter((f) => !currentPaths.has(f.path))
+    .map((f) => ({ ...f, deleted: true as const }));
+  const dirtyFiles = new Set(
+    files
+      .filter((f) => {
+        const orig = originalByPath.get(f.path);
+        return orig && f.content !== orig.content;
+      })
+      .map((f) => f.path),
   );
   const hasChanges = dirtyFiles.size > 0 || deletedFiles.length > 0;
 
