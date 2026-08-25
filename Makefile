@@ -45,8 +45,13 @@ dev-%:
 
 ##@ Frontend
 
-install-frontend: ## Install frontend dependencies (yarn install --immutable)
+# Make compares mtimes: only runs yarn install when yarn.lock is newer than the install state.
+# touch is needed because yarn doesn't update .yarn-state.yml when deps are already current.
+node_modules/.yarn-state.yml: yarn.lock
 	yarn install --immutable
+	@touch node_modules/.yarn-state.yml
+
+install-frontend: node_modules/.yarn-state.yml ## Install frontend dependencies (skips if up to date)]
 
 build-frontend: install-frontend ## Build production bundle
 	yarn build
@@ -127,9 +132,19 @@ deploy-dev: ## Build and deploy to cluster (dev)
 setup-serverless: ## Install Serverless operator and Knative Serving
 	hack/setup-serverless.sh
 
+##@ Git
+
+lint-commits: install-frontend ## Lint commit messages (against master or PR base)
+  # if we're in CI don't check for upstream/master
+	@if [ -z "$${PULL_BASE_SHA:-}" ]; then \
+		git rev-parse --verify upstream/master >/dev/null 2>&1 || \
+			{ echo "Error: upstream/master not found. Run: git remote add upstream git@github.com:openshift/faas-console-plugin.git && git fetch upstream"; exit 1; }; \
+	fi
+	yarn commitlint --from $${PULL_BASE_SHA:-$$(git merge-base upstream/master HEAD)} --to HEAD
+
 ##@ Aggregate
 
-lint: lint-frontend lint-backend ## Lint frontend and backend
+lint: lint-frontend lint-backend lint-commits ## Lint frontend, backend, and commit messages
 
 unit: unit-frontend unit-backend ## Run all unit tests
 

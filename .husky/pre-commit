@@ -1,4 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-make lint type-check verify
+source "$(dirname "$0")/../hack/lib/log.sh"
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+
+has_changes() {
+  echo "$STAGED" | grep -qE "$1"
+}
+
+log::step "Running pre-commit checks"
+
+if has_changes '^(src|e2e)/'; then
+  log::info "Linting frontend..."
+  make lint-frontend
+
+  log::info "Type-checking..."
+  make type-check
+else
+  log::info "No frontend changes, skipping lint and type-check"
+fi
+
+if has_changes '^backend/'; then
+  log::info "Linting backend..."
+  make lint-backend
+else
+  log::info "No backend changes, skipping backend lint"
+fi
+
+if has_changes '^(src/|locales/|i18next|yarn\.lock|package\.json)'; then
+  log::info "Verifying i18n and deduplication..."
+  make verify
+else
+  log::info "No i18n/dependency changes, skipping verify"
+fi
+
+log::step "Pre-commit checks passed"

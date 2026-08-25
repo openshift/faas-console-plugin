@@ -4,8 +4,7 @@ import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../testing/msw/server';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import FunctionEditPage from './FunctionEditPage';
-
-const BACKEND_API = 'http://localhost/api/proxy/plugin/console-functions-plugin/backend';
+import { BACKEND_API } from '../../../testing/setup';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -61,6 +60,7 @@ function renderEditPage(name: string) {
     <MemoryRouter initialEntries={[{ pathname: `/faas/edit/${name}` }]}>
       <Routes>
         <Route path="/faas/edit/:name" element={<FunctionEditPage />} />
+        <Route path="/faas" element={<div>Functions list</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -110,20 +110,23 @@ describe('FunctionEditPage', () => {
     sessionStorage.clear();
   });
 
-  it('shows loading state in tree while fetching files', () => {
-    setupListHandler();
-    server.use(
-      http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
-        await delay('infinite');
-        return HttpResponse.json([]);
-      }),
-    );
+  it(
+    'shows loading state in tree while fetching files',
+    server.boundary(async () => {
+      setupListHandler();
+      server.use(
+        http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
+          await delay('infinite');
+          return HttpResponse.json([]);
+        }),
+      );
 
-    renderEditPage('my-func');
+      renderEditPage('my-func');
 
-    expect(screen.getByText('Loading source...')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
-  });
+      expect(screen.getByText('Loading source...')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+    }),
+  );
 
   it('loads files from backend', async () => {
     setupFetchHandlers();
@@ -182,6 +185,7 @@ describe('FunctionEditPage', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: /Back to Functions/ }));
 
     expect(screen.queryByText('Unsaved changes')).not.toBeInTheDocument();
+    expect(screen.getByText('Functions list')).toBeInTheDocument();
   });
 
   it('shows selected file content in editor when tree item is clicked', async () => {
@@ -423,13 +427,123 @@ describe('FunctionEditPage', () => {
       expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
     });
 
-    vi.advanceTimersByTime(2000);
-
-    await waitFor(() => {
-      expect(screen.queryByText('Pushed to GitHub. Deployment running...')).not.toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
     });
 
+    expect(screen.queryByText('Pushed to GitHub. Deployment running...')).not.toBeInTheDocument();
+
     vi.useRealTimers();
+  });
+
+  it('deletes a file from the tree when Delete File is clicked', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('func.yaml actions'));
+    await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Delete File' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('func.yaml')).not.toBeInTheDocument();
+    });
+  });
+
+  it('enables save button after deleting a file', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+
+    await userEvent.setup().click(screen.getByLabelText('func.yaml actions'));
+    await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Delete File' }));
+
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeEnabled();
+  });
+
+  it('clears the editor when the selected file is deleted', async () => {
+    setupFetchHandlers();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByText('func.yaml'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-editor')).toHaveTextContent('name: my-func');
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('func.yaml actions'));
+    await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Delete File' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Start editing')).toBeInTheDocument();
+    });
+  });
+
+  it('includes deleted files with deleted:true in the PUT request body', async () => {
+    setupFetchHandlers();
+    const putHandler = vi.fn();
+    server.use(
+      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async ({ request }) => {
+        putHandler(await request.json());
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('func.yaml actions'));
+    await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Delete File' }));
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(putHandler).toHaveBeenCalled();
+    });
+
+    const body = putHandler.mock.calls[0][0];
+    const deletedEntry = body.files.find((f: { path: string }) => f.path === 'func.yaml');
+    expect(deletedEntry).toBeDefined();
+    expect(deletedEntry.deleted).toBe(true);
+  });
+
+  it('resets deleted files after a successful save', async () => {
+    setupFetchHandlers();
+    setupPutHandler();
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText('func.yaml')).toBeInTheDocument();
+    });
+
+    await userEvent.setup().click(screen.getByLabelText('func.yaml actions'));
+    await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Delete File' }));
+
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeEnabled();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+    });
   });
 });
 
