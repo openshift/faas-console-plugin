@@ -67,10 +67,10 @@ export const FileTreeView = React.memo(function FileTreeView({
           so there's no element to attach onMouseEnter/onMouseLeave to without hacking the DOM.
       */}
       <style>{`
-        .file-actions-btn { visibility: hidden; }
-        .pf-v6-c-tree-view__list-item:hover > .pf-v6-c-tree-view__content .file-actions-btn { visibility: visible; }
-        .pf-v6-c-tree-view__list-item:hover:has(.pf-v6-c-tree-view__list-item:hover) > .pf-v6-c-tree-view__content .file-actions-btn { visibility: hidden; }
-        .pf-v6-c-tree-view__list-item:has(> .pf-v6-c-tree-view__content > .pf-v6-c-tree-view__node.pf-m-current) > .pf-v6-c-tree-view__content .file-actions-btn { visibility: visible; }
+        .func-console__file-actions-btn { visibility: hidden; }
+        .pf-v6-c-tree-view__list-item:hover > .pf-v6-c-tree-view__content .func-console__file-actions-btn { visibility: visible; }
+        .pf-v6-c-tree-view__list-item:hover:has(.pf-v6-c-tree-view__list-item:hover) > .pf-v6-c-tree-view__content .func-console__file-actions-btn { visibility: hidden; }
+        .pf-v6-c-tree-view__list-item:has(> .pf-v6-c-tree-view__content > .pf-v6-c-tree-view__node.pf-m-current) > .pf-v6-c-tree-view__content .func-console__file-actions-btn { visibility: visible; }
         .pf-v6-c-tree-view__action { margin-inline-end: 0; }
       `}</style>
       <TreeView
@@ -150,7 +150,7 @@ function TreeItemMenu({
           ref={toggleRef}
           variant="plain"
           aria-label={`${label} actions`}
-          className="file-actions-btn"
+          className="func-console__file-actions-btn"
           style={{ visibility: isOpen ? 'visible' : undefined }}
           onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
