@@ -197,7 +197,7 @@ describe('FunctionsListPage', () => {
 
   it('renders the setup guide button in the list description', async () => {
     renderAuthenticated();
-    setupListHandler([listItem('my-func')]);
+    setupBackendListAPIResponse([listItem('my-func')]);
     mockUseCluster.mockReturnValue(
       clusterData({
         functions: [
