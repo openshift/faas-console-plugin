@@ -59,4 +59,14 @@ describe('FunctionsEmptyState', () => {
     const link = screen.getByRole('link', { name: 'Create function' });
     expect(link).toHaveAttribute('href', '/faas/create');
   });
+
+  it('renders the setup guide trigger', () => {
+    render(
+      <MemoryRouter>
+        <FunctionsEmptyState />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
+  });
 });
