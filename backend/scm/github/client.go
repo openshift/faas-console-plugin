@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -297,4 +298,56 @@ func (c *ghClient) DeleteRepo(ctx context.Context, owner, repo string) error {
 		return fmt.Errorf("delete repo: %w", mapErr(err))
 	}
 	return nil
+}
+
+func (c *ghClient) LatestWorkflowRun(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+	opts := &ghlib.ListWorkflowRunsOptions{
+		Branch:      branch,
+		ListOptions: ghlib.ListOptions{PerPage: 1},
+	}
+	runs, _, err := c.client.Actions.ListRepositoryWorkflowRuns(ctx, owner, repo, opts)
+	if err != nil {
+		return nil, fmt.Errorf("list workflow runs for %s/%s: %w", owner, repo, mapErr(err))
+	}
+	if len(runs.WorkflowRuns) == 0 {
+		return nil, nil
+	}
+
+	// GitHub returns runs in created_at descending order by default, so with
+	// PerPage 1 the single element WorkflowRuns[0] is the newest run.
+	run := runs.WorkflowRuns[0]
+	result := &scm.WorkflowRun{
+		ID:         run.GetID(),
+		Status:     run.GetStatus(),
+		Conclusion: run.GetConclusion(),
+		HeadSHA:    run.GetHeadSHA(),
+		HTMLURL:    run.GetHTMLURL(),
+	}
+	if result.Conclusion == "failure" {
+		result.FailureReason = c.failureReason(ctx, owner, repo, result.ID)
+	}
+	return result, nil
+}
+
+// failureReason returns a "<job> / <step>" summary of the first failed step,
+// or the failing job name, or "" if it cannot be determined. Best-effort: never
+// fails the caller.
+func (c *ghClient) failureReason(ctx context.Context, owner, repo string, runID int64) string {
+	jobs, _, err := c.client.Actions.ListWorkflowJobs(ctx, owner, repo, runID, nil)
+	if err != nil {
+		slog.Warn("failed to list workflow jobs", "repo", owner+"/"+repo, "run", runID, "err", err)
+		return ""
+	}
+	for _, job := range jobs.Jobs {
+		if job.GetConclusion() != "failure" {
+			continue
+		}
+		for _, step := range job.Steps {
+			if step.GetConclusion() == "failure" {
+				return job.GetName() + " / " + step.GetName()
+			}
+		}
+		return job.GetName()
+	}
+	return ""
 }

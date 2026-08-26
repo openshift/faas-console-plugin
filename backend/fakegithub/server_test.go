@@ -233,6 +233,144 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repos).To(BeEmpty())
 		})
+
+		It("stores a scripted workflow run via /_admin/actions/runs", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+
+			setWorkflowRun(ts, `{
+				"owner": "testuser", "repo": "test-func", "branch": "main",
+				"headSha": "abc123", "status": "in_progress", "conclusion": ""
+			}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("in_progress"))
+			Expect(run.HeadSHA).To(Equal("abc123"))
+		})
+
+		It("clears workflow runs on reset", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","status":"completed","conclusion":"success"}`)
+
+			resetFakeGitHub(ts)
+			seedRepo(ts)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).To(BeNil())
+		})
+	})
+
+	Describe("LatestWorkflowRun", func() {
+		It("returns nil when the repo has no runs", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).To(BeNil())
+		})
+
+		It("returns the latest in-progress run", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","headSha":"sha1","status":"in_progress","conclusion":""}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("in_progress"))
+			Expect(run.Conclusion).To(BeEmpty())
+			Expect(run.HeadSHA).To(Equal("sha1"))
+			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+			Expect(run.FailureReason).To(BeEmpty())
+		})
+
+		It("filters by branch", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"other","status":"completed","conclusion":"success"}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).To(BeNil())
+		})
+
+		It("composes a failure reason from the first failed step", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
+				"status":"completed","conclusion":"failure",
+				"jobs":[{
+					"id":1,"name":"build","status":"completed","conclusion":"failure",
+					"steps":[
+						{"name":"checkout","status":"completed","conclusion":"success","number":1},
+						{"name":"go test","status":"completed","conclusion":"failure","number":2}
+					]
+				}]
+			}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			Expect(run.Conclusion).To(Equal("failure"))
+			Expect(run.FailureReason).To(Equal("build / go test"))
+		})
+
+		It("falls back to the job name when no step failed", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
+				"status":"completed","conclusion":"failure",
+				"jobs":[{
+					"id":1,"name":"build","status":"completed","conclusion":"failure",
+					"steps":[
+						{"name":"checkout","status":"completed","conclusion":"success","number":1}
+					]
+				}]
+			}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			Expect(run.Conclusion).To(Equal("failure"))
+			Expect(run.FailureReason).To(Equal("build"))
+		})
+
+		It("skips successful jobs and uses a later failing job", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
+				"status":"completed","conclusion":"failure",
+				"jobs":[
+					{
+						"id":1,"name":"lint","status":"completed","conclusion":"success",
+						"steps":[
+							{"name":"eslint","status":"completed","conclusion":"success","number":1}
+						]
+					},
+					{
+						"id":2,"name":"test","status":"completed","conclusion":"failure",
+						"steps":[
+							{"name":"setup","status":"completed","conclusion":"success","number":1},
+							{"name":"unit tests","status":"completed","conclusion":"failure","number":2}
+						]
+					}
+				]
+			}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			Expect(run.Conclusion).To(Equal("failure"))
+			Expect(run.FailureReason).To(Equal("test / unit tests"))
+		})
 	})
 })
 
@@ -256,6 +394,16 @@ func seedRepo(ts *httptest.Server) {
 		]
 	}`
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/_admin/seed", strings.NewReader(body))
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := ts.Client().Do(req)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, resp.StatusCode).To(Equal(200))
+	resp.Body.Close()
+}
+
+func setWorkflowRun(ts *httptest.Server, body string) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/_admin/actions/runs", strings.NewReader(body))
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := ts.Client().Do(req)
