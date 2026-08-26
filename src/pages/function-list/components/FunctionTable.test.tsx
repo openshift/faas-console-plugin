@@ -39,6 +39,7 @@ const mockFunctions: FunctionTableItem[] = [
   {
     name: 'my-func',
     repoName: 'my-func',
+    owner: 'twoGiants',
     runtime: 'go',
     status: 'Running',
     url: 'http://my-func.demo.svc',
@@ -50,6 +51,7 @@ const mockFunctions: FunctionTableItem[] = [
   {
     name: 'idle-func',
     repoName: 'idle-func',
+    owner: 'twoGiants',
     runtime: 'node',
     status: 'NotDeployed',
     url: '',
@@ -62,6 +64,7 @@ const mockFunctions: FunctionTableItem[] = [
 const clusterOnlyFunction: FunctionTableItem = {
   name: 'cluster-only',
   repoName: '',
+  owner: '',
   runtime: 'node',
   status: 'Running',
   url: 'http://cluster-only.demo.svc',
@@ -91,6 +94,7 @@ describe('FunctionTable', () => {
     const noRuntime: FunctionTableItem = {
       name: 'cluster-only',
       repoName: '',
+      owner: '',
       runtime: '',
       status: 'Running',
       url: 'http://cluster-only.demo.svc',
@@ -185,6 +189,7 @@ describe('FunctionTable', () => {
     const fn: FunctionTableItem = {
       name: 'my-function',
       repoName: 'my-repo',
+      owner: 'twoGiants',
       runtime: 'node',
       status: 'Running',
       url: '',

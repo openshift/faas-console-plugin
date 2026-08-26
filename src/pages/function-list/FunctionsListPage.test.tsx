@@ -11,6 +11,10 @@ import FunctionsListPage from './FunctionsListPage';
 // https://vitest.dev/api/vi.html#vi-hoisted
 const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
+const streamStub = await vi.hoisted(
+  async () => import('../../common/testing/consoleFetchStreamStub'),
+);
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -33,6 +37,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
       </>
     ),
     consoleFetchJSON,
+    consoleFetch: streamStub.consoleFetchStub,
     SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
     ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
     ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
@@ -51,6 +56,7 @@ describe('FunctionsListPage', () => {
   beforeEach(() => {
     logoutGithubFake();
     authenticateGithubFake();
+    streamStub.resetStreamFrames();
   });
 
   afterEach(() => {
@@ -299,6 +305,72 @@ describe('FunctionsListPage', () => {
     );
 
     expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+  });
+
+  it('shows Building from the build stream, overriding cluster status', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame([{ key: `twoGiants/${funcName}`, buildStatus: 'Building' }]),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Progress: Building')).toBeInTheDocument();
+  });
+
+  it('keeps Running when a build Failed but the cluster is Running', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame([
+        {
+          key: `twoGiants/${funcName}`,
+          buildStatus: 'Failed',
+          failureReason: 'build / go test',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      ]),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+  });
+
+  it('shows BuildFailed with the failure reason and run link from the build stream', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame([
+        {
+          key: `twoGiants/${funcName}`,
+          buildStatus: 'Failed',
+          failureReason: 'build / go test',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      ]),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Error: BuildFailed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
   });
 
   it('uses func.yaml name instead of repo name for cluster matching', async () => {

@@ -16,6 +16,7 @@ import { FunctionSource, FunctionStatus } from '../../../common/types';
 export interface FunctionTableItem {
   name: string;
   repoName: string;
+  owner: string;
   runtime: string;
   status: FunctionStatus;
   url: string;
@@ -23,6 +24,8 @@ export interface FunctionTableItem {
   namespace: string;
   source: FunctionSource;
   mainResource?: K8sResourceCommon;
+  buildRunURL?: string;
+  failureReason?: string;
 }
 
 export function FunctionTable({
@@ -68,7 +71,11 @@ export function FunctionTable({
               <TextOrDash value={fn.runtime} />
             </Td>
             <Td dataLabel={t('Status')}>
-              <StatusCell status={fn.status} />
+              <StatusCell
+                status={fn.status}
+                failureReason={fn.failureReason}
+                buildRunURL={fn.buildRunURL}
+              />
             </Td>
             <Td dataLabel={t('URL')}>
               <UrlCell url={fn.url} />
@@ -95,10 +102,21 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({ status }: { status: FunctionStatus }) {
+function StatusCell({
+  status,
+  failureReason,
+  buildRunURL,
+}: {
+  status: FunctionStatus;
+  failureReason?: string;
+  buildRunURL?: string;
+}) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
   switch (status) {
     case 'Running':
       return <SuccessStatus title={status} />;
+    case 'Building':
     case 'Deploying':
     case 'CreatingRepo':
     case 'Pushing':
@@ -106,6 +124,17 @@ function StatusCell({ status }: { status: FunctionStatus }) {
       return <ProgressStatus title={status} />;
     case 'Error':
       return <ErrorStatus title={status} />;
+    case 'BuildFailed': {
+      const badge = <ErrorStatus title={status} />;
+      const withLink = buildRunURL ? (
+        <a href={buildRunURL} target="_blank" rel="noopener noreferrer">
+          {badge}
+        </a>
+      ) : (
+        badge
+      );
+      return <Tooltip content={failureReason || t('Build failed')}>{withLink}</Tooltip>;
+    }
     case 'ScaledToZero':
     case 'NotDeployed':
       return <InfoStatus title={status} />;
