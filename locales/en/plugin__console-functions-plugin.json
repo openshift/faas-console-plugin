@@ -42,6 +42,7 @@
   "Name": "Name",
   "Namespace": "Namespace",
   "No functions found": "No functions found",
+  "No source repository to edit": "No source repository to edit",
   "Open the function from the list to edit its files, then click \"Save & Deploy\". This pushes your changes to GitHub, which runs the same workflow again to redeploy the function.": "Open the function from the list to edit its files, then click \"Save & Deploy\". This pushes your changes to GitHub, which runs the same workflow again to redeploy the function.",
   "or": "or",
   "Owner": "Owner",

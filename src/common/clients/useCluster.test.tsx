@@ -110,7 +110,7 @@ describe('useCluster', () => {
       const { result } = renderHook(() => useCluster([funcName]));
 
       expect(result.current.functions.size).toBe(1);
-      expect(result.current.functions.get(funcName)?.status).toBe('Running');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Running');
     });
 
     it('falls back to function name label when no latestReadyRevisionName', () => {
@@ -122,7 +122,7 @@ describe('useCluster', () => {
       const { result } = renderHook(() => useCluster([funcName]));
 
       expect(result.current.functions.size).toBe(1);
-      expect(result.current.functions.get(funcName)?.status).toBe('Running');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Running');
     });
 
     it('picks latest revision deployment when multiple revisions exist', () => {
@@ -140,7 +140,7 @@ describe('useCluster', () => {
       const { result } = renderHook(() => useCluster([funcName]));
 
       expect(result.current.functions.size).toBe(1);
-      expect(result.current.functions.get(funcName)?.replicas).toBe(1);
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.replicas).toBe(1);
     });
 
     it('returns empty map when no ksvc resources', () => {
@@ -161,13 +161,40 @@ describe('useCluster', () => {
 
       expect(result.current.functions.size).toBe(2);
 
-      const funcA = result.current.functions.get(funcAName);
+      const funcA = result.current.functions.get(`${namespace}/${funcAName}`);
       expect(funcA?.status).toBe('Running');
       expect(funcA?.replicas).toBe(1);
 
-      const funcB = result.current.functions.get(funcBName);
+      const funcB = result.current.functions.get(`${namespace}/${funcBName}`);
       expect(funcB?.status).toBe('Error');
       expect(funcB?.replicas).toBe(0);
+    });
+
+    it('does not match deployments from a different namespace', () => {
+      const nsA = 'ns-a';
+      const nsB = 'ns-b';
+      const sharedRevision = 'shared-func-00001';
+
+      const ksvcA = ksvcFixture('shared-func', 'True');
+      ksvcA.metadata!.namespace = nsA;
+      ksvcA.status!.latestReadyRevisionName = sharedRevision;
+
+      const ksvcB = ksvcFixture('shared-func', 'True');
+      ksvcB.metadata!.namespace = nsB;
+      ksvcB.status!.latestReadyRevisionName = sharedRevision;
+
+      // Only ns-b has a deployment for the shared revision
+      const depB = deploymentFixture('shared-func', 1, 1, sharedRevision);
+      depB.metadata!.namespace = nsB;
+
+      setFixtures({ knSvcs: [ksvcA, ksvcB], deps: [depB] });
+
+      const { result } = renderHook(() => useCluster(['shared-func']));
+
+      // ns-a function has no deployment in its namespace → Deploying
+      expect(result.current.functions.get(`${nsA}/shared-func`)?.status).toBe('Deploying');
+      // ns-b function correctly pairs with its deployment → Running
+      expect(result.current.functions.get(`${nsB}/shared-func`)?.status).toBe('Running');
     });
   });
 
@@ -177,7 +204,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.name).toBe(funcName);
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.name).toBe(funcName);
     });
   });
 
@@ -187,7 +214,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.status).toBe('Deploying');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Deploying');
     });
 
     it('returns Running when Ready=True and replicas > 0', () => {
@@ -195,7 +222,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.status).toBe('Running');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Running');
     });
 
     it('returns ScaledToZero when Ready=True and replicas are 0', () => {
@@ -206,7 +233,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.status).toBe('ScaledToZero');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('ScaledToZero');
     });
 
     it('returns Error when Ready=False', () => {
@@ -217,7 +244,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.status).toBe('Error');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Error');
     });
 
     it('returns Deploying when Ready=Unknown', () => {
@@ -228,7 +255,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.status).toBe('Deploying');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Deploying');
     });
 
     it('returns Deploying when no Ready condition exists', () => {
@@ -238,7 +265,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.status).toBe('Deploying');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Deploying');
     });
   });
 
@@ -248,7 +275,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.url).toBe(
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.url).toBe(
         'https://my-func-demo.apps.example.com',
       );
     });
@@ -260,7 +287,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.url).toBe('');
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.url).toBe('');
     });
   });
 
@@ -273,7 +300,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.replicas).toBe(2);
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.replicas).toBe(2);
     });
 
     it('returns 0 when deployment is undefined', () => {
@@ -281,7 +308,7 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.replicas).toBe(0);
+      expect(result.current.functions.get(`${namespace}/${funcName}`)?.replicas).toBe(0);
     });
   });
 
@@ -291,9 +318,9 @@ describe('useCluster', () => {
 
       const { result } = renderHook(() => useCluster([funcName]));
 
-      expect(result.current.functions.get(funcName)?.mainResource.apiVersion).toBe(
-        'serving.knative.dev/v1',
-      );
+      expect(
+        result.current.functions.get(`${namespace}/${funcName}`)?.mainResource.apiVersion,
+      ).toBe('serving.knative.dev/v1');
     });
   });
 

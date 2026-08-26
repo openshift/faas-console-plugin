@@ -108,16 +108,19 @@ function listKnativeClusterFunctions(
 ): ReadonlyMap<string, ClusterFunction> {
   const entries = knSvcs.map((ksvc): [string, ClusterFunction] => {
     const name = ksvc.metadata?.labels?.[FUNCTION_NAME_LABEL] ?? ksvc.metadata?.name ?? '';
+    const namespace = ksvc.metadata?.namespace ?? '';
     const latestRevision = ksvc.status?.latestReadyRevisionName;
 
+    const nsDeployments = deployments.filter((d) => d.metadata?.namespace === namespace);
     const deployment = latestRevision
-      ? deployments.find((d) => d.metadata?.labels?.[REVISION_LABEL] === latestRevision)
-      : deployments.find((d) => d.metadata?.labels?.[FUNCTION_NAME_LABEL] === name);
+      ? nsDeployments.find((d) => d.metadata?.labels?.[REVISION_LABEL] === latestRevision)
+      : nsDeployments.find((d) => d.metadata?.labels?.[FUNCTION_NAME_LABEL] === name);
 
     return [
-      name,
+      `${namespace}/${name}`,
       {
         name,
+        namespace,
         status: deriveKnativeStatus(ksvc, deployment),
         url: ksvc.status?.url ?? '',
         replicas: deployment?.status?.readyReplicas ?? 0,

@@ -202,6 +202,20 @@ async function ensureServerlessOperator(page: Page): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Teardown
+// ---------------------------------------------------------------------------
+
+// Removes a deployed function's Knative service so it no longer appears in the
+// cluster-sourced function list. Safe to call when the service is absent.
+export async function deleteFunction(page: Page, name: string, namespace: string): Promise<void> {
+  const headers = await k8sHeaders(page);
+  const res = await page.request.delete(`${ksvcApiPath(namespace)}/${name}`, { headers });
+  if (!res.ok() && res.status() !== 404) {
+    expect(res.status()).toBe(200);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Deploy simulation
 // ---------------------------------------------------------------------------
 
@@ -211,6 +225,7 @@ export async function simulateGitHubActionsDeploy(
   page: Page,
   name: string,
   namespace: string,
+  runtime: string,
 ): Promise<void> {
   const headers = await k8sHeaders(page);
   const path = ksvcApiPath(namespace);
@@ -225,7 +240,10 @@ export async function simulateGitHubActionsDeploy(
       metadata: {
         name,
         namespace,
-        labels: { 'function.knative.dev/name': name },
+        labels: {
+          'function.knative.dev/name': name,
+          'function.knative.dev/runtime': runtime,
+        },
       },
       spec: {
         template: {

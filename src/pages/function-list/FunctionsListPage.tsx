@@ -181,7 +181,8 @@ function useFunctionListPage(): {
   const functions = useMemo(
     () =>
       functionItems.map((item) => {
-        const cf = clusterFunctions.get(item.name);
+        // keyed by namespace/name - the same function name can exist in multiple namespaces
+        const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
         return cf ? enrichItem(item, cf) : item;
       }),
     [functionItems, clusterFunctions],
@@ -216,6 +217,7 @@ function newItem(item: FunctionListItem): FunctionTableItem {
     status: item.err ? 'Error' : 'NotDeployed',
     url: '',
     replicas: 0,
+    source: item.source,
   };
 }
 

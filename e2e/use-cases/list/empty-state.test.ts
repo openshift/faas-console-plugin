@@ -1,11 +1,13 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
 import { resetFakeGithub, seedRepo } from '../../helpers/fakegithub';
-import { E2E_USER, PRESEEDED_FUNC_NAME } from '../../helpers/constants';
+import { E2E_USER, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
+import { deleteFunction } from '../../helpers/cluster';
 
 test.describe('Functions list empty state', () => {
-  test.beforeEach(async () => {
+  test.beforeEach(async ({ page }) => {
     await resetFakeGithub();
+    await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
   });
 
   test.afterEach(async () => {
@@ -18,7 +20,7 @@ test.describe('Functions list empty state', () => {
         {
           path: 'func.yaml',
           mode: '100644',
-          content: `name: ${PRESEEDED_FUNC_NAME}\nruntime: node\nnamespace: default\n`,
+          content: `name: ${PRESEEDED_FUNC_NAME}\nruntime: node\nnamespace: ${PRESEEDED_FUNC_NAMESPACE}\n`,
         },
         {
           path: 'index.js',

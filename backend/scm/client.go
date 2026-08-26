@@ -70,3 +70,70 @@ type FileEntry struct {
 	Type    string `json:"type"`
 	Deleted bool   `json:"deleted,omitempty"`
 }
+
+type ClientStub struct {
+	OnGetUser        func(ctx context.Context) (*User, error)
+	OnListRepos      func(ctx context.Context) ([]Repo, error)
+	OnGetFileContent func(ctx context.Context, owner, repo, ref, path string) (string, error)
+	OnGetFiles       func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
+	OnPushFiles      func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
+	OnInitRepo       func(ctx context.Context, owner, name, branch string, topics []string) error
+	OnStoreSecret    func(ctx context.Context, owner, repo, name, value string) error
+	OnDeleteRepo     func(ctx context.Context, owner, repo string) error
+}
+
+func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
+	if s.OnGetUser != nil {
+		return s.OnGetUser(ctx)
+	}
+	return &User{}, nil
+}
+
+func (s *ClientStub) ListRepos(ctx context.Context) ([]Repo, error) {
+	if s.OnListRepos != nil {
+		return s.OnListRepos(ctx)
+	}
+	return nil, nil
+}
+
+func (s *ClientStub) GetFileContent(ctx context.Context, owner, repo, ref, path string) (string, error) {
+	if s.OnGetFileContent != nil {
+		return s.OnGetFileContent(ctx, owner, repo, ref, path)
+	}
+	return "", nil
+}
+
+func (s *ClientStub) GetFiles(ctx context.Context, owner, repo, ref string) ([]FileEntry, error) {
+	if s.OnGetFiles != nil {
+		return s.OnGetFiles(ctx, owner, repo, ref)
+	}
+	return nil, nil
+}
+
+func (s *ClientStub) PushFiles(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error {
+	if s.OnPushFiles != nil {
+		return s.OnPushFiles(ctx, owner, repo, branch, message, files)
+	}
+	return nil
+}
+
+func (s *ClientStub) InitRepo(ctx context.Context, owner, name, branch string, topics []string) error {
+	if s.OnInitRepo != nil {
+		return s.OnInitRepo(ctx, owner, name, branch, topics)
+	}
+	return nil
+}
+
+func (s *ClientStub) StoreSecret(ctx context.Context, owner, repo, name, value string) error {
+	if s.OnStoreSecret != nil {
+		return s.OnStoreSecret(ctx, owner, repo, name, value)
+	}
+	return nil
+}
+
+func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
+	if s.OnDeleteRepo != nil {
+		return s.OnDeleteRepo(ctx, owner, repo)
+	}
+	return nil
+}

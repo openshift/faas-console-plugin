@@ -1,7 +1,8 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../helpers/constants';
+import { PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
 import {
+  deleteFunction,
   deploymentApiPath,
   ensureNamespace,
   k8sHeaders,
@@ -9,9 +10,13 @@ import {
   simulateGitHubActionsDeploy,
 } from '../../helpers/cluster';
 
-const NAMESPACE = 'delete-test';
+const RUNTIME = 'node';
 test.describe('Delete function', () => {
   test.describe.configure({ mode: 'serial' });
+
+  test.beforeEach(async ({ page }) => {
+    await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
+  });
 
   test('delete button is disabled for not deployed functions', async ({ page }) => {
     await navigateToFunctionsList(page);
@@ -28,8 +33,13 @@ test.describe('Delete function', () => {
     test.setTimeout(600_000);
 
     await test.step('make sure deletion target function is deployed in cluster', async () => {
-      await ensureNamespace(page, NAMESPACE);
-      await simulateGitHubActionsDeploy(page, PRESEEDED_FUNC_NAME, NAMESPACE);
+      await ensureNamespace(page, PRESEEDED_FUNC_NAMESPACE);
+      await simulateGitHubActionsDeploy(
+        page,
+        PRESEEDED_FUNC_NAME,
+        PRESEEDED_FUNC_NAMESPACE,
+        RUNTIME,
+      );
     });
 
     await test.step('navigate to list page', async () => {
@@ -59,9 +69,12 @@ test.describe('Delete function', () => {
         .poll(
           async () =>
             (
-              await page.request.get(`${ksvcApiPath(NAMESPACE)}/${PRESEEDED_FUNC_NAME}`, {
-                headers,
-              })
+              await page.request.get(
+                `${ksvcApiPath(PRESEEDED_FUNC_NAMESPACE)}/${PRESEEDED_FUNC_NAME}`,
+                {
+                  headers,
+                },
+              )
             ).status(),
           { timeout: 30_000, intervals: [2_000] },
         )
@@ -71,7 +84,7 @@ test.describe('Delete function', () => {
         .poll(
           async () => {
             const depRes = await page.request.get(
-              `${deploymentApiPath(NAMESPACE)}?labelSelector=function.knative.dev/name=${PRESEEDED_FUNC_NAME}`,
+              `${deploymentApiPath(PRESEEDED_FUNC_NAMESPACE)}?labelSelector=function.knative.dev/name=${PRESEEDED_FUNC_NAME}`,
               { headers },
             );
             const body = await depRes.json();

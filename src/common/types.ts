@@ -58,6 +58,7 @@ export interface FunctionListItem {
   name: string;
   namespace: string;
   runtime: string;
+  source: FunctionSource;
   err?: string;
 }
 
@@ -85,6 +86,7 @@ export type FunctionStatus =
 
 export interface ClusterFunction {
   readonly name: string;
+  readonly namespace: string;
   readonly status: FunctionStatus;
   readonly url: string;
   readonly replicas: number;

@@ -13,7 +13,7 @@ function scmHeaders(): HeadersInit {
  *
  */
 export async function listFunctions(): Promise<FunctionListItem[]> {
-  return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list`, 'GET', {
+  return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list?all=true`, 'GET', {
     headers: scmHeaders(),
   });
 }
