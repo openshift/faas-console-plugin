@@ -59,6 +59,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", h.HandleHealthz)
 	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
 	mux.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
 	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)

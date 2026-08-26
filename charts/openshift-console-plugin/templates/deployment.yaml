@@ -40,6 +40,20 @@ spec:
             {{- if .Values.plugin.ghApiUrl }}
             - "--gh-api-url={{ .Values.plugin.ghApiUrl }}"
             {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.plugin.port }}
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.plugin.port }}
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
           imagePullPolicy: {{ .Values.plugin.imagePullPolicy }}
           {{- if and (.Values.plugin.securityContext.enabled) (.Values.plugin.containerSecurityContext) }}
           securityContext: {{ tpl (toYaml (omit .Values.plugin.containerSecurityContext "enabled")) $ | nindent 12 }}
