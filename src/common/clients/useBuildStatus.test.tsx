@@ -88,6 +88,24 @@ describe('useBuildStatus', () => {
     unmount();
   });
 
+  it('restarts the stream when connectionId changes', async () => {
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame([{ key: 'alice/fn', buildStatus: 'Building' }]),
+    ]);
+
+    const { rerender } = renderHook(({ connectionId }) => useBuildStatus(connectionId), {
+      initialProps: { connectionId: 1 },
+    });
+
+    await waitFor(() => expect(streamStub.streamFetchCalls()).toBe(1));
+
+    // A new connection (initial login or account switch) must tear down the old
+    // stream and open a fresh one carrying the new user's PAT.
+    rerender({ connectionId: 2 });
+
+    await waitFor(() => expect(streamStub.streamFetchCalls()).toBe(2));
+  });
+
   it('reconnects with backoff after a transient stream error', async () => {
     vi.useFakeTimers();
     streamStub.setStreamError(new Error('network blip')); // no status code -> transient

@@ -10,7 +10,6 @@ interface BuildStatusItem {
   conclusion?: string;
   runURL?: string;
   failureReason?: string;
-  headSHA?: string;
 }
 
 interface BuildSnapshot {
@@ -19,8 +18,9 @@ interface BuildSnapshot {
 
 // useBuildStatus streams per-function GitHub Actions build status over SSE and
 // returns it keyed by "owner/repo". The backend scopes the stream to the
-// authenticated user, so no arguments are required.
-export function useBuildStatus(): ReadonlyMap<string, BuildStatus> {
+// authenticated user. Pass the auth connectionId so the stream tears down and
+// reconnects (with the current PAT) on in-place login and account switch.
+export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatus> {
   const [statuses, setStatuses] = useState<ReadonlyMap<string, BuildStatus>>(() => new Map());
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export function useBuildStatus(): ReadonlyMap<string, BuildStatus> {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [connectionId]);
 
   return statuses;
 }
