@@ -3,7 +3,7 @@ module github.com/openshift/faas-console-plugin/backend
 go 1.26
 
 require (
-	github.com/google/go-github/v72 v72.0.0
+	github.com/google/go-github/v90 v90.0.0
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	go.yaml.in/yaml/v3 v3.0.5
