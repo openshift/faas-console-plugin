@@ -65,6 +65,8 @@ func main() {
 	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
 	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
 	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
+	mux.HandleFunc("GET /api/v1/func/build/status", h.HandleBuildStatus)
+	mux.HandleFunc("GET /api/v1/func/build/watch", h.HandleBuildWatch)
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	muxHandler := loggingMiddleware(mux)
