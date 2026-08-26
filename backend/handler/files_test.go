@@ -17,8 +17,8 @@ import (
 var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 	It("returns all files from the repository using HEAD as the default ref", func() {
 		var gotOwner, gotRepo, gotRef string
-		withSCMStub(&scmStub{
-			getFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
 				gotOwner, gotRepo, gotRef = owner, repo, ref
 				return []scm.FileEntry{
 					{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"},
@@ -46,8 +46,8 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 
 	It("forwards the ?ref query parameter to the SCM client", func() {
 		var gotRef string
-		withSCMStub(&scmStub{
-			getFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
 				gotRef = ref
 				return []scm.FileEntry{
 					{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"},
@@ -110,8 +110,8 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 	})
 
 	It("returns 401 when the SCM token is invalid", func() {
-		withSCMStub(&scmStub{
-			getFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
 				return nil, scm.ErrUnauthorized
 			},
 		})
@@ -127,8 +127,8 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 	})
 
 	It("returns 502 when the SCM API is unavailable", func() {
-		withSCMStub(&scmStub{
-			getFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
 				return nil, errors.New("connection refused")
 			},
 		})
@@ -157,8 +157,8 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 	It("commits the changes to the branch", func() {
 		var gotOwner, gotRepo, gotBranch, gotMessage string
 		var gotFiles []scm.FileEntry
-		withSCMStub(&scmStub{
-			pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+		withSCMStub(&scm.ClientStub{
+			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 				gotOwner, gotRepo, gotBranch, gotMessage = owner, repo, branch, message
 				gotFiles = files
 				return nil
@@ -291,8 +291,8 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 	})
 
 	It("returns 401 when the SCM token is invalid", func() {
-		withSCMStub(&scmStub{
-			pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+		withSCMStub(&scm.ClientStub{
+			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 				return scm.ErrUnauthorized
 			},
 		})
@@ -308,8 +308,8 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 	})
 
 	It("returns 502 when the SCM API is unavailable", func() {
-		withSCMStub(&scmStub{
-			pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+		withSCMStub(&scm.ClientStub{
+			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 				return errors.New("connection refused")
 			},
 		})

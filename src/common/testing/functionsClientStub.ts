@@ -11,14 +11,14 @@ export function listFunctionsStub({
   response,
   errorResponse,
 }: {
-  response?: FunctionListItem;
+  response?: FunctionListItem | FunctionListItem[];
   errorResponse?: { message: string; status: number };
 } = {}) {
   server.use(
     http.get(`${BACKEND_API}/api/v1/func/list`, () => {
       return errorResponse?.message && errorResponse?.status
         ? HttpResponse.json({ message: errorResponse?.message }, { status: errorResponse.status })
-        : HttpResponse.json([response]);
+        : HttpResponse.json(Array.isArray(response) ? response : [response]);
     }),
   );
 }

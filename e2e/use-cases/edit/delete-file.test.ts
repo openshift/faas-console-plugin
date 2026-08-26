@@ -1,13 +1,13 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToEditPage } from '../../helpers/navigation';
-import { E2E_USER, PRESEEDED_FUNC_NAME } from '../../helpers/constants';
+import { E2E_USER, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
 import { seedRepo } from '../../helpers/fakegithub';
 
 const BASE_FILES = [
   {
     path: 'func.yaml',
     mode: '100644',
-    content: `name: ${PRESEEDED_FUNC_NAME}\nruntime: node\nnamespace: default\n`,
+    content: `name: ${PRESEEDED_FUNC_NAME}\nruntime: node\nnamespace: ${PRESEEDED_FUNC_NAMESPACE}\n`,
   },
   {
     path: 'index.js',

@@ -12,7 +12,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
-	"github.com/openshift/faas-console-plugin/backend/scaffold"
+	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -47,22 +47,22 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		var gotPushOwner, gotPushRepo, gotPushBranch, gotPushMessage string
 		var gotPushFiles []scm.FileEntry
 		w := doCreate(func() {
-			withSCMStub(&scmStub{
-				initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+			withSCMStub(&scm.ClientStub{
+				OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 					gotTopics = topics
 					return nil
 				},
-				storeSecret: func(ctx context.Context, owner, repo, name, value string) error {
+				OnStoreSecret: func(ctx context.Context, owner, repo, name, value string) error {
 					gotSecretName = name
 					return nil
 				},
-				pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+				OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 					gotPushOwner, gotPushRepo, gotPushBranch, gotPushMessage = owner, repo, branch, message
 					gotPushFiles = files
 					return nil
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		})
 		Expect(w.Code).To(Equal(http.StatusCreated))
 		Expect(gotTopics).To(Equal([]string{"serverless-function"}))
@@ -81,7 +81,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		},
 		Entry("scaffold generation fails", func() {
 			orig := generateScaffold
-			generateScaffold = func(cfg scaffold.Config) ([]scm.FileEntry, error) {
+			generateScaffold = func(cfg functions.ScaffoldConfig) ([]scm.FileEntry, error) {
 				return nil, errors.New("disk full")
 			}
 			DeferCleanup(func() { generateScaffold = orig })
@@ -96,66 +96,66 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		}, http.StatusBadGateway),
 
 		Entry("InitRepo returns ErrRepoExists", func() {
-			withSCMStub(&scmStub{
-				initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+			withSCMStub(&scm.ClientStub{
+				OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 					return scm.ErrRepoExists
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusConflict),
 
 		Entry("InitRepo returns ErrUnauthorized", func() {
-			withSCMStub(&scmStub{
-				initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+			withSCMStub(&scm.ClientStub{
+				OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 					return scm.ErrUnauthorized
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusUnauthorized),
 
 		Entry("InitRepo returns generic error", func() {
-			withSCMStub(&scmStub{
-				initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+			withSCMStub(&scm.ClientStub{
+				OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 					return errors.New("connection refused")
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusBadGateway),
 
 		Entry("StoreSecret returns ErrUnauthorized", func() {
-			withSCMStub(&scmStub{
-				storeSecret: func(ctx context.Context, owner, repo, name, value string) error {
+			withSCMStub(&scm.ClientStub{
+				OnStoreSecret: func(ctx context.Context, owner, repo, name, value string) error {
 					return scm.ErrUnauthorized
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusUnauthorized),
 
 		Entry("StoreSecret returns generic error", func() {
-			withSCMStub(&scmStub{
-				storeSecret: func(ctx context.Context, owner, repo, name, value string) error {
+			withSCMStub(&scm.ClientStub{
+				OnStoreSecret: func(ctx context.Context, owner, repo, name, value string) error {
 					return errors.New("connection refused")
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusBadGateway),
 
 		Entry("PushFiles returns ErrUnauthorized", func() {
-			withSCMStub(&scmStub{
-				pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+			withSCMStub(&scm.ClientStub{
+				OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 					return scm.ErrUnauthorized
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusUnauthorized),
 
 		Entry("PushFiles returns generic error", func() {
-			withSCMStub(&scmStub{
-				pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+			withSCMStub(&scm.ClientStub{
+				OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 					return errors.New("connection refused")
 				},
 			})
-			withClusterStub(&clusterStub{})
+			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusBadGateway),
 	)
 
@@ -211,17 +211,17 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Entry("missing owner", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "", Repo: "r"}),
 		Entry("missing repo", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: ""}),
 		Entry("env var missing name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "", Value: "v"}}}),
+			EnvVars: []functions.EnvVar{{Name: "", Value: "v"}}}),
 		Entry("env var invalid name", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "123BAD", Source: "value", Value: "v"}}}),
+			EnvVars: []functions.EnvVar{{Name: "123BAD", Source: "value", Value: "v"}}}),
 		Entry("secret env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceKey: "k"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "secret", ResourceKey: "k"}}}),
 		Entry("secret env var missing resourceKey", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "secret", ResourceName: "s"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "secret", ResourceName: "s"}}}),
 		Entry("configMap env var missing resourceName", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "configMap", ResourceKey: "k"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "configMap", ResourceKey: "k"}}}),
 		Entry("invalid env var source", createRequest{Name: "fn", Runtime: "go", Registry: "r", Namespace: "ns", Branch: "main", Owner: "a", Repo: "r",
-			EnvVars: []scaffold.EnvVar{{Name: "X", Source: "invalid"}}}),
+			EnvVars: []functions.EnvVar{{Name: "X", Source: "invalid"}}}),
 	)
 
 	Describe("rollback on failure", func() {
@@ -230,29 +230,29 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			recordCall := func(key string) { calls[key]++ }
 
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					deleteRepo: func(ctx context.Context, owner, repo string) error {
+				withSCMStub(&scm.ClientStub{
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
 						recordCall("deleteRepo")
 						return nil
 					},
 				})
-				withClusterStub(&clusterStub{
-					requestToken: func(ctx context.Context, namespace string) (string, error) {
+				withClusterStub(&cluster.ClientStub{
+					OnRequestToken: func(ctx context.Context, namespace string) (string, error) {
 						return "", errors.New("token endpoint unavailable")
 					},
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")
 						return nil
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRole")
 						return nil
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRoleBinding")
 						return nil
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteImageBuilderBinding")
 						return nil
 					},
@@ -271,29 +271,29 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			recordCall := func(key string) { calls[key]++ }
 
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+				withSCMStub(&scm.ClientStub{
+					OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 						return errors.New("github down")
 					},
-					deleteRepo: func(ctx context.Context, owner, repo string) error {
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
 						recordCall("deleteRepo")
 						return nil
 					},
 				})
-				withClusterStub(&clusterStub{
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+				withClusterStub(&cluster.ClientStub{
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")
 						return nil
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRole")
 						return nil
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRoleBinding")
 						return nil
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteImageBuilderBinding")
 						return nil
 					},
@@ -312,29 +312,29 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			recordCall := func(key string) { calls[key]++ }
 
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					storeSecret: func(ctx context.Context, owner, repo, name, value string) error {
+				withSCMStub(&scm.ClientStub{
+					OnStoreSecret: func(ctx context.Context, owner, repo, name, value string) error {
 						return errors.New("github down")
 					},
-					deleteRepo: func(ctx context.Context, owner, repo string) error {
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
 						recordCall("deleteRepo")
 						return nil
 					},
 				})
-				withClusterStub(&clusterStub{
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+				withClusterStub(&cluster.ClientStub{
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")
 						return nil
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRole")
 						return nil
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRoleBinding")
 						return nil
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteImageBuilderBinding")
 						return nil
 					},
@@ -353,29 +353,29 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			recordCall := func(key string) { calls[key]++ }
 
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					pushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
+				withSCMStub(&scm.ClientStub{
+					OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 						return errors.New("github down")
 					},
-					deleteRepo: func(ctx context.Context, owner, repo string) error {
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
 						recordCall("deleteRepo")
 						return nil
 					},
 				})
-				withClusterStub(&clusterStub{
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+				withClusterStub(&cluster.ClientStub{
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")
 						return nil
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRole")
 						return nil
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRoleBinding")
 						return nil
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteImageBuilderBinding")
 						return nil
 					},
@@ -394,26 +394,26 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			recordCall := func(key string) { calls[key]++ }
 
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					deleteRepo: func(ctx context.Context, owner, repo string) error {
+				withSCMStub(&scm.ClientStub{
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
 						recordCall("deleteRepo")
 						return nil
 					},
 				})
-				withClusterStub(&clusterStub{
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+				withClusterStub(&cluster.ClientStub{
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")
 						return nil
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRole")
 						return nil
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRoleBinding")
 						return nil
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteImageBuilderBinding")
 						return nil
 					},
@@ -428,41 +428,41 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			recordCall := func(key string) { calls[key]++ }
 
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+				withSCMStub(&scm.ClientStub{
+					OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 						return errors.New("github down")
 					},
-					deleteRepo: func(ctx context.Context, owner, repo string) error {
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
 						recordCall("deleteRepo")
 						return nil
 					},
 				})
-				withClusterStub(&clusterStub{
-					createServiceAccount: func(ctx context.Context, namespace string) (bool, error) {
+				withClusterStub(&cluster.ClientStub{
+					OnCreateServiceAccount: func(ctx context.Context, namespace string) (bool, error) {
 						return false, nil
 					},
-					applyRole: func(ctx context.Context, namespace string) (bool, error) {
+					OnApplyRole: func(ctx context.Context, namespace string) (bool, error) {
 						return false, nil
 					},
-					createRoleBinding: func(ctx context.Context, namespace string) (bool, error) {
+					OnCreateRoleBinding: func(ctx context.Context, namespace string) (bool, error) {
 						return false, nil
 					},
-					createImageBuilderBinding: func(ctx context.Context, namespace string) (bool, error) {
+					OnCreateImageBuilderBinding: func(ctx context.Context, namespace string) (bool, error) {
 						return false, nil
 					},
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")
 						return nil
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRole")
 						return nil
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteRoleBinding")
 						return nil
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						recordCall("deleteImageBuilderBinding")
 						return nil
 					},
@@ -478,22 +478,22 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 		It("returns the original error when rollback also fails", func() {
 			w := doCreate(func() {
-				withSCMStub(&scmStub{
-					initRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
+				withSCMStub(&scm.ClientStub{
+					OnInitRepo: func(ctx context.Context, owner, name, branch string, topics []string) error {
 						return errors.New("github down")
 					},
 				})
-				withClusterStub(&clusterStub{
-					deleteServiceAccount: func(ctx context.Context, namespace string) error {
+				withClusterStub(&cluster.ClientStub{
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						return errors.New("rollback failed")
 					},
-					deleteRole: func(ctx context.Context, namespace string) error {
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
 						return errors.New("rollback failed")
 					},
-					deleteRoleBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
 						return errors.New("rollback failed")
 					},
-					deleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
 						return errors.New("rollback failed")
 					},
 				})

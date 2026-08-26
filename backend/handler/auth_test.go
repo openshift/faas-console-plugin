@@ -15,8 +15,8 @@ import (
 
 var _ = Describe("GET /api/v1/auth/user", func() {
 	It("returns the authenticated user", func() {
-		withSCMStub(&scmStub{
-			getUser: func(ctx context.Context) (*scm.User, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetUser: func(ctx context.Context) (*scm.User, error) {
 				return &scm.User{Login: "alice", AvatarURL: "https://example.com/avatar"}, nil
 			},
 		})
@@ -34,8 +34,8 @@ var _ = Describe("GET /api/v1/auth/user", func() {
 	})
 
 	It("returns 401 when the SCM token is invalid", func() {
-		withSCMStub(&scmStub{
-			getUser: func(ctx context.Context) (*scm.User, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetUser: func(ctx context.Context) (*scm.User, error) {
 				return nil, scm.ErrUnauthorized
 			},
 		})
@@ -57,8 +57,8 @@ var _ = Describe("GET /api/v1/auth/user", func() {
 	})
 
 	It("returns 502 when the SCM API is unavailable", func() {
-		withSCMStub(&scmStub{
-			getUser: func(ctx context.Context) (*scm.User, error) {
+		withSCMStub(&scm.ClientStub{
+			OnGetUser: func(ctx context.Context) (*scm.User, error) {
 				return nil, errors.New("connection refused")
 			},
 		})

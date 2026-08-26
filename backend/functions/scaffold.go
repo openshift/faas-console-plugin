@@ -1,11 +1,11 @@
-package scaffold
+package functions
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"knative.dev/func/pkg/functions"
+	fn "knative.dev/func/pkg/functions"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
@@ -18,7 +18,7 @@ type EnvVar struct {
 	ResourceKey  string `json:"resourceKey"`
 }
 
-type Config struct {
+type ScaffoldConfig struct {
 	Name             string
 	Runtime          string
 	Registry         string
@@ -29,7 +29,7 @@ type Config struct {
 	EnvVars          []EnvVar
 }
 
-func Generate(cfg Config) ([]scm.FileEntry, error) {
+func Generate(cfg ScaffoldConfig) ([]scm.FileEntry, error) {
 	tmpDir, err := os.MkdirTemp("", "func-scaffold-*")
 	if err != nil {
 		return nil, fmt.Errorf("create temp dir: %w", err)
@@ -38,7 +38,7 @@ func Generate(cfg Config) ([]scm.FileEntry, error) {
 
 	root := filepath.Join(tmpDir, cfg.Name)
 
-	if _, err := functions.New().Init(functions.Function{
+	if _, err := fn.New().Init(fn.Function{
 		Name:      cfg.Name,
 		Root:      root,
 		Runtime:   cfg.Runtime,

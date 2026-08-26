@@ -1,4 +1,4 @@
-package scaffold
+package functions
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestScaffold(t *testing.T) {
+func TestFunctions(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Scaffold Suite")
+	RunSpecs(t, "Functions Suite")
 }

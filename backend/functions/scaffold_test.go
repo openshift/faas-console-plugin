@@ -1,4 +1,4 @@
-package scaffold
+package functions
 
 import (
 	. "github.com/onsi/ginkgo/v2"
@@ -9,7 +9,7 @@ import (
 
 var _ = Describe("Generate", func() {
 	It("creates the function source and CI files for a Go function", func() {
-		files, err := Generate(Config{
+		files, err := Generate(ScaffoldConfig{
 			Name:      "my-func",
 			Runtime:   "go",
 			Registry:  "image-registry.openshift-image-registry.svc:5000/default",
@@ -38,7 +38,7 @@ var _ = Describe("Generate", func() {
 	})
 
 	It("returns an error when function init fails", func() {
-		_, err := Generate(Config{
+		_, err := Generate(ScaffoldConfig{
 			Name: "my-func", Runtime: "invalid-runtime", Registry: "quay.io/myuser",
 			Namespace: "default", Branch: "main", SCM: scm.GitHub,
 		})
@@ -47,7 +47,7 @@ var _ = Describe("Generate", func() {
 	})
 
 	It("returns an error for an unsupported SCM platform", func() {
-		_, err := Generate(Config{
+		_, err := Generate(ScaffoldConfig{
 			Name: "my-func", Runtime: "go", Registry: "quay.io/myuser",
 			Namespace: "default", Branch: "main", SCM: scm.Platform("gitlab"),
 		})

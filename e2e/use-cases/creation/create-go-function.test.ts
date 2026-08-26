@@ -1,14 +1,23 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { Request } from '@playwright/test';
 import { navigateToCreatePage } from '../../helpers/navigation';
-import { ensureNamespace, simulateGitHubActionsDeploy } from '../../helpers/cluster';
+import {
+  deleteFunction,
+  ensureNamespace,
+  simulateGitHubActionsDeploy,
+} from '../../helpers/cluster';
 
 const FUNC_NAME = 'test-func';
 const NAMESPACE = 'create-test';
 const BRANCH = 'main';
+const RUNTIME = 'go';
 const REGISTRY_PREFIX = 'image-registry.openshift-image-registry.svc:5000/';
 
 test.describe('Create go function', () => {
+  test.afterEach(async ({ page }) => {
+    await deleteFunction(page, FUNC_NAME, NAMESPACE);
+  });
+
   test('user creates a go function and is redirected to the overview', async ({ page }) => {
     test.setTimeout(600_000);
 
@@ -55,7 +64,7 @@ test.describe('Create go function', () => {
       await page.locator('#repo').fill(FUNC_NAME);
       await page.locator('#branch').fill(BRANCH);
       await page.locator('#name').fill(FUNC_NAME);
-      await page.locator('#runtime').selectOption('go');
+      await page.locator('#runtime').selectOption(RUNTIME);
       await page.locator('#namespace').fill(NAMESPACE);
     });
 
@@ -80,7 +89,7 @@ test.describe('Create go function', () => {
     });
 
     await test.step('simulate GitHub Actions deployment', async () => {
-      await simulateGitHubActionsDeploy(page, FUNC_NAME, NAMESPACE);
+      await simulateGitHubActionsDeploy(page, FUNC_NAME, NAMESPACE, RUNTIME);
     });
 
     await test.step('verify function shows as deployed in the UI', async () => {
@@ -90,6 +99,7 @@ test.describe('Create go function', () => {
       const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
       await expect(row).toBeVisible({ timeout: 30_000 });
       await expect(row.getByText(/Running|ScaledToZero/)).toBeVisible({ timeout: 300_000 });
+      await expect(row.locator('td[data-label="Runtime"]')).toHaveText(RUNTIME);
     });
   });
 });

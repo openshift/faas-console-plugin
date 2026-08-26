@@ -186,6 +186,43 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
   });
 
+  it('shows repo and cluster-only functions together in a union list', async () => {
+    listFunctionsStub({ response: [repoListItem('repo-func'), clusterListItem('cluster-func')] });
+    clusterStub.setFixtures({
+      knSvcs: [
+        clusterStub.ksvcFixture('repo-func', 'True'),
+        clusterStub.ksvcFixture('cluster-func', 'True'),
+      ],
+      deps: [
+        clusterStub.deploymentFixture('repo-func', 1, 1),
+        clusterStub.deploymentFixture('cluster-func', 1, 1),
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('repo-func')).toBeInTheDocument();
+    expect(screen.getByText('cluster-func')).toBeInTheDocument();
+  });
+
+  it('disables Edit button for cluster-only functions', async () => {
+    listFunctionsStub({ response: clusterListItem('cluster-func') });
+    clusterStub.setFixtures(clusterStub.funcFixture('cluster-func'));
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('cluster-func')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
     logoutGithubFake();
     render(
@@ -278,6 +315,7 @@ describe('FunctionsListPage', () => {
             name: funcName,
             namespace: 'demo',
             runtime: 'go',
+            source: 'repo',
           },
         ]);
       }),
@@ -327,6 +365,7 @@ describe('FunctionsListPage', () => {
           name: 'fn-a',
           namespace: 'demo',
           runtime: 'go',
+          source: 'repo',
         },
       ]);
     }
@@ -390,6 +429,7 @@ describe('FunctionsListPage', () => {
               name: 'fn-a',
               namespace: 'demo',
               runtime: 'go',
+              source: 'repo',
             },
             {
               owner: 'twoGiants',
@@ -399,6 +439,7 @@ describe('FunctionsListPage', () => {
               name: 'fn-b',
               namespace: 'demo',
               runtime: 'go',
+              source: 'repo',
             },
           ]);
         }
@@ -411,6 +452,7 @@ describe('FunctionsListPage', () => {
             name: 'fn-a',
             namespace: 'demo',
             runtime: 'go',
+            source: 'repo',
           },
         ]);
       }),
@@ -446,6 +488,7 @@ function clusterListItem(name: string, namespace = 'demo', runtime = 'node'): Fu
     name,
     namespace,
     runtime,
+    source: 'cluster',
   };
 }
 
@@ -463,5 +506,6 @@ function repoListItem(
     name: name ?? repoName,
     namespace,
     runtime,
+    source: 'repo',
   };
 }

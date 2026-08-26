@@ -1,8 +1,13 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
-import { PRESEEDED_FUNC_NAME } from '../../helpers/constants';
+import { PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
+import { deleteFunction } from '../../helpers/cluster';
 
 test.describe('Functions list', () => {
+  test.beforeEach(async ({ page }) => {
+    await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
+  });
+
   test('user browses functions, refreshes, and navigates to edit and create', async ({ page }) => {
     await test.step('navigate to functions list', async () => {
       await navigateToFunctionsList(page);
