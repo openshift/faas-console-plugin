@@ -175,15 +175,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders the setup guide button in the list description', async () => {
-    renderAuthenticated();
-    setupBackendListAPIResponse([listItem('my-func')]);
-    mockUseCluster.mockReturnValue(
-      clusterData({
-        functions: [
-          clusterFunction('my-func', 'Running', 1, 'https://my-func-demo.apps.example.com'),
-        ],
-      }),
-    );
+    listFunctionsStub({ response: repoListItem(funcName) });
 
     render(
       <MemoryRouter>
