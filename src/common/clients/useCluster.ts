@@ -1,4 +1,8 @@
-import { K8sResourceKind, useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  K8sResourceKind,
+  useK8sWatchResource,
+  WatchK8sResource,
+} from '@openshift-console/dynamic-plugin-sdk';
 import { useMemo } from 'react';
 import {
   ClusterFunction,
@@ -19,60 +23,16 @@ export function useCluster(
   error: Error;
 } {
   const knSvcConfig = useMemo(
-    () =>
-      functionNames.length > 0
-        ? {
-            groupVersionKind: { group: 'serving.knative.dev', version: 'v1', kind: 'Service' },
-            isList: true,
-            selector: {
-              matchExpressions: [
-                { key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames },
-              ],
-            },
-          }
-        : null,
-    [functionNames],
+    () => newKsvcWatchConfig(functionNames, namespace),
+    [functionNames, namespace],
   );
-
   const depConfig = useMemo(
-    () =>
-      functionNames.length > 0
-        ? {
-            groupVersionKind: { group: 'apps', version: 'v1', kind: 'Deployment' },
-            isList: true,
-            selector: {
-              matchExpressions: [
-                { key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames },
-              ],
-            },
-          }
-        : null,
-    [functionNames],
+    () => newDeploymentWatchConfig(functionNames, namespace),
+    [functionNames, namespace],
   );
 
-  const secretConfig = useMemo(
-    () =>
-      namespace
-        ? {
-            groupVersionKind: { version: 'v1', kind: 'Secret' },
-            namespace,
-            isList: true,
-          }
-        : null,
-    [namespace],
-  );
-
-  const configMapConfig = useMemo(
-    () =>
-      namespace
-        ? {
-            groupVersionKind: { version: 'v1', kind: 'ConfigMap' },
-            namespace,
-            isList: true,
-          }
-        : null,
-    [namespace],
-  );
+  const secretConfig = useMemo(() => newSecretConfig(namespace), [namespace]);
+  const configMapConfig = useMemo(() => newConfigMapConfig(namespace), [namespace]);
 
   const [knSvcs, knLoaded, knError] = useK8sWatchResource<K8sResourceKind[]>(knSvcConfig);
   const [deps, depLoaded, depError] = useK8sWatchResource<K8sResourceKind[]>(depConfig);
@@ -99,6 +59,53 @@ export function useCluster(
     configMaps,
     loaded,
     error: knError || depError || secretError || cmError,
+  };
+}
+
+function newKsvcWatchConfig(functionNames: string[], namespace?: string): WatchK8sResource | null {
+  return functionNames.length > 0
+    ? newWatchConfigWithSelector(functionNames, 'serving.knative.dev', 'Service', namespace)
+    : null;
+}
+
+function newWatchConfigWithSelector(
+  functionNames: string[],
+  group: string,
+  kind: string,
+  namespace?: string,
+): WatchK8sResource {
+  return {
+    groupVersionKind: { group, version: 'v1', kind },
+    isList: true,
+    namespace,
+    selector: {
+      matchExpressions: [{ key: FUNCTION_NAME_LABEL, operator: 'In', values: functionNames }],
+    },
+  };
+}
+
+function newDeploymentWatchConfig(
+  functionNames: string[],
+  namespace?: string,
+): WatchK8sResource | null {
+  return functionNames.length > 0
+    ? newWatchConfigWithSelector(functionNames, 'apps', 'Deployment', namespace)
+    : null;
+}
+
+function newSecretConfig(namespace?: string): WatchK8sResource | null {
+  return namespace ? newDataWatchConfig('Secret', namespace) : null;
+}
+
+function newConfigMapConfig(namespace?: string): WatchK8sResource | null {
+  return namespace ? newDataWatchConfig('ConfigMap', namespace) : null;
+}
+
+function newDataWatchConfig(kind: string, namespace?: string): WatchK8sResource {
+  return {
+    groupVersionKind: { version: 'v1', kind },
+    namespace,
+    isList: true,
   };
 }
 

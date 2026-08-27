@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { FunctionTable, FunctionTableItem } from './FunctionTable';
 import { FUNCTION_NAME_LABEL } from '../../../common/types';
+import { FunctionTable, FunctionTableItem } from './FunctionTable';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -79,7 +79,7 @@ describe('FunctionTable', () => {
   it('renders a row for each function', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} />
+        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -102,7 +102,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[noRuntime]} onEdit={vi.fn()} />
+        <FunctionTable functions={[noRuntime]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -113,7 +113,7 @@ describe('FunctionTable', () => {
   it('renders namespace with dash for empty value', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} />
+        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -122,10 +122,21 @@ describe('FunctionTable', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
   });
 
+  it('hides the namespace column when showNamespace is false', () => {
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} showNamespace={false} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText('Namespace')).not.toBeInTheDocument();
+    expect(screen.queryByText('demo')).not.toBeInTheDocument();
+  });
+
   it('renders SuccessStatus for Running functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} />
+        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -135,7 +146,7 @@ describe('FunctionTable', () => {
   it('renders InfoStatus for NotDeployed functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} />
+        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -145,7 +156,7 @@ describe('FunctionTable', () => {
   it('displays hostname-only link for URL', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} />
+        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -160,7 +171,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={onEdit} />
+        <FunctionTable functions={[mockFunctions[0]]} onEdit={onEdit} showNamespace />
       </MemoryRouter>,
     );
 
@@ -184,7 +195,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[fn]} onEdit={onEdit} />
+        <FunctionTable functions={[fn]} onEdit={onEdit} showNamespace />
       </MemoryRouter>,
     );
 
@@ -199,7 +210,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} />
+        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -216,7 +227,7 @@ describe('FunctionTable', () => {
   it('disables delete button for NotDeployed functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} />
+        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -226,7 +237,7 @@ describe('FunctionTable', () => {
   it('disables edit button for cluster-only functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} />
+        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -239,7 +250,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[clusterOnlyFunction]} onEdit={onEdit} />
+        <FunctionTable functions={[clusterOnlyFunction]} onEdit={onEdit} showNamespace />
       </MemoryRouter>,
     );
 
@@ -252,7 +263,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} />
+        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -263,7 +274,7 @@ describe('FunctionTable', () => {
   it('enables edit button for functions with a repo source', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} />
+        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 

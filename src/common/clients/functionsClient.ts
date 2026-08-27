@@ -1,10 +1,9 @@
-import { consoleFetch, consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  consoleFetch,
+  consoleFetchJSON,
+  isAllNamespacesKey,
+} from '@openshift-console/dynamic-plugin-sdk';
 import { CreateFunctionRequest, FileEntry, FunctionListItem, PAT_KEY, PROXY_BASE } from '../types';
-
-function scmHeaders(): HeadersInit {
-  const pat = sessionStorage.getItem(PAT_KEY);
-  return pat ? { 'X-SCM-Token': pat } : {};
-}
 
 /**
  * listFunctions returns a list of function metadata.
@@ -12,10 +11,19 @@ function scmHeaders(): HeadersInit {
  * Test doubles for this function are in src/common/testing/functionsClientStub.ts
  *
  */
-export async function listFunctions(): Promise<FunctionListItem[]> {
-  return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list?all=true`, 'GET', {
+export async function listFunctions(namespace: string): Promise<FunctionListItem[]> {
+  const query = isAllNamespacesKey(namespace)
+    ? '?all=true'
+    : `?namespace=${encodeURIComponent(namespace)}`;
+
+  return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`, 'GET', {
     headers: scmHeaders(),
   });
+}
+
+function scmHeaders(): HeadersInit {
+  const pat = sessionStorage.getItem(PAT_KEY);
+  return pat ? { 'X-SCM-Token': pat } : {};
 }
 
 export async function createFunction(data: CreateFunctionRequest): Promise<void> {
