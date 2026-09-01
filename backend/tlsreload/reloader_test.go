@@ -50,6 +50,25 @@ var _ = Describe("Reloader", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(certificateCommonName(cert)).To(Equal("current.example.com"))
 	})
+
+	It("skips reparsing when the certificate pair is unchanged", func() {
+		dir := GinkgoT().TempDir()
+		certFile := filepath.Join(dir, "tls.crt")
+		keyFile := filepath.Join(dir, "tls.key")
+
+		writeCertificatePair(certFile, keyFile, "stable.example.com")
+		reloader, err := New(certFile, keyFile)
+		Expect(err).NotTo(HaveOccurred())
+
+		before, err := reloader.GetCertificate(nil)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(reloader.reload()).To(Succeed())
+
+		after, err := reloader.GetCertificate(nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after).To(BeIdenticalTo(before))
+	})
 })
 
 func writeCertificatePair(certFile, keyFile, commonName string) {
