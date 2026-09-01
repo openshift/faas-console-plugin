@@ -369,6 +369,28 @@ var _ = Describe("Kubernetes cluster client", func() {
 			Expect(token).To(Equal("sa-token-value"))
 		})
 
+		It("requests a token with the configured expiry", func() {
+			var requestedExpiry *int64
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.GetSubresource() != "token" {
+					return false, nil, nil
+				}
+				tr := action.(k8stesting.CreateAction).GetObject().(*authenticationv1.TokenRequest)
+				requestedExpiry = tr.Spec.ExpirationSeconds
+				return true, &authenticationv1.TokenRequest{
+					Status: authenticationv1.TokenRequestStatus{Token: "sa-token-value"},
+				}, nil
+			})
+			cl := &k8sClient{clientset: cs, tokenExpiry: 7 * 24 * 60 * 60}
+
+			_, err := cl.RequestToken(context.Background(), "default")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requestedExpiry).NotTo(BeNil())
+			Expect(*requestedExpiry).To(Equal(int64(7 * 24 * 60 * 60)))
+		})
+
 		It("returns an error when the token endpoint is unavailable", func() {
 			cs := fake.NewSimpleClientset()
 			cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -384,4 +406,38 @@ var _ = Describe("Kubernetes cluster client", func() {
 			Expect(err).To(HaveOccurred())
 		})
 	})
+})
+
+var _ = Describe("ParseTokenExpiry", func() {
+	It("defaults to 30 days when unset", func() {
+		secs, err := ParseTokenExpiry("")
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(secs).To(Equal(int64(30 * 24 * 60 * 60)))
+	})
+
+	DescribeTable("parses common duration notation",
+		func(value string, want int64) {
+			secs, err := ParseTokenExpiry(value)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(secs).To(Equal(want))
+		},
+		Entry("days", "7d", int64(7*24*60*60)),
+		Entry("hours", "10h", int64(10*60*60)),
+		Entry("minutes", "90m", int64(90*60)),
+		Entry("days and hours combined", "7d12h", int64(7*24*60*60+12*60*60)),
+	)
+
+	DescribeTable("rejects invalid values",
+		func(value string) {
+			_, err := ParseTokenExpiry(value)
+			Expect(err).To(HaveOccurred())
+		},
+		Entry("non-numeric", "banana"),
+		Entry("missing unit", "720"),
+		Entry("bare days unit", "d"),
+		Entry("zero", "0h"),
+		Entry("negative", "-5h"),
+		Entry("rounds down to zero seconds", "500ms"),
+	)
 })

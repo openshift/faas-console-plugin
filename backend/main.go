@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
 	"github.com/openshift/faas-console-plugin/backend/scm"
@@ -48,12 +49,17 @@ func main() {
 		log.Fatal("--external-api-server-url is required")
 	}
 
+	tokenExpiry, err := cluster.ParseTokenExpiry(os.Getenv("SA_TOKEN_EXPIRY"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
 	}
 
-	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer)
+	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, tokenExpiry)
 	if err != nil {
 		log.Fatal(err)
 	}

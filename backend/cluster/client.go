@@ -2,8 +2,12 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/kube"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -31,15 +35,62 @@ type Client interface {
 	RequestToken(ctx context.Context, namespace string) (string, error)
 }
 
-// DefaultTokenExpiry is the requested SA token lifetime in seconds. Matches the
-// previous frontend behaviour. Security concern: a long-lived token in an SCM
-// Actions secret increases exposure if leaked; shorter expiry is a follow-up.
-const DefaultTokenExpiry int64 = 365 * 24 * 60 * 60 // 1 year
+// DefaultTokenExpiry is the requested SA token lifetime in seconds when no
+// override is configured. Kept short to limit exposure of the token stored in
+// an SCM Actions secret if leaked. Override via the SA_TOKEN_EXPIRY env var
+// (a duration such as 30d, 10h, or 7d12h); see ParseTokenExpiry.
+const DefaultTokenExpiry int64 = 30 * 24 * 60 * 60 // 30 days
 
-// New creates a cluster client authenticated with token.
+// errExpiryFormat describes the accepted SA_TOKEN_EXPIRY notation.
+var errExpiryFormat = errors.New("must be a duration such as 30d, 10h, or 7d12h")
+
+// ParseTokenExpiry converts the SA_TOKEN_EXPIRY value into a token lifetime in
+// seconds. The value is a duration in common notation, e.g. 30d, 10h, or
+// 7d12h. The 'd' (days) unit extends Go's standard duration units (h, m, s).
+// An empty value yields DefaultTokenExpiry.
+func ParseTokenExpiry(s string) (int64, error) {
+	if s == "" {
+		return DefaultTokenExpiry, nil
+	}
+	d, err := parseExpiryDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("invalid token expiry %q: %w", s, err)
+	}
+	secs := int64(d / time.Second)
+	if secs <= 0 {
+		return 0, fmt.Errorf("invalid token expiry %q: must be at least one second", s)
+	}
+	return secs, nil
+}
+
+// parseExpiryDuration parses a duration that may include a leading days
+// component (e.g. 7d or 7d12h). time.ParseDuration handles h/m/s but not d.
+func parseExpiryDuration(s string) (time.Duration, error) {
+	var total time.Duration
+	rest := s
+	if i := strings.IndexByte(rest, 'd'); i >= 0 {
+		days, err := strconv.Atoi(rest[:i])
+		if err != nil {
+			return 0, errExpiryFormat
+		}
+		total += time.Duration(days) * 24 * time.Hour
+		rest = rest[i+1:]
+	}
+	if rest != "" {
+		d, err := time.ParseDuration(rest)
+		if err != nil {
+			return 0, errExpiryFormat
+		}
+		total += d
+	}
+	return total, nil
+}
+
+// New creates a cluster client authenticated with token. tokenExpiry is the
+// requested SA token lifetime in seconds (see ParseTokenExpiry).
 // When host is non-empty (dev/test) it is used as the API server URL directly.
 // When host is empty the standard in-cluster config is used (pod env vars + SA files).
-func New(host, token string, caCert []byte) (Client, error) {
+func New(host, token string, caCert []byte, tokenExpiry int64) (Client, error) {
 	cfg, err := kube.RESTConfig(host, token, caCert)
 	if err != nil {
 		return nil, err
@@ -49,11 +100,12 @@ func New(host, token string, caCert []byte) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
-	return &k8sClient{clientset: clientset}, nil
+	return &k8sClient{clientset: clientset, tokenExpiry: tokenExpiry}, nil
 }
 
 type k8sClient struct {
-	clientset kubernetes.Interface
+	clientset   kubernetes.Interface
+	tokenExpiry int64 // requested SA token lifetime in seconds
 }
 
 func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
@@ -181,7 +233,7 @@ func (c *k8sClient) DeleteImageBuilderBinding(ctx context.Context, namespace str
 }
 
 func (c *k8sClient) RequestToken(ctx context.Context, namespace string) (string, error) {
-	expiry := DefaultTokenExpiry
+	expiry := c.tokenExpiry
 	result, err := c.clientset.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, saName, &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
 			ExpirationSeconds: &expiry,

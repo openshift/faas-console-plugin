@@ -89,7 +89,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 		Entry("cluster client connection fails", func() {
 			orig := newClusterClient
-			newClusterClient = func(host, token string, caCert []byte) (cluster.Client, error) {
+			newClusterClient = func(host, token string, caCert []byte, tokenExpiry int64) (cluster.Client, error) {
 				return nil, errors.New("connection refused")
 			}
 			DeferCleanup(func() { newClusterClient = orig })
