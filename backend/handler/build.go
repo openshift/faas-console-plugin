@@ -32,7 +32,6 @@ type buildStatusItem struct {
 	RunURL        string `json:"runURL,omitempty"`
 	FailureReason string `json:"failureReason,omitempty"`
 	HeadSHA       string `json:"headSHA,omitempty"`
-	Err           string `json:"err,omitempty"`
 }
 
 type buildSnapshot struct {
@@ -84,8 +83,8 @@ func toBuildStatusItem(key string, run *scm.WorkflowRun) buildStatusItem {
 // "None": a transient GitHub error would otherwise flicker the badge back to
 // the cluster status and, via a varying error string, defeat the watch loop's
 // change-detection and force a re-send every poll. prev may be nil (the
-// one-shot snapshot endpoint has no prior state), in which case a fresh error
-// item is emitted.
+// one-shot snapshot endpoint has no prior state), in which case a "None" item is
+// emitted for the failed repo (the cause is logged, not sent to the client).
 func buildStatusSnapshot(ctx context.Context, client scm.Client, repos []scm.Repo, prev map[string]buildStatusItem) buildSnapshot {
 	items := make([]buildStatusItem, len(repos))
 	g, ctx := errgroup.WithContext(ctx)
@@ -99,7 +98,10 @@ func buildStatusSnapshot(ctx context.Context, client scm.Client, repos []scm.Rep
 				if last, ok := prev[key]; ok {
 					items[i] = last
 				} else {
-					items[i] = buildStatusItem{Key: key, BuildStatus: "None", Err: err.Error()}
+					// No prior status to carry forward: report "None" and rely on
+					// the server log above for the cause. The error is deliberately
+					// not put on the wire (the frontend does not consume it).
+					items[i] = buildStatusItem{Key: key, BuildStatus: "None"}
 				}
 				return nil
 			}

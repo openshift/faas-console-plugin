@@ -87,7 +87,7 @@ var _ = Describe("HandleBuildStatus", func() {
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
-	It("surfaces a per-repo fetch error without affecting other repos", func() {
+	It("isolates a per-repo fetch error to that repo without leaking it", func() {
 		withSCMStub(&scm.ClientStub{
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{
@@ -118,9 +118,7 @@ var _ = Describe("HandleBuildStatus", func() {
 			byKey[f.Key] = f
 		}
 		Expect(byKey["alice/bad"].BuildStatus).To(Equal("None"))
-		Expect(byKey["alice/bad"].Err).To(ContainSubstring("boom"))
 		Expect(byKey["alice/good"].BuildStatus).To(Equal("Building"))
-		Expect(byKey["alice/good"].Err).To(BeEmpty())
 	})
 })
 
