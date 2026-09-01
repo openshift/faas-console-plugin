@@ -106,6 +106,20 @@ describe('useBuildStatus', () => {
     await waitFor(() => expect(streamStub.streamFetchCalls()).toBe(2));
   });
 
+  it('reconnects after a body-less response instead of stopping', async () => {
+    vi.useFakeTimers();
+    streamStub.setNullBodyForNext(1); // first connect yields a 2xx with no body
+
+    const { unmount } = renderHook(() => useBuildStatus());
+    // A body-less response must not permanently stop the stream: after the 3s
+    // backoff the hook reconnects rather than giving up.
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(streamStub.streamFetchCalls()).toBeGreaterThan(1);
+
+    unmount();
+  });
+
   it('reconnects with backoff after a transient stream error', async () => {
     vi.useFakeTimers();
     streamStub.setStreamError(new Error('network blip')); // no status code -> transient

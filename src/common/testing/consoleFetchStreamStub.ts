@@ -10,10 +10,17 @@
 let frames: string[] = [];
 let error: unknown = null;
 let calls = 0;
+let nullBodyCalls = 0;
 
 export function setStreamFrames(newFrames: string[]) {
   frames = newFrames;
   error = null;
+}
+
+// setNullBodyForNext makes the next n consoleFetch calls resolve 2xx with a null
+// body, simulating a body-less response the hook must recover from.
+export function setNullBodyForNext(n: number) {
+  nullBodyCalls = n;
 }
 
 // setStreamError makes the next consoleFetch reject, simulating an HTTP or
@@ -26,6 +33,7 @@ export function resetStreamFrames() {
   frames = [];
   error = null;
   calls = 0;
+  nullBodyCalls = 0;
 }
 
 // streamFetchCalls reports how many times the stubbed consoleFetch was invoked,
@@ -44,6 +52,10 @@ export function buildStatusFrame(functions: unknown[]): string {
 export const consoleFetchStub = (): Promise<Response> => {
   calls++;
   if (error) return Promise.reject(error);
+  if (nullBodyCalls > 0) {
+    nullBodyCalls--;
+    return Promise.resolve(new Response(null, { status: 200 }));
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

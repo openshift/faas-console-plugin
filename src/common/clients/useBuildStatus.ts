@@ -36,10 +36,13 @@ export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatu
             headers: { 'X-SCM-Token': pat },
             signal: controller.signal,
           });
-          if (!res.body) return;
-          await readStream(res.body, (snap) => {
-            if (!cancelled) setStatuses(toMap(snap));
-          });
+          // A 2xx with no body is unexpected; fall through to backoff-and-reconnect
+          // below rather than permanently stopping the stream.
+          if (res.body) {
+            await readStream(res.body, (snap) => {
+              if (!cancelled) setStatuses(toMap(snap));
+            });
+          }
         } catch (err) {
           if (cancelled) return;
           if (isAuthError(err)) {
