@@ -243,7 +243,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				"headSha": "abc123", "status": "in_progress", "conclusion": ""
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).NotTo(BeNil())
 			Expect(run.Status).To(Equal("in_progress"))
@@ -258,7 +258,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			resetFakeGitHub(ts)
 			seedRepo(ts)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).To(BeNil())
 		})
@@ -269,7 +269,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			ts, cl := startServer()
 			seedRepo(ts)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).To(BeNil())
 		})
@@ -279,7 +279,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","headSha":"sha1","status":"in_progress","conclusion":""}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).NotTo(BeNil())
 			Expect(run.Status).To(Equal("in_progress"))
@@ -294,7 +294,7 @@ var _ = Describe("FakeGitHub Server", func() {
 			seedRepo(ts)
 			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"other","status":"completed","conclusion":"success"}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).To(BeNil())
 		})
@@ -314,7 +314,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				}]
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).NotTo(BeNil())
 			Expect(run.Conclusion).To(Equal("failure"))
@@ -335,7 +335,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				}]
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).NotTo(BeNil())
 			Expect(run.Conclusion).To(Equal("failure"))
@@ -365,7 +365,7 @@ var _ = Describe("FakeGitHub Server", func() {
 				]
 			}`)
 
-			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main")
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(run).NotTo(BeNil())
 			Expect(run.Conclusion).To(Equal("failure"))

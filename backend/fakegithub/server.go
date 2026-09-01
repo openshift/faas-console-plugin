@@ -165,8 +165,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/secrets/public-key", s.handleGetPublicKey)
 	s.mux.HandleFunc("PUT /repos/{owner}/{repo}/actions/secrets/{name}", s.handlePutSecret)
 
-	// Actions runs (build status)
+	// Actions runs (build status). The client scopes build status to a single
+	// workflow file via the by-file-name endpoint; the repo-wide endpoint is kept
+	// for completeness. Both serve the same scripted runs.
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", s.handleListWorkflowRuns)
+	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs", s.handleListWorkflowRuns)
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", s.handleListWorkflowJobs)
 
 	// Admin API (for test setup)

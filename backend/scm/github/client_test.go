@@ -642,7 +642,7 @@ var _ = Describe("GitHub SCM client", func() {
 
 	Describe("LatestWorkflowRun conditional requests", func() {
 		It("revalidates with If-None-Match and serves cached data on a 304", func() {
-			const runsPath = "/repos/alice/my-func/actions/runs"
+			const runsPath = "/repos/alice/my-func/actions/workflows/func-deploy.yaml/runs"
 			var requestCount int
 			var conditional []string
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
@@ -677,12 +677,12 @@ var _ = Describe("GitHub SCM client", func() {
 				})
 			})
 
-			first, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main")
+			first, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(first).NotTo(BeNil())
 			Expect(first.ID).To(Equal(int64(42)))
 
-			second, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main")
+			second, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main", "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(second).NotTo(BeNil())
 
@@ -692,6 +692,39 @@ var _ = Describe("GitHub SCM client", func() {
 			Expect(conditional[0]).To(BeEmpty())
 			Expect(conditional[1]).To(Equal(`"run-etag-v1"`))
 			Expect(*second).To(Equal(*first))
+		})
+	})
+
+	Describe("LatestWorkflowRun workflow scoping", func() {
+		It("queries only the given workflow file, not the whole repo", func() {
+			var gotPath string
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				json.NewEncoder(w).Encode(map[string]any{
+					"total_count": 1,
+					"workflow_runs": []map[string]any{
+						{"id": 7, "status": "completed", "conclusion": "success"},
+					},
+				})
+			})
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			// The by-file-name endpoint scopes results to the func workflow; the
+			// repo-wide /actions/runs endpoint would leak unrelated workflows.
+			Expect(gotPath).To(Equal("/repos/alice/my-func/actions/workflows/func-deploy.yaml/runs"))
+		})
+
+		It("returns a nil run when the workflow file does not exist (404)", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]any{"message": "Not Found"})
+			})
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "alice", "no-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).To(BeNil())
 		})
 	})
 })

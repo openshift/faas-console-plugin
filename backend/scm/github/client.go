@@ -79,6 +79,11 @@ func mapErr(err error) error {
 	return err
 }
 
+func isNotFound(err error) bool {
+	var ghErr *ghlib.ErrorResponse
+	return errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound
+}
+
 func isRepoExists(err error) bool {
 	var ghErr *ghlib.ErrorResponse
 	if !errors.As(err, &ghErr) || ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusUnprocessableEntity {
@@ -330,14 +335,20 @@ func (c *ghClient) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-func (c *ghClient) LatestWorkflowRun(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+func (c *ghClient) LatestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 	opts := &ghlib.ListWorkflowRunsOptions{
 		Branch:      branch,
 		ListOptions: ghlib.ListOptions{PerPage: 1},
 	}
-	runs, _, err := c.client.Actions.ListRepositoryWorkflowRuns(ctx, owner, repo, opts)
+	runs, _, err := c.client.Actions.ListWorkflowRunsByFileName(ctx, owner, repo, workflowFile, opts)
 	if err != nil {
-		return nil, fmt.Errorf("list workflow runs for %s/%s: %w", owner, repo, mapErr(err))
+		if isNotFound(err) {
+			// The workflow file does not exist in this repo (e.g. a non-func repo,
+			// or the func workflow has not been pushed yet). Treat it like a repo
+			// with no runs rather than surfacing an error.
+			return nil, nil
+		}
+		return nil, fmt.Errorf("list workflow runs for %s/%s (%s): %w", owner, repo, workflowFile, mapErr(err))
 	}
 	if len(runs.WorkflowRuns) == 0 {
 		return nil, nil

@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
+	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -92,7 +93,7 @@ func buildStatusSnapshot(ctx context.Context, client scm.Client, repos []scm.Rep
 	for i, repo := range repos {
 		g.Go(func() error {
 			key := repo.Owner + "/" + repo.Name
-			run, err := client.LatestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch)
+			run, err := client.LatestWorkflowRun(ctx, repo.Owner, repo.Name, repo.DefaultBranch, functions.WorkflowFilename)
 			if err != nil {
 				slog.Warn("failed to get workflow run", "repo", key, "err", err)
 				if last, ok := prev[key]; ok {

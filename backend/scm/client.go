@@ -49,7 +49,7 @@ type Client interface {
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
-	LatestWorkflowRun(ctx context.Context, owner, repo, branch string) (*WorkflowRun, error)
+	LatestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*WorkflowRun, error)
 }
 
 type Repo struct {
@@ -72,8 +72,9 @@ type FileEntry struct {
 	Deleted bool   `json:"deleted,omitempty"`
 }
 
-// WorkflowRun is the latest GitHub Actions run for a repo branch.
-// A nil *WorkflowRun means the branch has no runs.
+// WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
+// repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
+// (including when the workflow file does not exist in the repo).
 type WorkflowRun struct {
 	ID            int64
 	Status        string // queued | in_progress | completed
@@ -92,7 +93,7 @@ type ClientStub struct {
 	OnInitRepo          func(ctx context.Context, owner, name, branch string, topics []string) error
 	OnStoreSecret       func(ctx context.Context, owner, repo, name, value string) error
 	OnDeleteRepo        func(ctx context.Context, owner, repo string) error
-	OnLatestWorkflowRun func(ctx context.Context, owner, repo, branch string) (*WorkflowRun, error)
+	OnLatestWorkflowRun func(ctx context.Context, owner, repo, branch, workflowFile string) (*WorkflowRun, error)
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -151,9 +152,9 @@ func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-func (s *ClientStub) LatestWorkflowRun(ctx context.Context, owner, repo, branch string) (*WorkflowRun, error) {
+func (s *ClientStub) LatestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*WorkflowRun, error) {
 	if s.OnLatestWorkflowRun != nil {
-		return s.OnLatestWorkflowRun(ctx, owner, repo, branch)
+		return s.OnLatestWorkflowRun(ctx, owner, repo, branch, workflowFile)
 	}
 	return nil, nil
 }

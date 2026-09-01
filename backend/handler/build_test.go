@@ -33,7 +33,7 @@ var _ = Describe("HandleBuildStatus", func() {
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 				return &scm.WorkflowRun{Status: "in_progress", HeadSHA: "sha1", HTMLURL: "u"}, nil
 			},
 		})
@@ -56,7 +56,7 @@ var _ = Describe("HandleBuildStatus", func() {
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 				return nil, nil
 			},
 		})
@@ -94,7 +94,7 @@ var _ = Describe("HandleBuildStatus", func() {
 					{Owner: "alice", Name: "good", DefaultBranch: "main"},
 				}, nil
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 				if repo == "bad" {
 					return nil, errors.New("boom")
 				}
@@ -149,7 +149,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				calls++
@@ -191,7 +191,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 				// Same state on every poll, so the change-detection key never moves.
 				return &scm.WorkflowRun{Status: "in_progress"}, nil
 			},
@@ -236,7 +236,7 @@ var _ = Describe("HandleBuildWatch", func() {
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
 			},
-			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch string) (*scm.WorkflowRun, error) {
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				calls++
