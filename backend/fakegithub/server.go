@@ -15,6 +15,8 @@ import (
 	"sync"
 
 	"golang.org/x/crypto/nacl/box"
+
+	"github.com/openshift/faas-console-plugin/backend/functions"
 )
 
 // User configures the authenticated identity returned by the fake server.
@@ -45,6 +47,10 @@ type workflowRun struct {
 	Conclusion string        `json:"conclusion"` // success | failure | cancelled | timed_out | ""
 	HTMLURL    string        `json:"html_url"`
 	Jobs       []workflowJob `json:"-"` // returned by the jobs endpoint, not the runs listing
+	// WorkflowFile is the workflow file this run belongs to. It is used only to
+	// scope the by-file-name runs endpoint (mirroring real GitHub); it is not
+	// part of the runs listing the client parses.
+	WorkflowFile string `json:"-"`
 }
 
 type workflowJob struct {
@@ -166,8 +172,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PUT /repos/{owner}/{repo}/actions/secrets/{name}", s.handlePutSecret)
 
 	// Actions runs (build status). The client scopes build status to a single
-	// workflow file via the by-file-name endpoint; the repo-wide endpoint is kept
-	// for completeness. Both serve the same scripted runs.
+	// workflow file via the by-file-name endpoint, which filters runs to that
+	// workflow (mirroring real GitHub). The repo-wide endpoint returns every run.
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", s.handleListWorkflowRuns)
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs", s.handleListWorkflowRuns)
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", s.handleListWorkflowJobs)
@@ -676,13 +682,21 @@ func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 	}
 
 	branch := r.URL.Query().Get("branch")
+	// workflow is set only on the by-file-name route; when present, scope runs to
+	// that workflow file the way real GitHub does. The repo-wide route leaves it
+	// empty and returns every run.
+	workflow := r.PathValue("workflow")
 	// GitHub returns most-recent first; our slice keeps most-recent last, so reverse.
 	var runs []workflowRun
 	for i := len(rp.Runs) - 1; i >= 0; i-- {
 		run := rp.Runs[i]
-		if branch == "" || run.HeadBranch == branch {
-			runs = append(runs, run)
+		if branch != "" && run.HeadBranch != branch {
+			continue
 		}
+		if workflow != "" && run.WorkflowFile != workflow {
+			continue
+		}
+		runs = append(runs, run)
 	}
 	if runs == nil {
 		runs = []workflowRun{}
@@ -794,6 +808,10 @@ type adminRunRequest struct {
 	Status     string        `json:"status"`
 	Conclusion string        `json:"conclusion"`
 	Jobs       []workflowJob `json:"jobs"`
+	// Workflow is the workflow file the run belongs to. Defaults to the func
+	// build workflow; set it to script a run under a different workflow (e.g. to
+	// verify build-status queries stay scoped to the func workflow).
+	Workflow string `json:"workflow"`
 }
 
 func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
@@ -808,6 +826,10 @@ func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
 	if req.Branch == "" {
 		req.Branch = "main"
 	}
+	workflowFile := req.Workflow
+	if workflowFile == "" {
+		workflowFile = functions.WorkflowFilename
+	}
 
 	key := req.Owner + "/" + req.Repo
 	rp, ok := s.repos[key]
@@ -818,13 +840,14 @@ func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
 
 	s.runIDSeq++
 	run := workflowRun{
-		ID:         s.runIDSeq,
-		HeadBranch: req.Branch,
-		HeadSHA:    req.HeadSHA,
-		Status:     req.Status,
-		Conclusion: req.Conclusion,
-		HTMLURL:    fmt.Sprintf("https://github.com/%s/actions/runs/%d", key, s.runIDSeq),
-		Jobs:       req.Jobs,
+		ID:           s.runIDSeq,
+		HeadBranch:   req.Branch,
+		HeadSHA:      req.HeadSHA,
+		Status:       req.Status,
+		Conclusion:   req.Conclusion,
+		HTMLURL:      fmt.Sprintf("https://github.com/%s/actions/runs/%d", key, s.runIDSeq),
+		Jobs:         req.Jobs,
+		WorkflowFile: workflowFile,
 	}
 	// Replace the latest run for this branch, keep others.
 	kept := rp.Runs[:0:0]

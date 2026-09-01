@@ -299,6 +299,19 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(run).To(BeNil())
 		})
 
+		It("scopes to the func workflow file, ignoring runs of other workflows", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main",
+				"status":"completed","conclusion":"success","workflow":"other.yaml"
+			}`)
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "testuser", "test-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).To(BeNil())
+		})
+
 		It("composes a failure reason from the first failed step", func() {
 			ts, cl := startServer()
 			seedRepo(ts)
