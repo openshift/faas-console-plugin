@@ -115,6 +115,7 @@ Go + `net/http` standard library. Key dependencies:
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
 | `scm/github` | go-github implementation of `scm.Client` |
 | `config` | Package-level wiring vars (`SCMRegistry`, constants) |
+| `tlsreload` | Periodic reload of the serving cert/key from disk, swapping an atomic `*tls.Certificate` via `GetCertificate` so rotated certs are served without a restart |
 
 ### Dependency Rules
 
@@ -144,6 +145,9 @@ Everything that wraps `knative.dev/func` lives in this one package, so there is 
 
 **External API URL resolved at Helm install time**
 The URL embedded in generated kubeconfigs (`externalAPIServerURL`) comes from the Infrastructure CR (`config.openshift.io/v1/Infrastructure/cluster`) via Helm `lookup` at install time, injected as `--external-api-server-url`. It is not fetched at runtime. This eliminates the need for a `ClusterRole` to query the Infrastructure CR from within the pod.
+
+**TLS serving certificate reloaded at runtime by stdlib polling**
+The OCP service CA operator rotates the serving cert/key automatically. `tlsreload.Reloader` polls the mounted pair every 5 minutes and atomically swaps the cached `*tls.Certificate` served via `tls.Config.GetCertificate`, so a rotation is picked up without restarting the pod. Stdlib polling (Option B from SRVOCF-1002) was chosen over `k8s.io/apiserver/dynamiccertificates` to avoid pulling in its large transitive dependency tree, and is robust to the atomic `..data` symlink swap Kubernetes uses for mounted secrets (which naive inotify file watches miss). Reloads are content-hashed to skip re-parsing when the pair is unchanged, and the last valid pair is retained when an update is incomplete or invalid.
 
 **SCM is abstracted behind a registry**
 `scm.Registry` maps `scm.Platform` → `scm.ClientFactory`. The active registry lives at `config.SCMRegistry`, a package-level var that tests swap out via `withSCMMock`. Handlers never reference a concrete SCM client type. The platform is currently resolved statically (`scm.DefaultPlatform = GitHub`), but the registry is designed to support dynamic platform selection — the handler can later derive the platform from the request body or header without changes to the registry or client implementations.
