@@ -210,6 +210,15 @@ func (h *Handlers) HandleBuildWatch(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		case <-rediscover.C:
 			if latest, err := client.ListRepos(ctx); err != nil {
+				// A revoked/expired token makes this global call fail
+				// unambiguously. End the stream so the client's reconnect hits the
+				// initial ListRepos, gets a 401, and triggers its re-auth path;
+				// otherwise per-repo poll errors are carried forward and the client
+				// would show stale status indefinitely.
+				if errors.Is(err, scm.ErrUnauthorized) {
+					slog.Info("build watch: token no longer authorized, ending stream")
+					return
+				}
 				slog.Warn("build watch: rediscover failed", "err", err)
 			} else {
 				repos = latest

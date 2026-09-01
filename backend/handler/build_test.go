@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -269,6 +270,75 @@ var _ = Describe("HandleBuildWatch", func() {
 		// flicker back to "None", no error-string churn re-sends).
 		_, ok = readSSEDataWithin(reader, 300*time.Millisecond)
 		Expect(ok).To(BeFalse(), "expected no new frame while transient errors are carried forward")
+	})
+
+	It("ends the stream when the token is revoked mid-stream", func() {
+		// Fire rediscover quickly so the test does not wait a real interval.
+		origPoll := buildPollInterval
+		origRediscover := buildRediscoverInterval
+		origHeartbeat := buildHeartbeatInterval
+		buildPollInterval = 10 * time.Millisecond
+		buildRediscoverInterval = 10 * time.Millisecond
+		buildHeartbeatInterval = time.Hour
+		DeferCleanup(func() {
+			buildPollInterval = origPoll
+			buildRediscoverInterval = origRediscover
+			buildHeartbeatInterval = origHeartbeat
+		})
+
+		var mu sync.Mutex
+		listCalls := 0
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				listCalls++
+				// The initial discovery succeeds; the token is then revoked, so
+				// every rediscover call is unauthorized.
+				if listCalls == 1 {
+					return []scm.Repo{{Owner: "alice", Name: "fn", DefaultBranch: "main"}}, nil
+				}
+				return nil, scm.ErrUnauthorized
+			},
+			OnLatestWorkflowRun: func(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
+				return &scm.WorkflowRun{Status: "in_progress"}, nil
+			},
+		})
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /watch", (&Handlers{}).HandleBuildWatch)
+		ts := httptest.NewServer(mux)
+		DeferCleanup(ts.Close)
+
+		req, err := http.NewRequest(http.MethodGet, ts.URL+"/watch", nil)
+		Expect(err).NotTo(HaveOccurred())
+		req.Header.Set("X-SCM-Token", "pat")
+		resp, err := ts.Client().Do(req)
+		Expect(err).NotTo(HaveOccurred())
+		defer resp.Body.Close()
+
+		reader := bufio.NewReader(resp.Body)
+		first, ok := readSSEDataWithin(reader, 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot frame")
+		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
+
+		// Once the token is revoked, the rediscover tick ends the stream, so the
+		// response body reaches EOF.
+		errCh := make(chan error, 1)
+		go func() {
+			for {
+				if _, err := reader.ReadString('\n'); err != nil {
+					errCh <- err
+					return
+				}
+			}
+		}()
+		select {
+		case err := <-errCh:
+			Expect(err).To(MatchError(io.EOF))
+		case <-time.After(2 * time.Second):
+			Fail("expected the stream to close after the token was revoked")
+		}
 	})
 })
 
