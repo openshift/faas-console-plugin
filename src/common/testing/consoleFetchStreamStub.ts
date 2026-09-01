@@ -11,6 +11,7 @@ let frames: string[] = [];
 let error: unknown = null;
 let calls = 0;
 let nullBodyCalls = 0;
+let lastArgs: unknown[] = [];
 
 export function setStreamFrames(newFrames: string[]) {
   frames = newFrames;
@@ -34,6 +35,7 @@ export function resetStreamFrames() {
   error = null;
   calls = 0;
   nullBodyCalls = 0;
+  lastArgs = [];
 }
 
 // streamFetchCalls reports how many times the stubbed consoleFetch was invoked,
@@ -42,15 +44,22 @@ export function streamFetchCalls(): number {
   return calls;
 }
 
+// streamFetchLastArgs reports the arguments of the most recent consoleFetch call
+// (url, options, timeout), so tests can assert how the request was configured.
+export function streamFetchLastArgs(): unknown[] {
+  return lastArgs;
+}
+
 // buildStatusFrame formats a single SSE build-status event.
 export function buildStatusFrame(functions: unknown[]): string {
   return `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
 }
 
-// consoleFetchStub stands in for consoleFetch(url, options): it ignores its
-// arguments and serves the configured frames (or error) as the response body.
-export const consoleFetchStub = (): Promise<Response> => {
+// consoleFetchStub stands in for consoleFetch(url, options, timeout): it records
+// its arguments and serves the configured frames (or error) as the response body.
+export const consoleFetchStub = (...args: unknown[]): Promise<Response> => {
   calls++;
+  lastArgs = args;
   if (error) return Promise.reject(error);
   if (nullBodyCalls > 0) {
     nullBodyCalls--;

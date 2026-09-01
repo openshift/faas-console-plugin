@@ -35,6 +35,20 @@ describe('useBuildStatus', () => {
     expect(result.current.get('alice/gn')?.failureReason).toBe('build / test');
   });
 
+  it('opens the stream with the request timeout disabled', async () => {
+    // consoleFetch applies a default ~60s timeout that aborts the request. For a
+    // long-lived SSE stream that would tear the connection down every minute
+    // regardless of heartbeats, so the hook must pass timeout 0 to disable it.
+    streamStub.setStreamFrames([
+      streamStub.buildStatusFrame([{ key: 'alice/fn', buildStatus: 'Building' }]),
+    ]);
+
+    const { result } = renderHook(() => useBuildStatus());
+
+    await waitFor(() => expect(result.current.size).toBe(1));
+    expect(streamStub.streamFetchLastArgs()[2]).toBe(0);
+  });
+
   it('ignores heartbeat comment frames', async () => {
     streamStub.setStreamFrames([
       ':\n\n',

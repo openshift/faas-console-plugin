@@ -32,10 +32,19 @@ export function useBuildStatus(connectionId = 0): ReadonlyMap<string, BuildStatu
         const pat = sessionStorage.getItem(PAT_KEY);
         if (!pat) return;
         try {
-          const res = await consoleFetch(`${PROXY_BASE}/api/v1/func/build/watch`, {
-            headers: { 'X-SCM-Token': pat },
-            signal: controller.signal,
-          });
+          // Pass timeout 0 to disable consoleFetch's default (~60s) request
+          // timeout: it aborts the request when it fires, which would tear down
+          // this long-lived SSE stream every minute regardless of the backend's
+          // heartbeats. Our own AbortController (signal below) remains the only
+          // thing that ends the stream, on unmount or connectionId change.
+          const res = await consoleFetch(
+            `${PROXY_BASE}/api/v1/func/build/watch`,
+            {
+              headers: { 'X-SCM-Token': pat },
+              signal: controller.signal,
+            },
+            0,
+          );
           // A 2xx with no body is unexpected; fall through to backoff-and-reconnect
           // below rather than permanently stopping the stream.
           if (res.body) {
