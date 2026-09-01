@@ -9,6 +9,7 @@ import (
 	"time"
 
 	ghlib "github.com/google/go-github/v90/github"
+	"github.com/gregjones/httpcache"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
@@ -19,7 +20,19 @@ func New(pat string) scm.Client {
 }
 
 func NewWithBaseURL(pat, baseURL string) scm.Client {
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	// A per-client in-memory HTTP cache issues conditional requests
+	// (If-None-Match) using the ETags GitHub returns. When build status is
+	// unchanged the server replies 304 Not Modified, which does NOT count
+	// against the primary rate limit, so the 3s poll loop stays nearly free.
+	// The cache is scoped per client (one per PAT), so one user's cached
+	// responses are never served to another.
+	//
+	// forceRevalidate wraps the cache so every request revalidates instead of
+	// being served from GitHub's max-age freshness window. Without it a newly
+	// triggered build would stay hidden for up to ~60s; with it an unchanged
+	// status is still just a (free) 304, but a real change is seen immediately.
+	cacheTransport := httpcache.NewMemoryCacheTransport()
+	httpClient := &http.Client{Transport: &forceRevalidate{next: cacheTransport}, Timeout: 30 * time.Second}
 	opts := []ghlib.ClientOptionsFunc{
 		ghlib.WithHTTPClient(httpClient),
 		ghlib.WithAuthToken(pat),
@@ -32,6 +45,23 @@ func NewWithBaseURL(pat, baseURL string) scm.Client {
 		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
 	return &ghClient{client: client}
+}
+
+// forceRevalidate sets Cache-Control: max-age=0 on every request so the
+// underlying cache always revalidates with a conditional request rather than
+// serving a still-"fresh" response from GitHub's max-age window.
+type forceRevalidate struct {
+	next http.RoundTripper
+}
+
+func (t *forceRevalidate) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set("Cache-Control", "max-age=0")
+	resp, err := t.next.RoundTrip(req)
+	if err != nil {
+		return nil, fmt.Errorf("forced-revalidation round trip: %w", err)
+	}
+	return resp, nil
 }
 
 type ghClient struct {
