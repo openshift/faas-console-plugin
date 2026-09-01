@@ -39,18 +39,47 @@ push -> GH Actions run: queued -> in_progress -> completed(success|failure)
 GitHub Actions is authoritative during the build; the cluster is authoritative
 after a successful deploy. The frontend merges the two per function:
 
+A function is treated as **available** when its cluster status is `Running`
+(actively serving) or `ScaledToZero` (deployed and idle, cold-starts on demand).
+Both have deployed successfully at least once, so a subsequent build is a rebuild.
+
 | GH Actions latest run        | Cluster (useCluster)      | Shown status          |
 |------------------------------|---------------------------|-----------------------|
-| queued / in_progress         | any                       | `Building`            |
-| completed = failure          | not Running               | `BuildFailed`         |
+| queued / in_progress         | available (Running/ScaledToZero) | cluster status kept + secondary "build in progress" indicator |
+| queued / in_progress         | not available             | `Building`            |
+| completed = failure          | available (Running/ScaledToZero) | cluster status kept + secondary "build failed" indicator |
+| completed = failure          | not available             | `BuildFailed`         |
 | completed = success, or none | (fall through)            | existing cluster status (`Deploying`/`Running`/`ScaledToZero`/`Error`/`NotDeployed`) |
 
 Notes:
-- `Building` overrides a stale cluster status so a re-deploy is visible.
-- `BuildFailed` carries a failure reason and a link to the failing run.
+- The build status is **non-destructive** over an available function: a function
+  that is deployed and available (serving `Running`, or idle `ScaledToZero` that
+  cold-starts on demand) keeps its cluster status even while a new revision builds
+  or a rebuild fails, so availability is never misrepresented. The build activity
+  is surfaced as a small secondary indicator next to the status: a spinner
+  (tooltip "Build in progress") while building, or a red (danger-colored) warning
+  icon (tooltip "Latest build failed: <reason>", link to the run) when the latest
+  build failed. The failed tooltip is phrased to make clear the function is still
+  available and only the latest rebuild failed, not the function itself. This
+  avoids flip-flopping an available function between its cluster status and
+  `Building`/`BuildFailed` on every redeploy.
+- For a function that is **not** currently available, the build status is the most
+  useful thing to show, so `Building` (first deploy / redeploy of a stopped
+  function) and `BuildFailed` become the primary status.
+- `BuildFailed` (and the secondary "build failed" indicator) carries a failure
+  reason and a link to the failing run.
 - The backend returns a build-centric status (`Building`/`Succeeded`/`Failed`/`None`);
   the merge to `FunctionStatus` happens in the frontend, which is the only place
   that also has the cluster status.
+- **Deferred: non-destructive treatment for a cluster `Error`.** A cluster `Error`
+  (ksvc `Ready=False`) means a deployed revision is broken, so a failed rebuild
+  currently overwrites it with `BuildFailed`, losing the runtime signal. Ideally it
+  would be handled like the available states (keep `Error` as primary, show the
+  build as a secondary indicator). The catch is that `Error` is overloaded: it also
+  covers a repo/list-level error (`FunctionListItem.err`, no cluster resource),
+  which should keep falling through to `BuildFailed` like `NotDeployed`. Doing this
+  correctly means gating the non-destructive branch on **cluster presence** (whether
+  a `ClusterFunction` exists), not on the status string. Deferred to a later change.
 
 ## Transport decision: SSE over consoleFetch stream
 
@@ -196,11 +225,19 @@ looking up each item's build status by its `owner/repo` key.
 ### Types and rendering
 
 - `FunctionStatus` gains `Building` and `BuildFailed`.
-- `FunctionTableItem` gains optional `buildRunURL` and `failureReason`.
+- `FunctionTableItem` gains optional `buildRunURL`, `failureReason`, and
+  `buildActivity` (`'Building' | 'Failed'`, set only when the primary status is an
+  available cluster status (`Running`/`ScaledToZero`) that the build status must
+  not overwrite).
 - `StatusCell` in `FunctionTable.tsx`:
   - `Building` -> `ProgressStatus`.
   - `BuildFailed` -> error style with a tooltip showing `failureReason` and a link
     to `buildRunURL`.
+  - An available status (`Running` -> `SuccessStatus`, `ScaledToZero` ->
+    `InfoStatus`) with `buildActivity` renders the cluster badge plus a secondary
+    indicator: a spinner (tooltip "Build in progress") for `'Building'`, or a red
+    (danger-colored) warning icon (tooltip "Latest build failed: `failureReason`",
+    link to `buildRunURL`) for `'Failed'`.
 
 ## Testing
 

@@ -271,11 +271,42 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
   };
 }
 
+// isAvailable reports whether a function is currently deployed and available:
+// actively serving (`Running`) or idle but ready to cold-start (`ScaledToZero`).
+// Both have deployed successfully at least once, so a subsequent build is a
+// rebuild whose status must not misrepresent the function's availability.
+function isAvailable(status: FunctionTableItem['status']): boolean {
+  return status === 'Running' || status === 'ScaledToZero';
+}
+
 function mergeBuild(item: FunctionTableItem, build: BuildStatus): FunctionTableItem {
+  if (isAvailable(item.status)) {
+    // Non-destructive over an available function: a function that is deployed
+    // and available keeps its cluster status even while a new revision builds
+    // or a rebuild fails, so availability is never misrepresented. The build
+    // activity is surfaced only as a secondary indicator (see BuildActivityIndicator).
+    if (build.buildStatus === 'Building') {
+      // The in-progress indicator is a non-clickable spinner, so no run URL is
+      // carried here (only the failed indicator links to the run).
+      return { ...item, buildActivity: 'Building' };
+    }
+    if (build.buildStatus === 'Failed') {
+      return {
+        ...item,
+        buildActivity: 'Failed',
+        buildRunURL: build.runURL,
+        failureReason: build.failureReason,
+      };
+    }
+    // Succeeded / None: nothing to overlay on an available function.
+    return item;
+  }
+  // Not currently deployed/available: the build status is the most useful thing
+  // to show, so it becomes the primary status.
   if (build.buildStatus === 'Building') {
     return { ...item, status: 'Building' };
   }
-  if (build.buildStatus === 'Failed' && item.status !== 'Running') {
+  if (build.buildStatus === 'Failed') {
     return {
       ...item,
       status: 'BuildFailed',

@@ -7,7 +7,7 @@ import {
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
+import { ActionList, ActionListItem, Button, Icon, Spinner, Tooltip } from '@patternfly/react-core';
 import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
@@ -26,6 +26,9 @@ export interface FunctionTableItem {
   mainResource?: K8sResourceCommon;
   buildRunURL?: string;
   failureReason?: string;
+  // buildActivity is set only when the primary status is a serving `Running`
+  // that the build status must not overwrite (non-destructive build indicator).
+  buildActivity?: 'Building' | 'Failed';
 }
 
 export function FunctionTable({
@@ -75,6 +78,7 @@ export function FunctionTable({
                 status={fn.status}
                 failureReason={fn.failureReason}
                 buildRunURL={fn.buildRunURL}
+                buildActivity={fn.buildActivity}
               />
             </Td>
             <Td dataLabel={t('URL')}>
@@ -106,16 +110,34 @@ function StatusCell({
   status,
   failureReason,
   buildRunURL,
+  buildActivity,
 }: {
   status: FunctionStatus;
   failureReason?: string;
   buildRunURL?: string;
+  buildActivity?: 'Building' | 'Failed';
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   switch (status) {
+    // Non-destructive build indicator: a function that is deployed and available
+    // (serving `Running` or idle `ScaledToZero`) keeps its cluster status; any
+    // in-progress or failed rebuild is shown only as a small secondary indicator
+    // so availability is never misrepresented.
     case 'Running':
-      return <SuccessStatus title={status} />;
+      return withBuildActivity(
+        <SuccessStatus title={status} />,
+        buildActivity,
+        failureReason,
+        buildRunURL,
+      );
+    case 'ScaledToZero':
+      return withBuildActivity(
+        <InfoStatus title={status} />,
+        buildActivity,
+        failureReason,
+        buildRunURL,
+      );
     case 'Building':
     case 'Deploying':
     case 'CreatingRepo':
@@ -126,21 +148,102 @@ function StatusCell({
       return <ErrorStatus title={status} />;
     case 'BuildFailed': {
       const badge = <ErrorStatus title={status} />;
-      const withLink = buildRunURL ? (
-        <a href={buildRunURL} target="_blank" rel="noopener noreferrer">
-          {badge}
-        </a>
-      ) : (
-        badge
-      );
+      const withLink = buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
       return <Tooltip content={failureReason || t('Build failed')}>{withLink}</Tooltip>;
     }
-    case 'ScaledToZero':
     case 'NotDeployed':
       return <InfoStatus title={status} />;
     case 'Unknown':
       return <StatusIconAndText title={status} icon={<ExclamationTriangleIcon />} />;
   }
+}
+
+// RunLink wraps content in an external link to a GitHub Actions run. Pass
+// ariaLabel when the content has no visible text of its own (e.g. an icon) so
+// the link still has an accessible name.
+function RunLink({
+  url,
+  ariaLabel,
+  children,
+}: {
+  url: string;
+  ariaLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel}>
+      {children}
+    </a>
+  );
+}
+
+// withBuildActivity renders a primary status badge and, when a rebuild is in
+// progress or failed for an available function, appends the secondary build
+// indicator next to it.
+function withBuildActivity(
+  badge: React.ReactNode,
+  buildActivity?: 'Building' | 'Failed',
+  failureReason?: string,
+  buildRunURL?: string,
+) {
+  if (!buildActivity) return <>{badge}</>;
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+      {badge}
+      <BuildActivityIndicator
+        buildActivity={buildActivity}
+        failureReason={failureReason}
+        buildRunURL={buildRunURL}
+      />
+    </span>
+  );
+}
+
+// BuildActivityIndicator is the small secondary indicator shown next to an
+// available status (`Running` or `ScaledToZero`) while a new revision builds or a rebuild fails: a
+// spinner (tooltip "Build in progress") for an in-progress build, or a warning
+// icon (tooltip "Latest build failed: <reason>", link to the run) for a failed
+// one. On a serving function the tooltip is phrased to make clear the function
+// is still running and only the latest rebuild failed, not the function itself.
+function BuildActivityIndicator({
+  buildActivity,
+  failureReason,
+  buildRunURL,
+}: {
+  buildActivity?: 'Building' | 'Failed';
+  failureReason?: string;
+  buildRunURL?: string;
+}) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
+  if (buildActivity === 'Building') {
+    return (
+      <Tooltip content={t('Build in progress')}>
+        <Spinner size="sm" aria-label={t('Build in progress')} />
+      </Tooltip>
+    );
+  }
+  if (buildActivity === 'Failed') {
+    // status="danger" colors the icon red even inside the run link, which would
+    // otherwise tint it link-blue via inherited anchor color.
+    const icon = (
+      <Icon status="danger">
+        <ExclamationTriangleIcon />
+      </Icon>
+    );
+    const withLink = buildRunURL ? (
+      <RunLink url={buildRunURL} ariaLabel={t('Latest build failed')}>
+        {icon}
+      </RunLink>
+    ) : (
+      icon
+    );
+    const tooltip = failureReason
+      ? t('Latest build failed: {{reason}}', { reason: failureReason })
+      : t('Latest build failed');
+    return <Tooltip content={tooltip}>{withLink}</Tooltip>;
+  }
+  return null;
 }
 
 function UrlCell({ url }: { url?: string }) {

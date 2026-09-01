@@ -147,6 +147,81 @@ describe('FunctionTable', () => {
     expect(screen.getByText('Success: Running')).toBeInTheDocument();
   });
 
+  it('keeps Running and shows a build-in-progress spinner when buildActivity is Building', () => {
+    const rebuilding: FunctionTableItem = { ...mockFunctions[0], buildActivity: 'Building' };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[rebuilding]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Success: Running')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+  });
+
+  it('keeps Running and shows a warning icon linking to the run when buildActivity is Failed', () => {
+    const failedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      buildActivity: 'Failed',
+      failureReason: 'build / go test',
+      buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[failedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Success: Running')).toBeInTheDocument();
+    expect(screen.getByText('WarningIcon')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('keeps ScaledToZero and shows a build-in-progress spinner when buildActivity is Building', () => {
+    const idleRebuilding: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'ScaledToZero',
+      buildActivity: 'Building',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[idleRebuilding]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+  });
+
+  it('keeps ScaledToZero and shows a warning icon linking to the run when buildActivity is Failed', () => {
+    const idleFailedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'ScaledToZero',
+      buildActivity: 'Failed',
+      failureReason: 'build / go test',
+      buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[idleFailedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(screen.getByText('WarningIcon')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
   it('renders InfoStatus for NotDeployed functions', () => {
     render(
       <MemoryRouter>
