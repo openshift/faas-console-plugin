@@ -23,6 +23,7 @@ AGENTS.override.md
 .claude/*.local.*
 .claude/settings*.json
 .claude/pr/*
+.claude/worktrees/
 .mcp*
 .tmp
 .pi-subagents
