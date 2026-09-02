@@ -56,30 +56,22 @@ The rest of the team reviews refined stories in Jira and leaves comments.
 
 ## Sync Ceremonies
 
-**Iteration Planning** (start of iteration, 20 min)
+**Weekly Sync + Technical Discussions** (every Tue + Thu)
 
-- Each engineer selects refined stories from the backlog for the upcoming 3 weeks.
-- Stories must be refined before entering an iteration; otherwise, they return to refinement.
-- Engineers volunteer to take unrefined stories for refinement during the upcoming iteration.
+- Status sync first, then technical discussion.
 
-**Weekly Sync** (Wednesdays, 30 min)
+**Backlog Cleanup / Grooming** (every two weeks, Tue or Thu)
 
-- A quick round covering progress, blockers, and any decisions needed.
-- The facilitator runs the Jira sanity check for each engineer.
+- Go through all New / Backlog stories and bugs.
+- Prioritize, assign for refinement, close stale items, create new tickets, discuss as needed.
 
-**Optional Refinement Slot** (weekly, 45 min)
+**Review + Planning** (every three weeks on Thu, iteration end)
 
-- Intended for open questions from async refinement requiring face-to-face discussion.
-- The meeting itself is optional. When there is nothing to discuss the team is not expected to attend.
-- The PM is invited when their input is needed.
-- The facilitator cancels it if there is nothing to discuss.
+- Review first, then planning.
 
-**Iteration Review + Retrospective** (end of iteration, 60-75 min)
+**Retrospective** (every three weeks on Tue, iteration start)
 
-- First half (30 min): each engineer briefly demonstrates what they delivered.
-- Second half (30 min): reflecting on what went well, what didn't, and one thing to change next iteration.
-
-**Rotation:** The first facilitator is picked at kick-off. After every 2 iterations, the role rotates to the next person.
+- On weeks where the retrospective intersects with the backlog grooming meeting, grooming moves to Thu.
 
 ## Facilitator Jira Checklist
 
@@ -97,8 +89,7 @@ The facilitator checks the following for each engineer during the weekly sync:
 
 During rotation:
 
-- Set up sync ceremony meetings (planning, weekly sync, review + retro)
-- Inform the team if the optional refinement slot happens, latest on the day of
+- Set up sync ceremony meetings
 - Facilitate sync ceremonies: keep time and lead the agenda
 - Run the Jira sanity check during the weekly sync
 
