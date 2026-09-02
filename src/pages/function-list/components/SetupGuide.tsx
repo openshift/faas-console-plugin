@@ -1,8 +1,6 @@
 import {
   Button,
   Content,
-  List,
-  ListItem,
   Modal,
   ModalBody,
   ModalFooter,
@@ -11,18 +9,17 @@ import {
 import { ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-export function SetupGuide() {
+interface SetupGuideProps {
+  className?: string;
+}
+
+export function SetupGuide({ className }: SetupGuideProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <>
-      <Button
-        variant="link"
-        isInline
-        onClick={() => setIsOpen(true)}
-        data-test="setup-guide-button"
-      >
+      <Button variant="link" isInline onClick={() => setIsOpen(true)} className={className}>
         {t('View setup guide.')}
       </Button>
       <SetupGuideModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
@@ -39,25 +36,25 @@ function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} variant="medium" data-test="setup-guide-modal">
+    <Modal isOpen={isOpen} onClose={onClose} variant="medium">
       <ModalHeader title={t('Set up guide')} />
       <ModalBody>
         <Content component="p">
           {t('Follow these steps to create and deploy your serverless function.')}
         </Content>
-        <List component="ol" className="pf-v6-u-mt-md">
+        <Content component="ol" className="pf-v6-u-mt-md">
           {steps(t).map((step) => (
-            <ListItem key={step.title}>
-              <Content component="p">
-                <strong>{step.title}</strong>
+            <Content component="li" key={step.title}>
+              <Content component="p" className="pf-v6-u-font-weight-bold">
+                {step.title}
               </Content>
               <Content component="p">{step.body}</Content>
-            </ListItem>
+            </Content>
           ))}
-        </List>
+        </Content>
       </ModalBody>
       <ModalFooter>
-        <Button variant="primary" onClick={onClose} data-test="setup-guide-close-button">
+        <Button variant="primary" onClick={onClose}>
           {t('Close')}
         </Button>
       </ModalFooter>
