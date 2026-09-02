@@ -16,6 +16,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/handler"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/github"
+	"github.com/openshift/faas-console-plugin/backend/tlsreload"
 )
 
 const defaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
@@ -72,6 +73,12 @@ func main() {
 	_, certErr := os.Stat(*certFile)
 	_, keyErr := os.Stat(*keyFile)
 	if certErr == nil && keyErr == nil {
+		reloader, err := tlsreload.New(*certFile, *keyFile)
+		if err != nil {
+			log.Fatalf("Failed to load TLS certificate: %v", err)
+		}
+		go reloader.Run()
+
 		go func() {
 			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpPort))
 			if err != nil {
@@ -81,16 +88,12 @@ func main() {
 			log.Fatal(http.Serve(ln, muxHandler))
 		}()
 
-		cert, err := tls.LoadX509KeyPair(*certFile, *keyFile)
-		if err != nil {
-			log.Fatalf("Failed to load TLS certificate: %v", err)
-		}
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpsPort))
 		if err != nil {
 			log.Fatal(err)
 		}
 		tlsLn := tls.NewListener(ln, &tls.Config{
-			Certificates: []tls.Certificate{cert},
+			GetCertificate: reloader.GetCertificate,
 		})
 		log.Printf("Listening on https://%s", ln.Addr())
 		log.Fatal(http.Serve(tlsLn, muxHandler))
