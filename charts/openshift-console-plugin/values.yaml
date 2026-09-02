@@ -5,6 +5,9 @@ plugin:
   image: ""
   apiServerURL: ""
   ghApiUrl: ""
+  # saTokenExpiry is the deploy ServiceAccount token lifetime as a duration,
+  # e.g. 30d, 10h, or 7d12h. Empty uses the backend default (30 days).
+  saTokenExpiry: ""
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   replicas: 2

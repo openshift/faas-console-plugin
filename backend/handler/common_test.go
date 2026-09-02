@@ -19,7 +19,7 @@ func withSCMStub(stub scm.Client) {
 
 func withClusterStub(stub cluster.Client) {
 	orig := newClusterClient
-	newClusterClient = func(host, token string, caCert []byte) (cluster.Client, error) {
+	newClusterClient = func(host, token string, caCert []byte, tokenExpiry int64) (cluster.Client, error) {
 		return stub, nil
 	}
 	DeferCleanup(func() { newClusterClient = orig })
