@@ -11,7 +11,7 @@ require (
 	k8s.io/api v0.35.8
 	k8s.io/apimachinery v0.35.8
 	k8s.io/client-go v0.35.8
-	knative.dev/func v0.50.1-0.20260903074942-68fc15129663
+	knative.dev/func v0.50.1-0.20260903102939-e3cccb21e68d
 	sigs.k8s.io/yaml v1.6.0
 )
 
