@@ -25,8 +25,9 @@ import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction, FunctionListItem } from '../../common/types';
+import { BuildStatus, ClusterFunction, FunctionListItem } from '../../common/types';
 import { useCluster } from '../../common/clients/useCluster';
+import { useBuildStatus } from '../../common/clients/useBuildStatus';
 import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
 
@@ -210,15 +211,18 @@ function useFunctionListPage(): {
     // to 'get resources from all namespaces'
     isAllNamespacesKey(namespace) ? undefined : namespace,
   );
+  const buildStatuses = useBuildStatus(connectionId);
 
   const functions = useMemo(
     () =>
       functionItems.map((item) => {
         // keyed by namespace/name - the same function name can exist in multiple namespaces
         const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
-        return cf ? enrichItem(item, cf) : item;
+        const enriched = cf ? enrichItem(item, cf) : item;
+        const build = buildStatuses.get(`${item.owner}/${item.repoName}`);
+        return build ? mergeBuild(enriched, build) : enriched;
       }),
-    [functionItems, clusterFunctions],
+    [functionItems, clusterFunctions, buildStatuses],
   );
 
   const reposLoaded = !isAuthenticated || (namespaceLoaded && prevNamespace === namespace);
@@ -247,6 +251,7 @@ function newItem(item: FunctionListItem): FunctionTableItem {
   return {
     name: item.name || item.repoName,
     repoName: item.repoName,
+    owner: item.owner,
     namespace: item.namespace,
     runtime: item.runtime,
     status: item.err ? 'Error' : 'NotDeployed',
@@ -264,4 +269,51 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
     replicas: cf.replicas,
     mainResource: cf.mainResource,
   };
+}
+
+// isAvailable reports whether a function is currently deployed and available:
+// actively serving (`Running`) or idle but ready to cold-start (`ScaledToZero`).
+// Both have deployed successfully at least once, so a subsequent build is a
+// rebuild whose status must not misrepresent the function's availability.
+function isAvailable(status: FunctionTableItem['status']): boolean {
+  return status === 'Running' || status === 'ScaledToZero';
+}
+
+function mergeBuild(item: FunctionTableItem, build: BuildStatus): FunctionTableItem {
+  if (isAvailable(item.status)) {
+    // Non-destructive over an available function: a function that is deployed
+    // and available keeps its cluster status even while a new revision builds
+    // or a rebuild fails, so availability is never misrepresented. The build
+    // activity is surfaced only as a secondary indicator (see BuildActivityIndicator).
+    if (build.buildStatus === 'Building') {
+      // The in-progress indicator is a non-clickable spinner, so no run URL is
+      // carried here (only the failed indicator links to the run).
+      return { ...item, buildActivity: 'Building' };
+    }
+    if (build.buildStatus === 'Failed') {
+      return {
+        ...item,
+        buildActivity: 'Failed',
+        buildRunURL: build.runURL,
+        failureReason: build.failureReason,
+      };
+    }
+    // Succeeded / None: nothing to overlay on an available function.
+    return item;
+  }
+  // Not currently deployed/available: the build status is the most useful thing
+  // to show, so it becomes the primary status.
+  if (build.buildStatus === 'Building') {
+    return { ...item, status: 'Building' };
+  }
+  if (build.buildStatus === 'Failed') {
+    return {
+      ...item,
+      status: 'BuildFailed',
+      buildRunURL: build.runURL,
+      failureReason: build.failureReason,
+    };
+  }
+  // Succeeded / None: fall through to the cluster-derived status.
+  return item;
 }

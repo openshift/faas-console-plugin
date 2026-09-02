@@ -639,4 +639,92 @@ var _ = Describe("GitHub SCM client", func() {
 			Expect(secretBody["encrypted_value"]).NotTo(BeEmpty())
 		})
 	})
+
+	Describe("LatestWorkflowRun conditional requests", func() {
+		It("revalidates with If-None-Match and serves cached data on a 304", func() {
+			const runsPath = "/repos/alice/my-func/actions/workflows/func-deploy.yaml/runs"
+			var requestCount int
+			var conditional []string
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				if !strings.HasPrefix(r.URL.Path, runsPath) {
+					return
+				}
+				requestCount++
+				inm := r.Header.Get("If-None-Match")
+				conditional = append(conditional, inm)
+
+				w.Header().Set("ETag", `"run-etag-v1"`)
+				// A "fresh" response (like GitHub's max-age=60). The client must
+				// still revalidate on every poll, otherwise a new build would be
+				// hidden behind this window. This guards the forceRevalidate wrap.
+				w.Header().Set("Cache-Control", "max-age=60")
+
+				if inm == `"run-etag-v1"` {
+					w.WriteHeader(http.StatusNotModified)
+					return
+				}
+				json.NewEncoder(w).Encode(map[string]any{
+					"total_count": 1,
+					"workflow_runs": []map[string]any{
+						{
+							"id":         42,
+							"status":     "completed",
+							"conclusion": "success",
+							"head_sha":   "abc123",
+							"html_url":   "https://example.com/runs/42",
+						},
+					},
+				})
+			})
+
+			first, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(first).NotTo(BeNil())
+			Expect(first.ID).To(Equal(int64(42)))
+
+			second, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(second).NotTo(BeNil())
+
+			// The first call was unconditional; the second sent If-None-Match and
+			// got a 304, yet still returned the same run data (served from cache).
+			Expect(requestCount).To(Equal(2))
+			Expect(conditional[0]).To(BeEmpty())
+			Expect(conditional[1]).To(Equal(`"run-etag-v1"`))
+			Expect(*second).To(Equal(*first))
+		})
+	})
+
+	Describe("LatestWorkflowRun workflow scoping", func() {
+		It("queries only the given workflow file, not the whole repo", func() {
+			var gotPath string
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				json.NewEncoder(w).Encode(map[string]any{
+					"total_count": 1,
+					"workflow_runs": []map[string]any{
+						{"id": 7, "status": "completed", "conclusion": "success"},
+					},
+				})
+			})
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "alice", "my-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).NotTo(BeNil())
+			// The by-file-name endpoint scopes results to the func workflow; the
+			// repo-wide /actions/runs endpoint would leak unrelated workflows.
+			Expect(gotPath).To(Equal("/repos/alice/my-func/actions/workflows/func-deploy.yaml/runs"))
+		})
+
+		It("returns a nil run when the workflow file does not exist (404)", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusNotFound)
+				json.NewEncoder(w).Encode(map[string]any{"message": "Not Found"})
+			})
+
+			run, err := cl.LatestWorkflowRun(context.Background(), "alice", "no-func", "main", "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(run).To(BeNil())
+		})
+	})
 })

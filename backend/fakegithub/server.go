@@ -10,10 +10,13 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
 	"golang.org/x/crypto/nacl/box"
+
+	"github.com/openshift/faas-console-plugin/backend/functions"
 )
 
 // User configures the authenticated identity returned by the fake server.
@@ -33,6 +36,36 @@ type repo struct {
 	Commits       map[string]*commit
 	Refs          map[string]string // "refs/heads/main" -> commit sha
 	Secrets       map[string]string // name -> encrypted value
+	Runs          []workflowRun     // scripted GitHub Actions runs, most recent last
+}
+
+type workflowRun struct {
+	ID         int64         `json:"id"`
+	HeadBranch string        `json:"head_branch"`
+	HeadSHA    string        `json:"head_sha"`
+	Status     string        `json:"status"`     // queued | in_progress | completed
+	Conclusion string        `json:"conclusion"` // success | failure | cancelled | timed_out | ""
+	HTMLURL    string        `json:"html_url"`
+	Jobs       []workflowJob `json:"-"` // returned by the jobs endpoint, not the runs listing
+	// WorkflowFile is the workflow file this run belongs to. It is used only to
+	// scope the by-file-name runs endpoint (mirroring real GitHub); it is not
+	// part of the runs listing the client parses.
+	WorkflowFile string `json:"-"`
+}
+
+type workflowJob struct {
+	ID         int64          `json:"id"`
+	Name       string         `json:"name"`
+	Status     string         `json:"status"`
+	Conclusion string         `json:"conclusion"`
+	Steps      []workflowStep `json:"steps"`
+}
+
+type workflowStep struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	Number     int    `json:"number"`
 }
 
 type treeEntry struct {
@@ -65,6 +98,8 @@ type Server struct {
 	privKey   [32]byte
 	pubKeyB64 string
 	keyID     string
+
+	runIDSeq int64 // monotonic id source for scripted workflow runs
 
 	mux *http.ServeMux
 }
@@ -136,9 +171,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/secrets/public-key", s.handleGetPublicKey)
 	s.mux.HandleFunc("PUT /repos/{owner}/{repo}/actions/secrets/{name}", s.handlePutSecret)
 
+	// Actions runs (build status). The client scopes build status to a single
+	// workflow file via the by-file-name endpoint, which filters runs to that
+	// workflow (mirroring real GitHub). The repo-wide endpoint returns every run.
+	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", s.handleListWorkflowRuns)
+	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs", s.handleListWorkflowRuns)
+	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs", s.handleListWorkflowJobs)
+
 	// Admin API (for test setup)
 	s.mux.HandleFunc("POST /_admin/seed", s.handleAdminSeed)
 	s.mux.HandleFunc("POST /_admin/reset", s.handleAdminReset)
+	s.mux.HandleFunc("POST /_admin/actions/runs", s.handleAdminSetRun)
 }
 
 // --- GitHub API handlers ---
@@ -628,6 +671,74 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rp := s.getRepo(r)
+	if rp == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	branch := r.URL.Query().Get("branch")
+	// workflow is set only on the by-file-name route; when present, scope runs to
+	// that workflow file the way real GitHub does. The repo-wide route leaves it
+	// empty and returns every run.
+	workflow := r.PathValue("workflow")
+	// GitHub returns most-recent first; our slice keeps most-recent last, so reverse.
+	var runs []workflowRun
+	for i := len(rp.Runs) - 1; i >= 0; i-- {
+		run := rp.Runs[i]
+		if branch != "" && run.HeadBranch != branch {
+			continue
+		}
+		if workflow != "" && run.WorkflowFile != workflow {
+			continue
+		}
+		runs = append(runs, run)
+	}
+	if runs == nil {
+		runs = []workflowRun{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total_count":   len(runs),
+		"workflow_runs": runs,
+	})
+}
+
+func (s *Server) handleListWorkflowJobs(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rp := s.getRepo(r)
+	if rp == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	runID, err := strconv.ParseInt(r.PathValue("run_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid run id")
+		return
+	}
+
+	for _, run := range rp.Runs {
+		if run.ID == runID {
+			jobs := run.Jobs
+			if jobs == nil {
+				jobs = []workflowJob{}
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"total_count": len(jobs),
+				"jobs":        jobs,
+			})
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "Not Found")
+}
+
 // --- Admin API handlers ---
 
 type seedRequest struct {
@@ -687,6 +798,67 @@ func (s *Server) handleAdminReset(w http.ResponseWriter, _ *http.Request) {
 
 	s.repos = make(map[string]*repo)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+type adminRunRequest struct {
+	Owner      string        `json:"owner"`
+	Repo       string        `json:"repo"`
+	Branch     string        `json:"branch"`
+	HeadSHA    string        `json:"headSha"`
+	Status     string        `json:"status"`
+	Conclusion string        `json:"conclusion"`
+	Jobs       []workflowJob `json:"jobs"`
+	// Workflow is the workflow file the run belongs to. Defaults to the func
+	// build workflow; set it to script a run under a different workflow (e.g. to
+	// verify build-status queries stay scoped to the func workflow).
+	Workflow string `json:"workflow"`
+}
+
+func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var req adminRunRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid run request: "+err.Error())
+		return
+	}
+	if req.Branch == "" {
+		req.Branch = "main"
+	}
+	workflowFile := req.Workflow
+	if workflowFile == "" {
+		workflowFile = functions.WorkflowFilename
+	}
+
+	key := req.Owner + "/" + req.Repo
+	rp, ok := s.repos[key]
+	if !ok {
+		writeError(w, http.StatusNotFound, "repo not seeded: "+key)
+		return
+	}
+
+	s.runIDSeq++
+	run := workflowRun{
+		ID:           s.runIDSeq,
+		HeadBranch:   req.Branch,
+		HeadSHA:      req.HeadSHA,
+		Status:       req.Status,
+		Conclusion:   req.Conclusion,
+		HTMLURL:      fmt.Sprintf("https://github.com/%s/actions/runs/%d", key, s.runIDSeq),
+		Jobs:         req.Jobs,
+		WorkflowFile: workflowFile,
+	}
+	// Replace the latest run for this branch, keep others.
+	kept := rp.Runs[:0:0]
+	for _, existing := range rp.Runs {
+		if existing.HeadBranch != req.Branch {
+			kept = append(kept, existing)
+		}
+	}
+	rp.Runs = append(kept, run)
+
+	writeJSON(w, http.StatusOK, map[string]any{"status": "run set", "id": run.ID})
 }
 
 // --- Helpers ---
