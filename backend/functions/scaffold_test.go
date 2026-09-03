@@ -3,6 +3,7 @@ package functions
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"knative.dev/func/pkg/builders"
 
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
@@ -35,6 +36,8 @@ var _ = Describe("Generate", func() {
 		Expect(funcYAML).To(ContainSubstring("image-registry.openshift-image-registry.svc:5000/default"))
 
 		Expect(fileMap).To(HaveKey(".github/workflows/func-deploy.yaml"))
+		workflowYAML := fileMap[".github/workflows/func-deploy.yaml"]
+		Expect(workflowYAML).To(ContainSubstring("FUNC_BUILDER: " + builders.S2I))
 	})
 
 	It("returns an error when function init fails", func() {
