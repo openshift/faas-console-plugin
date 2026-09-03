@@ -7,8 +7,8 @@ import {
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
-import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { ActionList, ActionListItem, Button, Content, Tooltip } from '@patternfly/react-core';
+import { ExclamationTriangleIcon, PencilAltIcon, PowerOffIcon } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import { FunctionSource, FunctionStatus } from '../../../common/types';
@@ -80,7 +80,7 @@ export function FunctionTable({
                   <EditActionButton source={fn.source} repoName={fn.repoName} onEdit={onEdit} />
                 </ActionListItem>
                 <ActionListItem>
-                  <DeleteActionButton mainResource={fn.mainResource} />
+                  <UndeployActionButton mainResource={fn.mainResource} />
                 </ActionListItem>
               </ActionList>
             </Td>
@@ -154,22 +154,30 @@ function EditActionButton({
   return <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>;
 }
 
-function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {
+function UndeployActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const launchDelete = useDeleteModal(
+  const launchUndeploy = useDeleteModal(
     mainResource as K8sResourceCommon,
     undefined,
-    undefined,
+    <Content component="p">
+      {t(
+        'Undeploying removes the running function and its Knative Service from the cluster. The GitHub repository and its code remain, so you can redeploy it later.',
+      )}
+    </Content>,
     t('Undeploy'),
   );
 
-  return (
+  const button = (
     <Button
       variant="plain"
-      aria-label={t('Delete')}
-      icon={<TrashIcon />}
+      aria-label={t('Undeploy')}
+      icon={<PowerOffIcon />}
       isDisabled={!mainResource}
-      onClick={() => launchDelete()}
+      onClick={() => launchUndeploy()}
     />
   );
+
+  if (!mainResource) return button;
+
+  return <Tooltip content={t('Undeploy')}>{button}</Tooltip>;
 }

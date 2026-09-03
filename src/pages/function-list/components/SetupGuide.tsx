@@ -40,7 +40,7 @@ function SetupGuideModal({ isOpen, onClose }: SetupGuideModalProps) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} variant="medium" data-test="setup-guide-modal">
-      <ModalHeader title={t('Set up guide')} />
+      <ModalHeader title={t('Setup guide')} />
       <ModalBody>
         <Content component="p">
           {t('Follow these steps to create and deploy your serverless function.')}
@@ -94,6 +94,12 @@ function steps(t: (key: string) => string): Step[] {
       title: t('Edit and redeploy'),
       body: t(
         'Open the function from the list to edit its files, then click "Save & Deploy". This pushes your changes to GitHub, which runs the same workflow again to redeploy the function.',
+      ),
+    },
+    {
+      title: t('Undeploy a function'),
+      body: t(
+        'Click the undeploy button in the Actions column to remove the running function and its Knative Service from the cluster. The GitHub repository and its code remain, so you can redeploy it later.',
       ),
     },
   ];
