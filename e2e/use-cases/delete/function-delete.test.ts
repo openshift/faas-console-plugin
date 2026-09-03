@@ -18,7 +18,7 @@ test.describe('Delete function', () => {
     await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
   });
 
-  test('delete button is disabled for not deployed functions', async ({ page }) => {
+  test('undeploy button is disabled for not deployed functions', async ({ page }) => {
     await navigateToFunctionsList(page);
 
     const grid = page.getByRole('grid', { name: 'Functions' });
@@ -26,10 +26,10 @@ test.describe('Delete function', () => {
 
     const row = grid.locator('tbody tr').filter({ hasText: PRESEEDED_FUNC_NAME });
     await expect(row.getByText('NotDeployed')).toBeVisible();
-    await expect(row.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    await expect(row.getByRole('button', { name: 'Undeploy' })).toBeDisabled();
   });
 
-  test('delete button removes function from cluster', async ({ page }) => {
+  test('undeploy button removes function from cluster', async ({ page }) => {
     test.setTimeout(600_000);
 
     await test.step('make sure deletion target function is deployed in cluster', async () => {
@@ -52,9 +52,9 @@ test.describe('Delete function', () => {
     await test.step('undeploy function', async () => {
       const grid = page.getByRole('grid', { name: 'Functions' });
       const row = grid.locator(`tbody tr:has(td:text-is("${PRESEEDED_FUNC_NAME}"))`);
-      const deleteBtn = row.getByRole('button', { name: 'Delete' });
-      await expect(deleteBtn).toBeEnabled({ timeout: 30_000 });
-      await deleteBtn.click();
+      const undeployBtn = row.getByRole('button', { name: 'Undeploy' });
+      await expect(undeployBtn).toBeEnabled({ timeout: 30_000 });
+      await undeployBtn.click();
 
       const modal = page.getByRole('dialog');
       await expect(modal).toBeVisible({ timeout: 5_000 });

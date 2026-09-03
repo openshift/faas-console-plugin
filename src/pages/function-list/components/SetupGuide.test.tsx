@@ -26,10 +26,12 @@ describe('SetupGuide', () => {
     await user.click(screen.getByRole('button', { name: 'View setup guide.' }));
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Setup guide')).toBeInTheDocument();
     expect(screen.getByText('Connect GitHub')).toBeInTheDocument();
     expect(screen.getByText('Create a namespace and secret')).toBeInTheDocument();
     expect(screen.getByText('Create a function')).toBeInTheDocument();
     expect(screen.getByText('Edit and redeploy')).toBeInTheDocument();
+    expect(screen.getByText('Undeploy a function')).toBeInTheDocument();
   });
 
   it('closes the modal when Close is clicked', async () => {

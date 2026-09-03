@@ -22,7 +22,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 vi.mock('@patternfly/react-icons', () => ({
   ExclamationTriangleIcon: () => 'WarningIcon',
   PencilAltIcon: () => 'EditIcon',
-  TrashIcon: () => 'DeleteIcon',
+  PowerOffIcon: () => 'UndeployIcon',
 }));
 
 const mockKnativeService = {
@@ -203,7 +203,7 @@ describe('FunctionTable', () => {
     expect(onEdit).toHaveBeenCalledWith('my-repo');
   });
 
-  it('launches delete modal when delete button is clicked', async () => {
+  it('launches undeploy modal when undeploy button is clicked', async () => {
     const mockLauncher = vi.fn();
     mockUseDeleteModal.mockReturnValue(mockLauncher);
     const user = userEvent.setup();
@@ -214,24 +214,24 @@ describe('FunctionTable', () => {
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Undeploy' }));
     expect(mockLauncher).toHaveBeenCalled();
     expect(mockUseDeleteModal).toHaveBeenCalledWith(
       mockKnativeService,
       undefined,
-      undefined,
+      expect.anything(),
       'Undeploy',
     );
   });
 
-  it('disables delete button for NotDeployed functions', () => {
+  it('disables undeploy button for NotDeployed functions', () => {
     render(
       <MemoryRouter>
         <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Undeploy' })).toBeDisabled();
   });
 
   it('disables edit button for cluster-only functions', () => {
