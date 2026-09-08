@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build and deploy the fake GitHub server to an OpenShift cluster using ko.
-# The image is built from Go source, pushed to the cluster's internal registry,
-# and deployed as a Deployment + Service.
+# Deploy the fake GitHub server to an OpenShift cluster using a pre-built image.
+# FAKEGITHUB_PULL_SPEC must be set (injected by ci-operator in CI, or set
+# manually for local runs after building the image separately).
 #
-# Prerequisites: oc login, ko (go install github.com/ko-build/ko@latest)
-# Usage: hack/deploy-fake-gh.sh
+# Prerequisites: oc login
+# Usage: FAKEGITHUB_PULL_SPEC=<image> hack/deploy-fake-gh.sh
 # Output (last line): in-cluster service URL for the fake GitHub server
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
 
 NAMESPACE="${NAMESPACE:-console-functions-plugin}"
-REGISTRY_PORT=5001
-INTERNAL_REGISTRY="image-registry.openshift-image-registry.svc:5000"
 
-# --- Prerequisites ---
+if [[ -z "${FAKEGITHUB_PULL_SPEC:-}" ]]; then
+  log::error "FAKEGITHUB_PULL_SPEC is not set. It should be injected by ci-operator as a dependency."
+  exit 1
+fi
 
 if ! command -v oc &>/dev/null; then
   log::error "oc CLI not found. Install from https://console.redhat.com/openshift/downloads"
@@ -28,64 +29,44 @@ if ! oc whoami &>/dev/null; then
   exit 1
 fi
 
-if ! command -v ko &>/dev/null; then
-  log::error "ko not found. Install with: go install github.com/google/ko@latest"
-  exit 1
-fi
-
-# --- Detect cluster architectures ---
-
-ARCHES=$(oc get nodes -o jsonpath='{range .items[*]}{.status.nodeInfo.architecture}{"\n"}{end}' 2>/dev/null | sort -u || true)
-if [[ -z "$ARCHES" ]]; then
-  KO_PLATFORM="linux/amd64"
-  log::warn "Could not detect cluster node architectures, falling back to ${KO_PLATFORM}"
-else
-  KO_PLATFORM=$(echo "$ARCHES" | sed 's/^/linux\//' | paste -sd,)
-  log::info "Cluster architectures detected: ${KO_PLATFORM}"
-fi
-
-# --- Ensure namespace exists ---
-
 oc get namespace "$NAMESPACE" &>/dev/null 2>&1 || oc create namespace "$NAMESPACE"
 
-# --- Port-forward the internal registry ---
-
-log::step "Pushing fake GitHub image to internal registry"
-
-log::info "Port-forwarding registry to localhost:${REGISTRY_PORT}..."
-oc port-forward svc/image-registry \
-  "${REGISTRY_PORT}:5000" \
-  -n openshift-image-registry &
-PF_PID=$!
-trap "kill $PF_PID 2>/dev/null || true" EXIT INT TERM
-sleep 5
-
-# --- Build and push with ko ---
-
-log::info "Logging in to registry..."
-ko login "localhost:${REGISTRY_PORT}" \
-  -u unused -p "$(oc create token builder -n "$NAMESPACE")"
-
-export KO_DOCKER_REPO="localhost:${REGISTRY_PORT}/${NAMESPACE}/fakegithub"
-export KO_DEFAULTBASEIMAGE="registry.access.redhat.com/ubi9/ubi-micro:latest"
-
-log::info "Building and pushing with ko..."
-export GOFLAGS="${GOFLAGS:-} -buildvcs=false"
-KO_IMAGE=$(cd "${SCRIPT_DIR}/../backend" && ko build --bare --insecure-registry --platform="${KO_PLATFORM}" ./cmd/fakegithub)
-
-log::info "ko produced: ${KO_IMAGE}"
-
-# Extract the digest from the ko output (localhost:5001/ns/fakegithub@sha256:...)
-DIGEST="${KO_IMAGE#*@}"
-DEPLOY_IMAGE="${INTERNAL_REGISTRY}/${NAMESPACE}/fakegithub@${DIGEST}"
-
-# Kill port-forward, no longer needed
-kill $PF_PID 2>/dev/null || true
-trap - EXIT
-
-# --- Deploy ---
-
 log::step "Deploying fake GitHub server"
+
+# Why Podman runs inside the pod at all:
+#   func build --strategy=s2i communicates through a Docker-compatible HTTP API socket.
+#   OpenShift nodes use CRI-O, which speaks the Kubernetes CRI (gRPC) protocol and does
+#   not expose a Docker socket. So the pod runs its own Podman daemon to provide one.
+#   This is "Podman-inside-CRI-O" -- the outer runtime is CRI-O, the inner is Podman.
+#
+# Why privileged: true is required:
+#   Three concrete needs, all requiring CAP_SYS_ADMIN:
+#   1. The entrypoint mounts a tmpfs at /var/lib/containers/storage so Podman's
+#      overlay driver has a non-overlay backing filesystem (kernel overlayfs cannot
+#      stack on top of CRI-O's own overlay without idmapped mount support).
+#   2. Podman's overlay storage driver creates mount namespaces when applying image
+#      layers.
+#   3. Running S2I builder containers requires creating mount, network, and PID
+#      namespaces.
+#   Rootless Podman could avoid privileged: true but would need nested user-namespace
+#   mapping, fuse-overlayfs, and a custom SCC -- more complexity with marginal
+#   security benefit on a dedicated ephemeral CI cluster.
+log::info "Configuring service account and SCC..."
+oc apply -n "$NAMESPACE" -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fakegithub
+  namespace: ${NAMESPACE}
+EOF
+oc adm policy add-scc-to-user privileged -z fakegithub -n "$NAMESPACE"
+
+# Allow privileged pods in this namespace.
+oc label namespace "$NAMESPACE" \
+  pod-security.kubernetes.io/enforce=privileged \
+  pod-security.kubernetes.io/warn=privileged \
+  pod-security.kubernetes.io/audit=privileged \
+  --overwrite
 
 log::info "Applying Deployment and Service..."
 oc apply -n "$NAMESPACE" -f - <<EOF
@@ -105,9 +86,10 @@ spec:
       labels:
         app: fakegithub
     spec:
+      serviceAccountName: fakegithub
       containers:
         - name: fakegithub
-          image: ${DEPLOY_IMAGE}
+          image: ${FAKEGITHUB_PULL_SPEC}
           args:
             - "--port=8090"
             - "--login=e2e-user"
@@ -116,14 +98,7 @@ spec:
             - containerPort: 8090
               protocol: TCP
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-      securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
+            privileged: true
 ---
 apiVersion: v1
 kind: Service

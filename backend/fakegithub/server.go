@@ -1,6 +1,7 @@
 package fakegithub
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -11,11 +12,14 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/nacl/box"
 
+	"github.com/openshift/faas-console-plugin/backend/fakegithub/action"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 )
 
@@ -35,7 +39,7 @@ type repo struct {
 	Trees         map[string][]treeEntry
 	Commits       map[string]*commit
 	Refs          map[string]string // "refs/heads/main" -> commit sha
-	Secrets       map[string]string // name -> encrypted value
+	Secrets       map[string]string // name -> plaintext value
 	Variables     map[string]string // name -> value
 	Runs          []workflowRun     // scripted GitHub Actions runs, most recent last
 }
@@ -50,7 +54,9 @@ type workflowRun struct {
 	// WorkflowFile is the workflow file this run belongs to. It is used only to
 	// scope the by-file-name runs endpoint (mirroring real GitHub); it is not
 	// part of the runs listing the client parses.
-	WorkflowFile string `json:"-"`
+	WorkflowFile string          `json:"-"`
+	Log          []byte          `json:"-"` // captured output (set on completion)
+	live         *action.LiveLog // written during live execution; nil for scripted runs or after completion
 }
 
 type treeEntry struct {
@@ -84,7 +90,8 @@ type Server struct {
 	pubKeyB64 string
 	keyID     string
 
-	runIDSeq int64 // monotonic id source for scripted workflow runs
+	runIDSeq int64 // monotonic id source for all workflow runs
+	Executor action.Executor
 
 	mux *http.ServeMux
 }
@@ -110,6 +117,7 @@ func New(user User, pat string) *Server {
 		pubKeyB64: base64.StdEncoding.EncodeToString(pub[:]),
 		keyID:     "fakegithub-key-id",
 		mux:       http.NewServeMux(),
+		Executor:  action.NewActExecutor(),
 	}
 	s.routes()
 	return s
@@ -117,7 +125,9 @@ func New(user User, pat string) *Server {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[fakegithub] %s %s", r.Method, r.URL.Path)
-	if s.pat != "" && !strings.HasPrefix(r.URL.Path, "/_admin/") {
+	isRunLog := strings.Contains(r.URL.Path, "/actions/runs/") && strings.HasSuffix(r.URL.Path, "/log")
+	isBrowserPage := r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/_ui/")
+	if s.pat != "" && !strings.HasPrefix(r.URL.Path, "/_admin/") && !isRunLog && !isBrowserPage {
 		auth := r.Header.Get("Authorization")
 		if auth != "token "+s.pat && auth != "Bearer "+s.pat {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{
@@ -130,6 +140,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) routes() {
+	// Browser-facing repo pages (linked from the UI's "Repository" field).
+	s.mux.HandleFunc("GET /_ui/{owner}/{repo}", s.handleRepoPage)
+	s.mux.HandleFunc("GET /_ui/{owner}/{repo}/blob/{branch}/{path...}", s.handleBlobPage)
+
 	// GitHub API endpoints
 	s.mux.HandleFunc("GET /user", s.handleGetUser)
 	s.mux.HandleFunc("GET /search/repositories", s.handleSearchRepos)
@@ -158,6 +172,8 @@ func (s *Server) routes() {
 
 	// Actions runs (build status).
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs", s.handleListWorkflowRuns)
+	// Log viewer for live act runs (no-auth so it can be opened in a browser).
+	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run_id}/log", s.handleGetRunLog)
 
 	// Actions variables
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/variables/{name}", s.handleGetVariable)
@@ -188,7 +204,7 @@ func (s *Server) handleSearchRepos(w http.ResponseWriter, r *http.Request) {
 		if !matchesSearchQuery(q, rp) {
 			continue
 		}
-		items = append(items, repoJSON(rp))
+		items = append(items, repoJSON(rp, r.Host))
 	}
 	// Sort by name for deterministic output.
 	sort.Slice(items, func(i, j int) bool {
@@ -243,7 +259,7 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.repos[key] = rp
-	writeJSON(w, http.StatusCreated, repoJSON(rp))
+	writeJSON(w, http.StatusCreated, repoJSON(rp, r.Host))
 }
 
 func (s *Server) handleGetRepo(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +271,7 @@ func (s *Server) handleGetRepo(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "Not Found")
 		return
 	}
-	writeJSON(w, http.StatusOK, repoJSON(rp))
+	writeJSON(w, http.StatusOK, repoJSON(rp, r.Host))
 }
 
 func (s *Server) handleDeleteRepo(w http.ResponseWriter, r *http.Request) {
@@ -590,6 +606,57 @@ func (s *Server) handleUpdateRef(w http.ResponseWriter, r *http.Request) {
 
 	rp.Refs[ref] = body.SHA
 
+	hasWorkflow := false
+	for path := range rp.Files {
+		if strings.HasPrefix(path, ".github/workflows/") {
+			hasWorkflow = true
+			break
+		}
+	}
+	if hasWorkflow {
+		snapFiles := make(map[string]string, len(rp.Files))
+		maps.Copy(snapFiles, rp.Files)
+		snapSecrets := make(map[string]string, len(rp.Secrets))
+		maps.Copy(snapSecrets, rp.Secrets)
+		live := &action.LiveLog{}
+		s.runIDSeq++
+		runID := s.runIDSeq
+		owner := r.PathValue("owner")
+		repoName := r.PathValue("repo")
+		repoKey := owner + "/" + repoName
+		rp.Runs = append(rp.Runs, workflowRun{
+			ID:           runID,
+			HeadBranch:   branch,
+			HeadSHA:      body.SHA,
+			Status:       "in_progress",
+			WorkflowFile: functions.WorkflowFilename,
+			live:         live,
+			HTMLURL:      "http://" + r.Host + "/repos/" + repoKey + "/actions/runs/" + fmt.Sprintf("%d", runID) + "/log",
+		})
+
+		executor := s.Executor
+		go func() {
+			dir, cleanup, err := action.WriteWorkspace(context.Background(), snapFiles)
+			if err != nil {
+				_, _ = fmt.Fprintf(live, "error: %v\n", err)
+				live.Finish()
+				s.updateRun(repoKey, runID, "failure", live.Bytes())
+				return
+			}
+			defer cleanup()
+
+			result, _ := executor.Run(context.Background(), action.RunRequest{
+				Workdir:   dir,
+				Secrets:   snapSecrets,
+				Vars:      nil,
+				EventName: "push",
+				Output:    live,
+			})
+			live.Finish()
+			s.updateRun(repoKey, runID, result.Conclusion, live.Bytes())
+		}()
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ref": ref,
 		"object": map[string]string{
@@ -654,7 +721,17 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rp.Secrets[name] = body.EncryptedValue
+	ciphertext, err := base64.StdEncoding.DecodeString(body.EncryptedValue)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid encrypted_value: not valid base64")
+		return
+	}
+	plaintext, ok := box.OpenAnonymous(nil, ciphertext, &s.pubKey, &s.privKey)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "failed to decrypt secret")
+		return
+	}
+	rp.Secrets[name] = string(plaintext)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -744,7 +821,7 @@ func (s *Server) handleListWorkflowRuns(w http.ResponseWriter, r *http.Request) 
 		if branch != "" && run.HeadBranch != branch {
 			continue
 		}
-		if run.WorkflowFile != workflow {
+		if workflow != "" && run.WorkflowFile != workflow {
 			continue
 		}
 		runs = append(runs, run)
@@ -866,13 +943,147 @@ func (s *Server) handleAdminSetRun(w http.ResponseWriter, r *http.Request) {
 		HeadSHA:      req.HeadSHA,
 		Status:       req.Status,
 		Conclusion:   req.Conclusion,
-		HTMLURL:      fmt.Sprintf("https://github.com/%s/actions/runs/%d", key, s.runIDSeq),
+		HTMLURL:      fmt.Sprintf("http://%s/repos/%s/actions/runs/%d/log", r.Host, key, s.runIDSeq),
 		WorkflowFile: workflowFile,
 	}
 
 	rp.Runs = append(rp.Runs, run)
 
 	writeJSON(w, http.StatusOK, map[string]any{"status": "run set", "id": run.ID})
+}
+
+// handleRepoPage serves an HTML file listing for the repo browser link in the UI.
+func (s *Server) handleRepoPage(w http.ResponseWriter, r *http.Request) {
+	owner := r.PathValue("owner")
+	name := r.PathValue("repo")
+	s.mu.Lock()
+	rp, ok := s.repos[owner+"/"+name]
+	var paths []string
+	if ok {
+		for p := range rp.Files {
+			paths = append(paths, p)
+		}
+	}
+	branch := ""
+	if ok {
+		branch = rp.DefaultBranch
+	}
+	s.mu.Unlock()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	sort.Strings(paths)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = fmt.Fprintf(w, `<!DOCTYPE html><html><head><title>%s/%s</title><style>`+
+		`body{font-family:monospace;padding:1rem}h1{font-size:1.2rem}ul{list-style:none;padding:0}li a{text-decoration:none}li a:hover{text-decoration:underline}`+
+		`</style></head><body><h1>%s/%s <small>(branch: %s)</small></h1><p><em>Fake GitHub — dev only</em></p><ul>`,
+		owner, name, owner, name, branch)
+	for _, p := range paths {
+		_, _ = fmt.Fprintf(w, `<li><a href="/_ui/%s/%s/blob/%s/%s">%s</a></li>`, owner, name, branch, p, p)
+	}
+	_, _ = fmt.Fprintf(w, `</ul></body></html>`)
+}
+
+// handleBlobPage serves the raw content of a file as plain text.
+func (s *Server) handleBlobPage(w http.ResponseWriter, r *http.Request) {
+	owner := r.PathValue("owner")
+	name := r.PathValue("repo")
+	path := r.PathValue("path")
+	s.mu.Lock()
+	rp, ok := s.repos[owner+"/"+name]
+	content := ""
+	if ok {
+		content, ok = rp.Files[path]
+	}
+	s.mu.Unlock()
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = fmt.Fprint(w, content)
+}
+
+// handleGetRunLog streams the captured output of a live act run.
+// Auth is bypassed for this endpoint so the html_url can be opened in a browser.
+func (s *Server) handleGetRunLog(w http.ResponseWriter, r *http.Request) {
+	runID, err := strconv.ParseInt(r.PathValue("run_id"), 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid run_id")
+		return
+	}
+
+	// Locate the live log and completed log under the lock, then release it so
+	// the goroutine running act can continue writing without contention.
+	s.mu.Lock()
+	var found *action.LiveLog
+	var completedLog []byte
+	for _, rp := range s.repos {
+		for i := range rp.Runs {
+			if rp.Runs[i].ID == runID {
+				found = rp.Runs[i].live
+				completedLog = rp.Runs[i].Log
+				break
+			}
+		}
+	}
+	s.mu.Unlock()
+
+	if found == nil && completedLog == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(http.StatusOK)
+
+	if found == nil {
+		// Run already completed; return the full captured log.
+		_, _ = w.Write(completedLog)
+		return
+	}
+
+	flusher, canFlush := w.(http.Flusher)
+	var offset int
+	for {
+		chunk, exhausted := found.Read(offset)
+		if len(chunk) > 0 {
+			_, _ = w.Write(chunk)
+			offset += len(chunk)
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+		if exhausted {
+			return
+		}
+		select {
+		case <-r.Context().Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+// updateRun acquires the lock and marks a live run as completed.
+func (s *Server) updateRun(repoKey string, runID int64, conclusion string, logBytes []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rp, ok := s.repos[repoKey]
+	if !ok {
+		return
+	}
+	for i := range rp.Runs {
+		if rp.Runs[i].ID == runID {
+			rp.Runs[i].Status = "completed"
+			rp.Runs[i].Conclusion = conclusion
+			rp.Runs[i].Log = logBytes
+			rp.Runs[i].live = nil
+			return
+		}
+	}
 }
 
 // --- Helpers ---
@@ -883,7 +1094,7 @@ func (s *Server) getRepo(r *http.Request) *repo {
 	return s.repos[owner+"/"+name]
 }
 
-func repoJSON(rp *repo) map[string]any {
+func repoJSON(rp *repo, host string) map[string]any {
 	topics := rp.Topics
 	if topics == nil {
 		topics = []string{}
@@ -892,7 +1103,7 @@ func repoJSON(rp *repo) map[string]any {
 		"id":             hashInt(rp.Owner + "/" + rp.Name),
 		"name":           rp.Name,
 		"full_name":      rp.Owner + "/" + rp.Name,
-		"html_url":       "https://github.com/" + rp.Owner + "/" + rp.Name,
+		"html_url":       "http://" + host + "/_ui/" + rp.Owner + "/" + rp.Name,
 		"default_branch": rp.DefaultBranch,
 		"topics":         topics,
 		"owner": map[string]string{

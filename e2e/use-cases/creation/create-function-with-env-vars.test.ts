@@ -1,7 +1,17 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToCreatePage } from '../../helpers/navigation';
-import { ensureConfigMap, ensureNamespace, ensureSecret } from '../../helpers/cluster';
-import { fakeGithubUrl } from '../../helpers/fakegithub';
+import {
+  deleteFunction,
+  ensureConfigMap,
+  ensureNamespace,
+  ensureSecret,
+} from '../../helpers/cluster';
+import {
+  deleteRepoOnFakeGithub,
+  fakeGithubUrl,
+  waitForWorkflowRun,
+} from '../../helpers/fakegithub';
+import { E2E_USER } from '../../helpers/constants';
 
 const FUNC_NAME = 'env-var-func';
 const NAMESPACE = 'env-var-test';
@@ -16,6 +26,11 @@ const CONFIGMAP_NAME = 'my-app-config';
 const CONFIGMAP_KEY = 'APP_MODE';
 
 test.describe('Create function with environment variables', () => {
+  test.afterEach(async ({ page }) => {
+    await deleteFunction(page, FUNC_NAME, NAMESPACE);
+    await deleteRepoOnFakeGithub(E2E_USER, FUNC_NAME);
+  });
+
   test('user creates a function with plain, Secret, and ConfigMap env vars', async ({ page }) => {
     test.setTimeout(600_000);
 
@@ -160,6 +175,36 @@ test.describe('Create function with environment variables', () => {
       expect(content).toContain(`{{ secret:${SECRET_NAME}:${SECRET_KEY} }}`);
       expect(content).toContain('APP_CONFIG');
       expect(content).toContain(`{{ configMap:${CONFIGMAP_NAME}:${CONFIGMAP_KEY} }}`);
+    });
+
+    await test.step('wait for GitHub Actions workflow to deploy the function', async () => {
+      const { conclusion, logUrl } = await waitForWorkflowRun('e2e-user', FUNC_NAME);
+      if (conclusion !== 'success') {
+        const log = await fetch(logUrl);
+        const logBody = await log.text();
+        await test.info().attach('workflow-log', { body: logBody, contentType: 'text/plain' });
+      }
+      expect(conclusion).toBe('success');
+    });
+
+    await test.step('verify function shows as deployed in the UI', async () => {
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      await expect(grid).toBeVisible({ timeout: 30_000 });
+
+      const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
+      await expect(row).toBeVisible({ timeout: 30_000 });
+      await expect(row.getByText(/Running|ScaledToZero/)).toBeVisible({ timeout: 300_000 });
+    });
+
+    await test.step('invoke the deployed function via its URL', async () => {
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      const row = grid.locator(`tbody tr:has(td:text-is("${FUNC_NAME}"))`);
+      const urlLink = row.locator('td[data-label="URL"] a');
+      await expect(urlLink).toBeVisible({ timeout: 30_000 });
+      const href = await urlLink.getAttribute('href');
+      expect(href).toBeTruthy();
+      const resp = await page.request.get(href!);
+      expect(resp.status()).toBe(200);
     });
   });
 });

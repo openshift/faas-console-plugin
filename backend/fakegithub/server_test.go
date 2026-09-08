@@ -2,6 +2,8 @@ package fakegithub_test
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,9 +13,25 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/openshift/faas-console-plugin/backend/fakegithub"
+	"github.com/openshift/faas-console-plugin/backend/fakegithub/action"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/github"
 )
+
+type stubExecutor struct {
+	called chan action.RunRequest
+	result action.RunResult
+}
+
+func (e *stubExecutor) Run(_ context.Context, req action.RunRequest) (action.RunResult, error) {
+	if req.Output != nil {
+		_, _ = req.Output.Write(e.result.Log)
+	}
+	if e.called != nil {
+		e.called <- req
+	}
+	return e.result, nil
+}
 
 func TestFakeGitHub(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -200,6 +218,51 @@ var _ = Describe("FakeGitHub Server", func() {
 			})
 		})
 
+		Describe("StoreSecret plaintext storage", func() {
+			It("stores the decrypted plaintext so act can read it", func() {
+				err := cl.StoreSecret(context.Background(), "testuser", "test-func", "MY_SECRET", "my-plaintext-value")
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Describe("Actions Runs API", func() {
+			It("returns an empty run list when no runs exist", func() {
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+					ts.URL+"/repos/testuser/test-func/actions/workflows/func-deploy.yaml/runs", nil)
+				Expect(err).NotTo(HaveOccurred())
+				req.Header.Set("Authorization", "token "+testPAT)
+				resp, err := ts.Client().Do(req)
+				Expect(err).NotTo(HaveOccurred())
+				defer resp.Body.Close()
+				Expect(resp.StatusCode).To(Equal(http.StatusOK))
+				var result map[string]any
+				Expect(json.NewDecoder(resp.Body).Decode(&result)).To(Succeed())
+				Expect(result["total_count"]).To(BeEquivalentTo(0))
+				Expect(result["workflow_runs"]).To(BeEmpty())
+			})
+
+			It("returns 404 for a non-existent run ID", func() {
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+					ts.URL+"/repos/testuser/test-func/actions/runs/99999", nil)
+				Expect(err).NotTo(HaveOccurred())
+				req.Header.Set("Authorization", "token "+testPAT)
+				resp, err := ts.Client().Do(req)
+				Expect(err).NotTo(HaveOccurred())
+				resp.Body.Close()
+				Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+			})
+
+			It("returns 404 from log viewer for a non-existent run", func() {
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodGet,
+					ts.URL+"/repos/testuser/test-func/actions/runs/99999/log", nil)
+				Expect(err).NotTo(HaveOccurred())
+				resp, err := ts.Client().Do(req)
+				Expect(err).NotTo(HaveOccurred())
+				resp.Body.Close()
+				Expect(resp.StatusCode).To(Equal(http.StatusNotFound))
+			})
+		})
+
 		Describe("DeleteRepo", func() {
 			It("removes the repo so it is no longer listed", func() {
 				err := cl.DeleteRepo(context.Background(), "testuser", "test-func")
@@ -241,6 +304,89 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(err).NotTo(HaveOccurred())
 			defer resp.Body.Close()
 			Expect(resp.StatusCode).To(Equal(http.StatusUnauthorized))
+		})
+	})
+
+	Describe("UpdateRef triggers executor", func() {
+		It("creates a completed run record and log after push", func() {
+			called := make(chan action.RunRequest, 1)
+			stub := &stubExecutor{
+				called: called,
+				result: action.RunResult{Conclusion: "success", Log: []byte("all good")},
+			}
+			srv := fakegithub.New(fakegithub.User{Login: "testuser", AvatarURL: "https://example.com/avatar"}, testPAT)
+			srv.Executor = stub
+			ts2 := httptest.NewServer(srv)
+			DeferCleanup(ts2.Close)
+			cl2 := github.NewWithBaseURL(testPAT, ts2.URL)
+
+			err := cl2.InitRepo(context.Background(), "testuser", "wf-test", "main", []string{"serverless-function"})
+			Expect(err).NotTo(HaveOccurred())
+
+			files := []scm.FileEntry{
+				{Path: ".github/workflows/func-deploy.yaml", Mode: "100644", Type: "blob",
+					Content: "name: Deploy\non:\n  push:\n    branches: [main]\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ok\n"},
+				{Path: "func.yaml", Mode: "100644", Type: "blob", Content: "name: wf-test\n"},
+			}
+			err = cl2.PushFiles(context.Background(), "testuser", "wf-test", "main", "add workflow", files)
+			Expect(err).NotTo(HaveOccurred())
+
+			// Executor was called with a push event.
+			var req action.RunRequest
+			Eventually(called, "5s").Should(Receive(&req))
+			Expect(req.EventName).To(Equal("push"))
+			Expect(req.Workdir).NotTo(BeEmpty())
+
+			// Run record eventually reaches "completed".
+			Eventually(func() string {
+				listReq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet,
+					ts2.URL+"/repos/testuser/wf-test/actions/workflows/func-deploy.yaml/runs", nil)
+				listReq.Header.Set("Authorization", "token "+testPAT)
+				resp, err := ts2.Client().Do(listReq)
+				if err != nil || resp == nil {
+					return ""
+				}
+				defer resp.Body.Close()
+				var result map[string]any
+				json.NewDecoder(resp.Body).Decode(&result)
+				runs, _ := result["workflow_runs"].([]any)
+				if len(runs) == 0 {
+					return ""
+				}
+				run, _ := runs[0].(map[string]any)
+				return run["status"].(string)
+			}, "5s", "100ms").Should(Equal("completed"))
+
+			// Log viewer returns the captured output.
+			Eventually(func() string {
+				listReq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet,
+					ts2.URL+"/repos/testuser/wf-test/actions/workflows/func-deploy.yaml/runs", nil)
+				listReq.Header.Set("Authorization", "token "+testPAT)
+				resp, err := ts2.Client().Do(listReq)
+				if err != nil || resp == nil {
+					return ""
+				}
+				defer resp.Body.Close()
+				var result map[string]any
+				json.NewDecoder(resp.Body).Decode(&result)
+				runs, _ := result["workflow_runs"].([]any)
+				if len(runs) == 0 {
+					return ""
+				}
+				run, _ := runs[0].(map[string]any)
+				htmlURL, _ := run["html_url"].(string)
+				if htmlURL == "" {
+					return ""
+				}
+				logReq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, htmlURL, nil)
+				logResp, err := ts2.Client().Do(logReq)
+				if err != nil || logResp == nil {
+					return ""
+				}
+				defer logResp.Body.Close()
+				b, _ := io.ReadAll(logResp.Body)
+				return string(b)
+			}, "5s", "100ms").Should(ContainSubstring("all good"))
 		})
 	})
 
