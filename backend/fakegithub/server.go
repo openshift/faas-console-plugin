@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"slices"
 	"sort"
@@ -33,6 +34,7 @@ type repo struct {
 	Commits       map[string]*commit
 	Refs          map[string]string // "refs/heads/main" -> commit sha
 	Secrets       map[string]string // name -> encrypted value
+	Variables     map[string]string // name -> value
 }
 
 type treeEntry struct {
@@ -136,6 +138,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/secrets/public-key", s.handleGetPublicKey)
 	s.mux.HandleFunc("PUT /repos/{owner}/{repo}/actions/secrets/{name}", s.handlePutSecret)
 
+	// Actions variables
+	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/variables/{name}", s.handleGetVariable)
+	s.mux.HandleFunc("POST /repos/{owner}/{repo}/actions/variables", s.handleCreateVariable)
+	s.mux.HandleFunc("PATCH /repos/{owner}/{repo}/actions/variables/{name}", s.handleUpdateVariable)
+
 	// Admin API (for test setup)
 	s.mux.HandleFunc("POST /_admin/seed", s.handleAdminSeed)
 	s.mux.HandleFunc("POST /_admin/reset", s.handleAdminReset)
@@ -205,6 +212,7 @@ func (s *Server) handleCreateRepo(w http.ResponseWriter, r *http.Request) {
 		Commits:       make(map[string]*commit),
 		Refs:          make(map[string]string),
 		Secrets:       make(map[string]string),
+		Variables:     make(map[string]string),
 	}
 
 	if body.AutoInit {
@@ -628,14 +636,82 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+func (s *Server) handleGetVariable(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rp := s.getRepo(r)
+	if rp == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	name := r.PathValue("name")
+	value, ok := rp.Variables[name]
+	if !ok {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"name": name, "value": value})
+}
+
+func (s *Server) handleCreateVariable(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rp := s.getRepo(r)
+	if rp == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	var body struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if _, exists := rp.Variables[body.Name]; exists {
+		writeError(w, http.StatusConflict, "variable already exists")
+		return
+	}
+	rp.Variables[body.Name] = body.Value
+	w.WriteHeader(http.StatusCreated)
+}
+
+func (s *Server) handleUpdateVariable(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rp := s.getRepo(r)
+	if rp == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	name := r.PathValue("name")
+	var body struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	rp.Variables[name] = body.Value
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Admin API handlers ---
 
 type seedRequest struct {
-	Owner  string     `json:"owner"`
-	Repo   string     `json:"repo"`
-	Branch string     `json:"branch"`
-	Topics []string   `json:"topics"`
-	Files  []seedFile `json:"files"`
+	Owner     string            `json:"owner"`
+	Repo      string            `json:"repo"`
+	Branch    string            `json:"branch"`
+	Topics    []string          `json:"topics"`
+	Files     []seedFile        `json:"files"`
+	Variables map[string]string `json:"variables,omitempty"`
 }
 
 type seedFile struct {
@@ -669,11 +745,13 @@ func (s *Server) handleAdminSeed(w http.ResponseWriter, r *http.Request) {
 		Commits:       make(map[string]*commit),
 		Refs:          make(map[string]string),
 		Secrets:       make(map[string]string),
+		Variables:     make(map[string]string),
 	}
 
 	for _, f := range req.Files {
 		rp.Files[f.Path] = f.Content
 	}
+	maps.Copy(rp.Variables, req.Variables)
 	buildGitObjects(rp)
 
 	key := req.Owner + "/" + req.Repo
