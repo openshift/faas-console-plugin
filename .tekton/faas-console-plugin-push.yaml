@@ -37,6 +37,9 @@ spec:
     value: '[{"type": "yarn", "path": "."}, {"type": "gomod", "path": "backend"}]'
   - name: build-source-image
     value: "true"
+  - name: additional-tags
+    value:
+    - latest
   pipelineSpec:
     description: |
       This pipeline is ideal for building multi-arch container images from a Containerfile while maintaining trust after pipeline customization.
@@ -134,6 +137,10 @@ spec:
         metadata, etc.) from the resulting image.
       name: omit-history
       type: string
+    - default: []
+      description: Additional tags to apply to the built image
+      name: additional-tags
+      type: array
     - default:
       - linux/x86_64
       description: List of platforms to build the container images on. The available
@@ -517,6 +524,9 @@ spec:
         value: $(tasks.build-image-index.results.IMAGE_URL)
       - name: IMAGE_DIGEST
         value: $(tasks.build-image-index.results.IMAGE_DIGEST)
+      - name: ADDITIONAL_TAGS
+        value:
+        - $(params.additional-tags[*])
       runAfter:
       - build-image-index
       taskRef:
