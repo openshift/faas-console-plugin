@@ -1,0 +1,25 @@
+---
+apiVersion: config.openshift.io/v1
+kind: ImageDigestMirrorSet
+metadata:
+  name: serverless-functions-konflux-mirror
+spec:
+  imageDigestMirrors:
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-console-plugin-rhel9
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-func
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-func-rhel9
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-utils
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-utils-rhel9
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-operator
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-rhel9-operator
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-operator-sources-objectbucket
+    source: registry.redhat.io/openshift-serverless-tech-preview/objectbucket-notifications-adapter-rhel9
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-operator-bundle
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-operator-bundle
