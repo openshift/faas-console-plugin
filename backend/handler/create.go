@@ -99,7 +99,7 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		return fmt.Errorf("generate scaffold: %w", err)
 	}
 
-	cl, err := newClusterClient(h.kubeHost, ocpToken, h.caCert)
+	cl, err := newClusterClient(h.kubeHost, ocpToken, h.caCert, h.tokenExpiry)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("connect to cluster: %w", err))
 	}

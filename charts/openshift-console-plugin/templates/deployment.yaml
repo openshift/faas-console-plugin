@@ -40,6 +40,11 @@ spec:
             {{- if .Values.plugin.ghApiUrl }}
             - "--gh-api-url={{ .Values.plugin.ghApiUrl }}"
             {{- end }}
+          {{- if .Values.plugin.saTokenExpiry }}
+          env:
+            - name: SA_TOKEN_EXPIRY
+              value: "{{ .Values.plugin.saTokenExpiry }}"
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
