@@ -3,6 +3,7 @@ package github_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,59 +18,69 @@ import (
 )
 
 var _ = Describe("WatchWorkflowRuns", func() {
-	It("revalidates each poll with If-None-Match so unchanged runs cost a free 304", func() {
-		var mu sync.Mutex
-		var conditional []string
-		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
-			func(w http.ResponseWriter, r *http.Request) {
+	// Caching must not depend on how big the payload happens to be. It is easy
+	// for it to: the cache only stores a response whose body is read to EOF, and
+	// a JSON decoder stops as soon as the top-level value is complete, so
+	// whether it reads that far comes down to where its buffer boundaries fall.
+	// A live workflow_runs entry embeds whole repository objects and runs
+	// 10-20 KB, and grows whenever GitHub adds a field, so a cache that works
+	// only at the size of a tiny fixture would break silently in production.
+	// These sizes were measured to straddle the boundary.
+	for _, payload := range []int{0, 14_000, 100_000} {
+		It(fmt.Sprintf("revalidates each poll with If-None-Match so unchanged runs cost a free 304 (%d bytes of padding)", payload), func() {
+			var mu sync.Mutex
+			var conditional []string
+			cl := newWatchClient(fastPoll, noRediscover, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+				func(w http.ResponseWriter, r *http.Request) {
+					mu.Lock()
+					defer mu.Unlock()
+					inm := r.Header.Get("If-None-Match")
+					conditional = append(conditional, inm)
+
+					w.Header().Set("ETag", `"run-etag-v1"`)
+					// A "fresh" response (like GitHub's max-age=60). The client must
+					// still revalidate on every poll, otherwise a new build would be
+					// hidden behind this window. This guards the forceRevalidate wrap.
+					w.Header().Set("Cache-Control", "max-age=60")
+					if inm == `"run-etag-v1"` {
+						w.WriteHeader(http.StatusNotModified)
+						return
+					}
+					writeRuns(w, padRun(map[string]any{"id": 42, "status": "in_progress"}, payload))
+				}))
+
+			ctx, cancel := context.WithCancel(context.Background())
+			DeferCleanup(cancel)
+			ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+			Expect(err).NotTo(HaveOccurred())
+
+			first, ok := recvWithin(ch, 2*time.Second)
+			Expect(ok).To(BeTrue(), "expected an initial snapshot")
+			Expect(first[0].Run.Status).To(Equal("in_progress"))
+
+			// Let several poll cycles run.
+			Eventually(func() int {
 				mu.Lock()
 				defer mu.Unlock()
-				inm := r.Header.Get("If-None-Match")
-				conditional = append(conditional, inm)
+				return len(conditional)
+			}, 2*time.Second, 10*time.Millisecond).Should(BeNumerically(">=", 3))
 
-				w.Header().Set("ETag", `"run-etag-v1"`)
-				// A "fresh" response (like GitHub's max-age=60). The client must
-				// still revalidate on every poll, otherwise a new build would be
-				// hidden behind this window. This guards the forceRevalidate wrap.
-				w.Header().Set("Cache-Control", "max-age=60")
-				if inm == `"run-etag-v1"` {
-					w.WriteHeader(http.StatusNotModified)
-					return
-				}
-				writeRuns(w, map[string]any{"id": 42, "status": "in_progress"})
-			}))
+			// The run never changes, so a working cache serves each 304 as the same
+			// run and the snapshot never re-emits. A broken cache would yield an
+			// empty 304 body (nil run) and a spurious re-emit.
+			_, ok = recvWithin(ch, 300*time.Millisecond)
+			Expect(ok).To(BeFalse(), "expected no re-emit while the 304s serve cached data")
 
-		ctx, cancel := context.WithCancel(context.Background())
-		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
-		Expect(err).NotTo(HaveOccurred())
-
-		first, ok := recvWithin(ch, 2*time.Second)
-		Expect(ok).To(BeTrue(), "expected an initial snapshot")
-		Expect(first[0].Run.Status).To(Equal("in_progress"))
-
-		// Let several poll cycles run.
-		Eventually(func() int {
 			mu.Lock()
 			defer mu.Unlock()
-			return len(conditional)
-		}, 2*time.Second, 10*time.Millisecond).Should(BeNumerically(">=", 3))
-
-		// The run never changes, so a working cache serves each 304 as the same
-		// run and the snapshot never re-emits. A broken cache would yield an
-		// empty 304 body (nil run) and a spurious re-emit.
-		_, ok = recvWithin(ch, 300*time.Millisecond)
-		Expect(ok).To(BeFalse(), "expected no re-emit while the 304s serve cached data")
-
-		mu.Lock()
-		defer mu.Unlock()
-		// The first poll was unconditional; every later poll sent If-None-Match
-		// and got a 304.
-		Expect(conditional[0]).To(BeEmpty())
-		for _, inm := range conditional[1:] {
-			Expect(inm).To(Equal(`"run-etag-v1"`))
-		}
-	})
+			// The first poll was unconditional; every later poll sent If-None-Match
+			// and got a 304.
+			Expect(conditional[0]).To(BeEmpty())
+			for _, inm := range conditional[1:] {
+				Expect(inm).To(Equal(`"run-etag-v1"`))
+			}
+		})
+	}
 
 	It("returns an unauthorized error from the initial discovery", func() {
 		// Discovery fails before the watch loop starts, so the cadence is moot.
@@ -351,6 +362,21 @@ func repoItem(owner, name, branch string) map[string]any {
 // writeRuns encodes a workflow-runs list response.
 func writeRuns(w http.ResponseWriter, runs ...map[string]any) {
 	json.NewEncoder(w).Encode(map[string]any{"total_count": len(runs), "workflow_runs": runs})
+}
+
+// padRun adds n bytes of padding to a run so a spec can vary response size. The
+// padding is an unknown field, which go-github ignores, so it adds bulk without
+// pretending to model any particular part of the real payload.
+func padRun(run map[string]any, n int) map[string]any {
+	if n == 0 {
+		return run
+	}
+	padded := make(map[string]any, len(run)+1)
+	for k, v := range run {
+		padded[k] = v
+	}
+	padded["_padding"] = strings.Repeat("x", n)
+	return padded
 }
 
 // recvWithin receives one snapshot from ch or times out.

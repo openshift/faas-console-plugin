@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -79,7 +80,8 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 
 // forceRevalidate sets Cache-Control: max-age=0 on every request so the
 // underlying cache always revalidates with a conditional request rather than
-// serving a still-"fresh" response from GitHub's max-age window.
+// serving a still-"fresh" response from GitHub's max-age window. It also drains
+// each response body so the cache actually stores it; see drainOnClose.
 type forceRevalidate struct {
 	next http.RoundTripper
 }
@@ -91,7 +93,42 @@ func (t *forceRevalidate) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("forced-revalidation round trip: %w", err)
 	}
+	if resp.Body != nil {
+		resp.Body = drainOnClose{resp.Body}
+	}
 	return resp, nil
+}
+
+// drainOnClose reads whatever the caller left unread before closing.
+//
+// httpcache only stores a GET response once its body reaches EOF, but go-github
+// decodes with json.Decoder, which stops as soon as the top-level value is
+// complete. Whether that last read also observes EOF depends on how the body is
+// framed: with Content-Length it does, and gzip (which api.github.com uses)
+// drains to EOF as well, but a chunked uncompressed response only reaches EOF if
+// the decoder's buffer boundaries happen to line up with the final chunk. So an
+// uncached response is a size lottery rather than a clean threshold: measured
+// against this client, 14 KB and 100 KB bodies were not cached while 8 KB and
+// 16 KB were.
+//
+// Losing that lottery means the poll costs a full 200 against the primary rate
+// limit instead of a free 304, and the payload only has to grow by a few bytes
+// to flip. Draining makes it deterministic for every framing.
+//
+// Upstream bug, unfixable there: https://github.com/gregjones/httpcache/issues/104
+// is an open fix for this from 2020 and the repository was archived in 2023.
+type drainOnClose struct {
+	io.ReadCloser
+}
+
+func (d drainOnClose) Close() error {
+	// The read error is dropped: it is only to prime the cache, and the caller
+	// already has whatever it needed out of the body.
+	_, _ = io.Copy(io.Discard, d.ReadCloser)
+	if err := d.ReadCloser.Close(); err != nil {
+		return fmt.Errorf("close drained response body: %w", err)
+	}
+	return nil
 }
 
 type ghClient struct {
