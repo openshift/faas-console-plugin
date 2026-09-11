@@ -25,9 +25,7 @@ export function FunctionsEmptyState({ isCreateDisabled }: FunctionsEmptyStatePro
               "A GitHub Personal Access Token is required to create functions. Click 'Connect to GitHub' in the top-right corner to connect. Once connected, the create button will be enabled.",
             )
           : t('Create a serverless function to get started.')}
-        <div className="pf-v6-u-mt-sm">
-          <SetupGuide />
-        </div>
+        <SetupGuide className="pf-v6-u-display-block pf-v6-u-mx-auto pf-v6-u-mt-sm" />
       </EmptyStateBody>
       <EmptyStateFooter>
         <EmptyStateActions>
