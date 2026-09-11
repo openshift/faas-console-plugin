@@ -32,4 +32,15 @@ COPY --from=gobuilder /opt/app-root/src/bin/plugin-backend /usr/bin/plugin-backe
 COPY --from=gobuilder /etc/pki/tls/certs/ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt
 USER 1001
 
+LABEL name="openshift-serverless-tech-preview/functions-console-plugin-rhel9" \
+      com.redhat.component="openshift-serverless-faas-console-plugin-container" \
+      version="2.0" \
+      release="1" \
+      summary="OpenShift Serverless Functions Console Plugin" \
+      description="A Functions-as-a-Service UI for the OpenShift Web Console" \
+      io.k8s.display-name="OpenShift Serverless Functions Console Plugin" \
+      io.k8s.description="A Functions-as-a-Service UI for the OpenShift Web Console" \
+      io.openshift.tags="openshift,serverless,functions,faas,console,plugin" \
+      maintainer="serverless-support@redhat.com"
+
 ENTRYPOINT ["plugin-backend"]
