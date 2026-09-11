@@ -252,6 +252,30 @@ Use `DescribeTable` / `Entry` for validation and error variants to keep them con
 - **Success tests: assert the return AND the final request data.** For multi-step operations (e.g., getRef -> getCommit -> createBlob -> createTree -> createCommit -> updateRef), don't assert that each step was called. The stub already ensures that: if a step is skipped, later steps won't receive the data they need and the call will fail. Assert that the return is not an error, then verify what the last request received, which is the accumulation of all prior operations. This avoids coupling tests to the full implementation while still capturing what matters.
 - **Error tests: one test per endpoint.** Each test fails a single endpoint and verifies the error propagates correctly with the right wrapping message.
 
+### Live-cluster e2e (Go)
+
+Backend behavior that cannot be exercised in the browser (for example, reloading
+the serving TLS certificate on rotation) has Go e2e tests under `backend/e2e/`,
+gated by the `e2e` build tag so they never run in `make unit-backend`. They talk
+to the cluster in the current kubeconfig context.
+
+```bash
+E2E_NAMESPACE=<plugin-namespace> go test -tags e2e -count=1 -v ./e2e/...
+```
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `E2E_NAMESPACE` | Namespace the plugin is deployed in | (required; test skips if unset) |
+| `E2E_PLUGIN_NAME` | Release name; used for the pod selector and cert secret | `console-functions-plugin` |
+| `E2E_CERT_SECRET` | Serving-cert secret to delete to force a rotation | `<plugin>-cert` |
+| `E2E_POD_SELECTOR` | Label selector for the plugin pod | `app.kubernetes.io/name=<plugin>` |
+| `E2E_HTTPS_PORT` | Container HTTPS port | `9443` |
+
+The cert-reload test deletes the serving-cert secret (the service-ca operator
+recreates it), then asserts the served leaf certificate changes while the pod's
+UID and restart count stay the same. The fixed 30-second poll fallback and the
+5-minute test timeout also cover kubelet's secret propagation delay.
+
 ---
 
 ## E2E Tests
