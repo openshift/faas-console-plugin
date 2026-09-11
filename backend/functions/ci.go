@@ -9,6 +9,7 @@ import (
 	cigithub "knative.dev/func/pkg/ci/github"
 	fn "knative.dev/func/pkg/functions"
 
+	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -23,6 +24,9 @@ func generateGithubCIFiles(dir string, cfg ScaffoldConfig) error {
 			RegistryLogin: !cfg.InternalRegistry,
 			TestStep:      cigithub.DefaultTestStep,
 			Builder:       builders.S2I,
+			// Pinning to a specific version prevents misleading defaults from the library
+			// and keeps the generated workflow in sync with our knative.dev/func module version.
+			FuncCliVersion: config.FuncCLIVersion,
 		}),
 		cigithub.WithMessageWriter(io.Discard),
 	)

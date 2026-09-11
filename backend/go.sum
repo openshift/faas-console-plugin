@@ -1748,8 +1748,8 @@ knative.dev/client/pkg v0.0.0-20260824022027-f22c1f6498a3 h1:yDau9zgPC4EPkkFKsXi
 knative.dev/client/pkg v0.0.0-20260824022027-f22c1f6498a3/go.mod h1:uA+bOCkcmaU8gbYLQ/6GrUXD9hmfV0tsXUoYUC/d3cg=
 knative.dev/eventing v0.50.1-0.20260826203415-973bbbc1f791 h1:LBlXWXWxKbRV5mTFsmbrTp8itbTqyILFvBVozpM0KUQ=
 knative.dev/eventing v0.50.1-0.20260826203415-973bbbc1f791/go.mod h1:se5U7KcgxQ/VaAIjvWnGjYqXDQhfKwfTgB+7cf2mY1A=
-knative.dev/func v0.50.1-0.20260903074942-68fc15129663 h1:Vw0SYD/dhGgRLOyBRv70p8dJKgrp4hje3ayd53dw0eo=
-knative.dev/func v0.50.1-0.20260903074942-68fc15129663/go.mod h1:yexSNgQUBy5Z7fSRzy0Z4OdtJE5IlKkreUFvOmgdPn8=
+knative.dev/func v0.50.1-0.20260903102939-e3cccb21e68d h1:ETEddQmm/vxil4E6dIGJbEWxgadnN0Nezku1c4Tx38Y=
+knative.dev/func v0.50.1-0.20260903102939-e3cccb21e68d/go.mod h1:yexSNgQUBy5Z7fSRzy0Z4OdtJE5IlKkreUFvOmgdPn8=
 knative.dev/networking v0.0.0-20260821014922-17b28c62e1cb h1:ukTLqsBsPfPsvEvB7c8DsVoKpDGi4tMsHCDzL8y8ycM=
 knative.dev/networking v0.0.0-20260821014922-17b28c62e1cb/go.mod h1:LcjiQvD89e7hdND0fI4O4sbWt7L8fEnb+9xPi5BEa5Y=
 knative.dev/pkg v0.0.0-20260825072334-d2a153acc00c h1:x99AILfR+9/dMMSXTpD5akQkCxfqreR+Py40i4pUrmA=

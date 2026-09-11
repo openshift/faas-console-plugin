@@ -5,6 +5,7 @@ plugin:
   image: ""
   apiServerURL: ""
   ghApiUrl: ""
+  funcCliVersion: ""
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   replicas: 2

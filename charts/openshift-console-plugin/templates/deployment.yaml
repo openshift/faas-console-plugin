@@ -40,6 +40,11 @@ spec:
             {{- if .Values.plugin.ghApiUrl }}
             - "--gh-api-url={{ .Values.plugin.ghApiUrl }}"
             {{- end }}
+          {{- if .Values.plugin.funcCliVersion }}
+          env:
+            - name: FUNC_CLI_VERSION
+              value: {{ .Values.plugin.funcCliVersion | quote }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz
