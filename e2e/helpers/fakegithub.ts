@@ -71,3 +71,21 @@ export async function deleteRepoOnFakeGithub(owner: string, name: string): Promi
     );
   }
 }
+
+export interface DispatchRecord {
+  owner: string;
+  repo: string;
+  workflow: string;
+  ref: string;
+}
+
+export async function getDispatches(): Promise<DispatchRecord[]> {
+  const url = fakeGithubUrl();
+  const resp = await fetch(`${url}/_admin/dispatches`);
+  if (!resp.ok) {
+    throw new Error(
+      `Failed to read dispatches from fake GitHub: ${resp.status} ${await resp.text()}`,
+    );
+  }
+  return resp.json();
+}

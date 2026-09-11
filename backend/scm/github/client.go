@@ -298,3 +298,11 @@ func (c *ghClient) DeleteRepo(ctx context.Context, owner, repo string) error {
 	}
 	return nil
 }
+
+func (c *ghClient) DispatchWorkflow(ctx context.Context, owner, repo, workflowFileName, ref string) error {
+	_, _, err := c.client.Actions.CreateWorkflowDispatchEventByFileName(ctx, owner, repo, workflowFileName, ghlib.CreateWorkflowDispatchEventRequest{Ref: ref})
+	if err != nil {
+		return fmt.Errorf("dispatch workflow: %w", mapErr(err))
+	}
+	return nil
+}

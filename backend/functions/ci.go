@@ -12,6 +12,8 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
+const WorkflowFilename = cigithub.DefaultGitHubWorkflowFilename
+
 var ciGenerators = map[scm.Platform]func(string, ScaffoldConfig) error{
 	scm.GitHub: generateGithubCIFiles,
 }
@@ -19,10 +21,11 @@ var ciGenerators = map[scm.Platform]func(string, ScaffoldConfig) error{
 func generateGithubCIFiles(dir string, cfg ScaffoldConfig) error {
 	gen := cigithub.NewWorkflowGenerator(
 		cigithub.WithWorkflowConfig(cigithub.WorkflowConfig{
-			Branch:        cfg.Branch,
-			RegistryLogin: !cfg.InternalRegistry,
-			TestStep:      cigithub.DefaultTestStep,
-			Builder:       builders.S2I,
+			Branch:           cfg.Branch,
+			RegistryLogin:    !cfg.InternalRegistry,
+			TestStep:         cigithub.DefaultTestStep,
+			Builder:          builders.S2I,
+			WorkflowDispatch: true,
 		}),
 		cigithub.WithMessageWriter(io.Discard),
 	)

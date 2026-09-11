@@ -22,7 +22,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 vi.mock('@patternfly/react-icons', () => ({
   ExclamationTriangleIcon: () => 'WarningIcon',
   PencilAltIcon: () => 'EditIcon',
-  TrashIcon: () => 'DeleteIcon',
+  PowerOffIcon: () => 'UndeployIcon',
+  PlayIcon: () => 'DeployIcon',
 }));
 
 const mockKnativeService = {
@@ -39,6 +40,8 @@ const mockFunctions: FunctionTableItem[] = [
   {
     name: 'my-func',
     repoName: 'my-func',
+    owner: 'alice',
+    branch: 'main',
     runtime: 'go',
     status: 'Running',
     url: 'http://my-func.demo.svc',
@@ -50,6 +53,8 @@ const mockFunctions: FunctionTableItem[] = [
   {
     name: 'idle-func',
     repoName: 'idle-func',
+    owner: 'alice',
+    branch: 'main',
     runtime: 'node',
     status: 'NotDeployed',
     url: '',
@@ -62,6 +67,8 @@ const mockFunctions: FunctionTableItem[] = [
 const clusterOnlyFunction: FunctionTableItem = {
   name: 'cluster-only',
   repoName: '',
+  owner: 'alice',
+  branch: 'main',
   runtime: 'node',
   status: 'Running',
   url: 'http://cluster-only.demo.svc',
@@ -79,7 +86,12 @@ describe('FunctionTable', () => {
   it('renders a row for each function', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={mockFunctions}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -91,6 +103,8 @@ describe('FunctionTable', () => {
     const noRuntime: FunctionTableItem = {
       name: 'cluster-only',
       repoName: '',
+      owner: 'alice',
+      branch: 'main',
       runtime: '',
       status: 'Running',
       url: 'http://cluster-only.demo.svc',
@@ -102,7 +116,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[noRuntime]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable functions={[noRuntime]} onEdit={vi.fn()} onDeploy={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -113,7 +127,12 @@ describe('FunctionTable', () => {
   it('renders namespace with dash for empty value', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={mockFunctions}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -125,7 +144,12 @@ describe('FunctionTable', () => {
   it('hides the namespace column when showNamespace is false', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={mockFunctions} onEdit={vi.fn()} showNamespace={false} />
+        <FunctionTable
+          functions={mockFunctions}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace={false}
+        />
       </MemoryRouter>,
     );
 
@@ -136,7 +160,12 @@ describe('FunctionTable', () => {
   it('renders SuccessStatus for Running functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[0]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -146,7 +175,12 @@ describe('FunctionTable', () => {
   it('renders InfoStatus for NotDeployed functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[1]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -156,7 +190,12 @@ describe('FunctionTable', () => {
   it('displays hostname-only link for URL', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[0]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -171,7 +210,12 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={onEdit} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[0]]}
+          onEdit={onEdit}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -185,6 +229,8 @@ describe('FunctionTable', () => {
     const fn: FunctionTableItem = {
       name: 'my-function',
       repoName: 'my-repo',
+      owner: 'alice',
+      branch: 'main',
       runtime: 'node',
       status: 'Running',
       url: '',
@@ -195,7 +241,7 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[fn]} onEdit={onEdit} showNamespace />
+        <FunctionTable functions={[fn]} onEdit={onEdit} onDeploy={vi.fn()} showNamespace />
       </MemoryRouter>,
     );
 
@@ -203,41 +249,109 @@ describe('FunctionTable', () => {
     expect(onEdit).toHaveBeenCalledWith('my-repo');
   });
 
-  it('launches delete modal when delete button is clicked', async () => {
+  it('launches undeploy modal when the undeploy button is clicked', async () => {
     const mockLauncher = vi.fn();
     mockUseDeleteModal.mockReturnValue(mockLauncher);
     const user = userEvent.setup();
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[0]]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[0]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(screen.getByRole('button', { name: 'Undeploy' }));
     expect(mockLauncher).toHaveBeenCalled();
     expect(mockUseDeleteModal).toHaveBeenCalledWith(
       mockKnativeService,
       undefined,
-      undefined,
+      expect.anything(),
       'Undeploy',
     );
   });
 
-  it('disables delete button for NotDeployed functions', () => {
+  it('shows an enabled deploy button for NotDeployed functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[1]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Deploy' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Undeploy' })).not.toBeInTheDocument();
+  });
+
+  it('calls onDeploy with the function item when the deploy button is clicked', async () => {
+    const onDeploy = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter>
+        <FunctionTable
+          functions={[mockFunctions[1]]}
+          onEdit={vi.fn()}
+          onDeploy={onDeploy}
+          showNamespace
+        />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+    expect(onDeploy).toHaveBeenCalledWith(mockFunctions[1]);
+  });
+
+  it('shows the undeploy button for Running functions', () => {
+    render(
+      <MemoryRouter>
+        <FunctionTable
+          functions={[mockFunctions[0]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Undeploy' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Deploy' })).not.toBeInTheDocument();
+  });
+
+  it('disables the deploy button with a tooltip for transitional states', async () => {
+    const user = userEvent.setup();
+    const deploying: FunctionTableItem = { ...mockFunctions[1], status: 'Deploying' };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[deploying]} onEdit={vi.fn()} onDeploy={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    const toggle = screen.getByRole('button', { name: 'Deploy' });
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+
+    await user.hover(toggle);
+    expect(await screen.findByText('Function is not ready to deploy yet')).toBeInTheDocument();
   });
 
   it('disables edit button for cluster-only functions', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[clusterOnlyFunction]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -250,7 +364,12 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[clusterOnlyFunction]} onEdit={onEdit} showNamespace />
+        <FunctionTable
+          functions={[clusterOnlyFunction]}
+          onEdit={onEdit}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -263,7 +382,12 @@ describe('FunctionTable', () => {
 
     render(
       <MemoryRouter>
-        <FunctionTable functions={[clusterOnlyFunction]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[clusterOnlyFunction]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
@@ -274,10 +398,83 @@ describe('FunctionTable', () => {
   it('enables edit button for functions with a repo source', () => {
     render(
       <MemoryRouter>
-        <FunctionTable functions={[mockFunctions[1]]} onEdit={vi.fn()} showNamespace />
+        <FunctionTable
+          functions={[mockFunctions[1]]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
       </MemoryRouter>,
     );
 
     expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+  });
+
+  it('disables the deploy button for a deployable function with no source repository', () => {
+    const clusterOnlyNotDeployed: FunctionTableItem = {
+      ...clusterOnlyFunction,
+      status: 'NotDeployed',
+      mainResource: undefined,
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable
+          functions={[clusterOnlyNotDeployed]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Deploy' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not call onDeploy when the disabled deploy button (no repo) is clicked', async () => {
+    const onDeploy = vi.fn();
+    const user = userEvent.setup();
+    const clusterOnlyNotDeployed: FunctionTableItem = {
+      ...clusterOnlyFunction,
+      status: 'NotDeployed',
+      mainResource: undefined,
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable
+          functions={[clusterOnlyNotDeployed]}
+          onEdit={vi.fn()}
+          onDeploy={onDeploy}
+          showNamespace
+        />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Deploy' }));
+    expect(onDeploy).not.toHaveBeenCalled();
+  });
+
+  it('explains why the deploy button is disabled on hover for a deployable function with no repo', async () => {
+    const user = userEvent.setup();
+    const clusterOnlyNotDeployed: FunctionTableItem = {
+      ...clusterOnlyFunction,
+      status: 'NotDeployed',
+      mainResource: undefined,
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable
+          functions={[clusterOnlyNotDeployed]}
+          onEdit={vi.fn()}
+          onDeploy={vi.fn()}
+          showNamespace
+        />
+      </MemoryRouter>,
+    );
+
+    await user.hover(screen.getByRole('button', { name: 'Deploy' }));
+    expect(await screen.findByText('No source repository to deploy')).toBeInTheDocument();
   });
 });

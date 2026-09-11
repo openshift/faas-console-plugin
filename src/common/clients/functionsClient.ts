@@ -59,3 +59,14 @@ export async function putFiles(
     },
   );
 }
+
+export async function deployFunction(owner: string, name: string, branch: string): Promise<void> {
+  await consoleFetch(
+    `${PROXY_BASE}/api/v1/func/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/deploy`,
+    {
+      method: 'POST',
+      headers: { ...scmHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branch }),
+    },
+  );
+}

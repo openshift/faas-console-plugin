@@ -553,6 +553,49 @@ var _ = Describe("GitHub SCM client", func() {
 		})
 	})
 
+	Describe("DispatchWorkflow", func() {
+		It("posts a workflow dispatch event with the given ref", func() {
+			var gotPath, gotRef string
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				var body struct {
+					Ref string `json:"ref"`
+				}
+				json.NewDecoder(r.Body).Decode(&body)
+				gotRef = body.Ref
+				w.WriteHeader(http.StatusNoContent)
+			})
+
+			Expect(cl.DispatchWorkflow(context.Background(), "alice", "my-func", "func-deploy.yaml", "main")).To(Succeed())
+			Expect(gotPath).To(ContainSubstring("/repos/alice/my-func/actions/workflows/func-deploy.yaml/dispatches"))
+			Expect(gotRef).To(Equal("main"))
+		})
+
+		It("returns an unauthorized error when the token is forbidden", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]string{"message": "forbidden"})
+			})
+
+			err := cl.DispatchWorkflow(context.Background(), "alice", "my-func", "func-deploy.yaml", "main")
+
+			Expect(err).To(HaveOccurred())
+			Expect(isUnauthorized(err)).To(BeTrue())
+		})
+
+		It("returns a non-unauthorized error when the GitHub API fails", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"message": "server error"})
+			})
+
+			err := cl.DispatchWorkflow(context.Background(), "alice", "my-func", "func-deploy.yaml", "main")
+
+			Expect(err).To(HaveOccurred())
+			Expect(isUnauthorized(err)).To(BeFalse())
+		})
+	})
+
 	Describe("StoreSecret", func() {
 		It("returns an error when storing the secret fails after the public key is fetched", func() {
 			cl := newClient(func(w http.ResponseWriter, r *http.Request) {

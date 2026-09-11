@@ -5,6 +5,11 @@ import { E2E_USER, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from '../../h
 import { deleteFunction } from '../../helpers/cluster';
 
 test.describe('Functions list empty state', () => {
+  // The empty state only appears when the whole cluster has no functions, which
+  // is only guaranteed on the clean CI cluster. Locally a dev cluster often has
+  // leftover functions, so skip there to avoid a false failure.
+  test.skip(!process.env.CI, 'Requires a cluster with no deployed functions (CI only)');
+
   test.beforeEach(async ({ page }) => {
     await resetFakeGithub();
     await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);

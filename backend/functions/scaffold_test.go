@@ -40,6 +40,26 @@ var _ = Describe("Generate", func() {
 		Expect(workflowYAML).To(ContainSubstring("FUNC_BUILDER: " + builders.S2I))
 	})
 
+	It("adds the workflow_dispatch trigger so the workflow can be triggered manually", func() {
+		files, err := Generate(ScaffoldConfig{
+			Name:      "my-func",
+			Runtime:   "go",
+			Registry:  "image-registry.openshift-image-registry.svc:5000/default",
+			Namespace: "default",
+			Branch:    "main",
+			SCM:       scm.GitHub,
+		})
+
+		Expect(err).NotTo(HaveOccurred())
+
+		fileMap := map[string]string{}
+		for _, f := range files {
+			fileMap[f.Path] = f.Content
+		}
+		Expect(fileMap).To(HaveKey(".github/workflows/func-deploy.yaml"))
+		Expect(fileMap[".github/workflows/func-deploy.yaml"]).To(ContainSubstring("workflow_dispatch"))
+	})
+
 	It("returns an error when function init fails", func() {
 		_, err := Generate(ScaffoldConfig{
 			Name: "my-func", Runtime: "invalid-runtime", Registry: "quay.io/myuser",

@@ -227,7 +227,7 @@ export async function simulateGitHubActionsDeploy(
   namespace: string,
   runtime: string,
 ): Promise<void> {
-  const headers = await k8sHeaders(page);
+  let headers = await k8sHeaders(page);
   const path = ksvcApiPath(namespace);
 
   const check = await page.request.get(`${path}/${name}`, { headers });
@@ -254,6 +254,12 @@ export async function simulateGitHubActionsDeploy(
       },
     };
 
+    // Re-read the CSRF token right before the mutating request. When the
+    // console SPA is already loaded (e.g. the caller navigated the UI first),
+    // it rotates the csrf-token cookie while ensureServerlessOperator runs, so
+    // the token captured at the top of this function would be stale and the
+    // console proxy would reject the POST with 403.
+    headers = await k8sHeaders(page);
     const ksvcRes = await page.request.post(path, { data: ksvc, headers });
     expect(ksvcRes.status()).toBe(201);
   }
@@ -279,6 +285,9 @@ export async function simulateGitHubActionsDeploy(
   const dep = (await depList.json()).items[0];
   const labels = dep.metadata.labels ?? {};
   if (!labels['function.knative.dev/name']) {
+    // Re-read the token: the deployment poll above can take up to 30s, long
+    // enough for the console SPA to rotate the csrf-token cookie again.
+    headers = await k8sHeaders(page);
     await page.request.patch(`${depPath}/${dep.metadata.name}`, {
       headers: { ...headers, 'Content-Type': 'application/merge-patch+json' },
       data: { metadata: { labels: { 'function.knative.dev/name': name } } },

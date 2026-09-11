@@ -49,6 +49,7 @@ type Client interface {
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
+	DispatchWorkflow(ctx context.Context, owner, repo, workflowFileName, ref string) error
 }
 
 type Repo struct {
@@ -72,14 +73,15 @@ type FileEntry struct {
 }
 
 type ClientStub struct {
-	OnGetUser        func(ctx context.Context) (*User, error)
-	OnListRepos      func(ctx context.Context) ([]Repo, error)
-	OnGetFileContent func(ctx context.Context, owner, repo, ref, path string) (string, error)
-	OnGetFiles       func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
-	OnPushFiles      func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
-	OnInitRepo       func(ctx context.Context, owner, name, branch string, topics []string) error
-	OnStoreSecret    func(ctx context.Context, owner, repo, name, value string) error
-	OnDeleteRepo     func(ctx context.Context, owner, repo string) error
+	OnGetUser          func(ctx context.Context) (*User, error)
+	OnListRepos        func(ctx context.Context) ([]Repo, error)
+	OnGetFileContent   func(ctx context.Context, owner, repo, ref, path string) (string, error)
+	OnGetFiles         func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
+	OnPushFiles        func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
+	OnInitRepo         func(ctx context.Context, owner, name, branch string, topics []string) error
+	OnStoreSecret      func(ctx context.Context, owner, repo, name, value string) error
+	OnDeleteRepo       func(ctx context.Context, owner, repo string) error
+	OnDispatchWorkflow func(ctx context.Context, owner, repo, workflowFileName, ref string) error
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -134,6 +136,13 @@ func (s *ClientStub) StoreSecret(ctx context.Context, owner, repo, name, value s
 func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 	if s.OnDeleteRepo != nil {
 		return s.OnDeleteRepo(ctx, owner, repo)
+	}
+	return nil
+}
+
+func (s *ClientStub) DispatchWorkflow(ctx context.Context, owner, repo, workflowFileName, ref string) error {
+	if s.OnDispatchWorkflow != nil {
+		return s.OnDispatchWorkflow(ctx, owner, repo, workflowFileName, ref)
 	}
 	return nil
 }

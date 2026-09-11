@@ -7,6 +7,7 @@ import {
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
+  AlertActionCloseButton,
   Button,
   Content,
   ContentVariants,
@@ -27,7 +28,7 @@ import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { ClusterFunction, FunctionListItem } from '../../common/types';
 import { useCluster } from '../../common/clients/useCluster';
-import { listFunctions } from '../../common/clients/functionsClient';
+import { deployFunction, listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
@@ -45,9 +46,11 @@ function FunctionsListPageContent() {
     loaded,
     refreshing,
     onEdit,
+    onDeploy,
     onRefresh,
     isAuthenticated,
-    error,
+    alert,
+    onAlertClose,
     showNamespace,
   } = useFunctionListPage();
 
@@ -59,10 +62,18 @@ function FunctionsListPageContent() {
         <UserAvatar enableReconnect />
       </ListPageHeader>
       <PageSection>
-        {error && (
-          <Alert variant="danger" title={t('Error listing functions')} isInline>
-            {error}
-          </Alert>
+        {alert && (
+          <Alert
+            variant={alert.variant}
+            title={alert.title}
+            isInline
+            className="pf-v6-u-mb-md"
+            timeout={alert.variant === 'success' ? 5000 : false}
+            onTimeout={onAlertClose}
+            actionClose={
+              <AlertActionCloseButton onClose={onAlertClose} aria-label={t('Close alert')} />
+            }
+          />
         )}
         {!loaded && (
           <Spinner aria-label={t('Loading')} style={{ display: 'block', margin: '4rem auto' }} />
@@ -108,7 +119,12 @@ function FunctionsListPageContent() {
                 </ToolbarItem>
               </ToolbarContent>
             </Toolbar>
-            <FunctionTable functions={functions} onEdit={onEdit} showNamespace={showNamespace} />
+            <FunctionTable
+              functions={functions}
+              onEdit={onEdit}
+              onDeploy={onDeploy}
+              showNamespace={showNamespace}
+            />
           </>
         )}
       </PageSection>
@@ -121,11 +137,14 @@ function useFunctionListPage(): {
   loaded: boolean;
   refreshing: boolean;
   onEdit: (name: string) => void;
+  onDeploy: (item: FunctionTableItem) => void;
   onRefresh: () => void;
   isAuthenticated: boolean;
-  error: string;
+  alert: { variant: 'success' | 'danger'; title: string } | null;
+  onAlertClose: () => void;
   showNamespace: boolean;
 } {
+  const { t } = useTranslation('plugin__console-functions-plugin');
   const { isAuthenticated, connectionId } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -137,14 +156,14 @@ function useFunctionListPage(): {
 
   const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
 
-  const [error, setError] = useState<string>('');
+  const [alert, setAlert] = useState<{ variant: 'success' | 'danger'; title: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // Reset state when connection changes (initial connect or user switch)
   if (connectionId !== prevConnectionId) {
     setPrevConnectionId(connectionId);
     setFunctionItems([]);
-    setError('');
+    setAlert(null);
     setNamespaceLoaded(false);
   }
 
@@ -152,7 +171,7 @@ function useFunctionListPage(): {
   if (namespace !== prevNamespace) {
     setPrevNamespace(namespace);
     setFunctionItems([]);
-    setError('');
+    setAlert(null);
     setNamespaceLoaded(false);
   }
 
@@ -164,9 +183,9 @@ function useFunctionListPage(): {
       const items = await loadFunctionTableItems(namespace);
       setFunctionItems(items);
       setNamespaceLoaded(true);
-      setError('');
+      setAlert(null);
     } catch (err) {
-      setError(errorMessage(err));
+      setAlert({ variant: 'danger', title: errorMessage(err) });
     } finally {
       setRefreshing(false);
     }
@@ -185,7 +204,7 @@ function useFunctionListPage(): {
       } catch (err) {
         if (!ignore) {
           setNamespaceLoaded(true);
-          setError(errorMessage(err));
+          setAlert({ variant: 'danger', title: errorMessage(err) });
         }
         return;
       }
@@ -193,7 +212,7 @@ function useFunctionListPage(): {
 
       setFunctionItems(items);
       setNamespaceLoaded(true);
-      setError('');
+      setAlert(null);
     }
 
     doLoad();
@@ -226,14 +245,38 @@ function useFunctionListPage(): {
 
   const onEdit = (name: string) => navigate(`/faas/edit/${name}`);
 
+  const onAlertClose = () => setAlert(null);
+
+  const onDeploy = async (item: FunctionTableItem) => {
+    try {
+      await deployFunction(item.owner, item.repoName, item.branch);
+      setAlert({
+        variant: 'success',
+        title: t('Deploy started for {{name}}. It can take a few minutes.', {
+          name: item.name,
+        }),
+      });
+    } catch (err) {
+      setAlert({
+        variant: 'danger',
+        title: t('Failed to deploy {{name}}: {{error}}', {
+          name: item.name,
+          error: errorMessage(err),
+        }),
+      });
+    }
+  };
+
   return {
     functions,
     loaded,
     refreshing,
     onEdit,
+    onDeploy,
     onRefresh,
     isAuthenticated,
-    error,
+    alert,
+    onAlertClose,
     showNamespace: isAllNamespacesKey(namespace),
   };
 }
@@ -247,6 +290,8 @@ function newItem(item: FunctionListItem): FunctionTableItem {
   return {
     name: item.name || item.repoName,
     repoName: item.repoName,
+    owner: item.owner,
+    branch: item.defaultBranch,
     namespace: item.namespace,
     runtime: item.runtime,
     status: item.err ? 'Error' : 'NotDeployed',

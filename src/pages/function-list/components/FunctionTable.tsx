@@ -7,8 +7,13 @@ import {
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
-import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { ActionList, ActionListItem, Button, Content, Tooltip } from '@patternfly/react-core';
+import {
+  ExclamationTriangleIcon,
+  PencilAltIcon,
+  PlayIcon,
+  PowerOffIcon,
+} from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
 import { FunctionSource, FunctionStatus } from '../../../common/types';
@@ -16,6 +21,8 @@ import { FunctionSource, FunctionStatus } from '../../../common/types';
 export interface FunctionTableItem {
   name: string;
   repoName: string;
+  owner: string;
+  branch: string;
   runtime: string;
   status: FunctionStatus;
   url: string;
@@ -28,10 +35,12 @@ export interface FunctionTableItem {
 export function FunctionTable({
   functions,
   onEdit,
+  onDeploy,
   showNamespace,
 }: {
   functions: FunctionTableItem[];
   onEdit: (name: string) => void;
+  onDeploy: (item: FunctionTableItem) => void;
   showNamespace: boolean;
 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
@@ -74,13 +83,13 @@ export function FunctionTable({
               <UrlCell url={fn.url} />
             </Td>
             <Td dataLabel={t('Replicas')}>{fn.replicas}</Td>
-            <Td dataLabel={t('Actions')} isActionCell>
+            <Td dataLabel={t('Actions')} isActionCell style={{ verticalAlign: 'middle' }}>
               <ActionList isIconList>
                 <ActionListItem>
                   <EditActionButton source={fn.source} repoName={fn.repoName} onEdit={onEdit} />
                 </ActionListItem>
                 <ActionListItem>
-                  <DeleteActionButton mainResource={fn.mainResource} />
+                  <DeployToggleButton item={fn} onDeploy={onDeploy} />
                 </ActionListItem>
               </ActionList>
             </Td>
@@ -98,6 +107,7 @@ function TextOrDash({ value }: { value?: string }) {
 function StatusCell({ status }: { status: FunctionStatus }) {
   switch (status) {
     case 'Running':
+    case 'ScaledToZero':
       return <SuccessStatus title={status} />;
     case 'Deploying':
     case 'CreatingRepo':
@@ -106,10 +116,10 @@ function StatusCell({ status }: { status: FunctionStatus }) {
       return <ProgressStatus title={status} />;
     case 'Error':
       return <ErrorStatus title={status} />;
-    case 'ScaledToZero':
     case 'NotDeployed':
       return <InfoStatus title={status} />;
     case 'Unknown':
+    default:
       return <StatusIconAndText title={status} icon={<ExclamationTriangleIcon />} />;
   }
 }
@@ -139,13 +149,15 @@ function EditActionButton({
 
   const button = (
     <Button
-      variant="plain"
+      variant="secondary"
       aria-label={t('Edit')}
       icon={<PencilAltIcon />}
       isAriaDisabled={isDisabled}
+      size="sm"
       onClick={() => {
         if (!isDisabled) onEdit(repoName);
       }}
+      isCircle
     />
   );
 
@@ -154,22 +166,72 @@ function EditActionButton({
   return <Tooltip content={t('No source repository to edit')}>{button}</Tooltip>;
 }
 
-function DeleteActionButton({ mainResource }: { mainResource?: K8sResourceCommon }) {
+function DeployToggleButton({
+  item,
+  onDeploy,
+}: {
+  item: FunctionTableItem;
+  onDeploy: (item: FunctionTableItem) => void;
+}) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const launchDelete = useDeleteModal(
-    mainResource as K8sResourceCommon,
+
+  const launchUndeploy = useDeleteModal(
+    item.mainResource as K8sResourceCommon,
     undefined,
-    undefined,
+    <Content component="p">
+      {t(
+        'Undeploying removes the running function and its Knative Service from the cluster. The GitHub repository and its code remain, so you can redeploy it later.',
+      )}
+    </Content>,
     t('Undeploy'),
   );
 
+  const deployed = item.status === 'Running' || item.status === 'ScaledToZero';
+  const hasRepo = item.source !== 'cluster' && item.repoName !== '';
+  const deployable = (item.status === 'NotDeployed' || item.status === 'Error') && hasRepo;
+
+  if (deployed) {
+    return (
+      <Button
+        variant="secondary"
+        isDanger
+        aria-label={t('Undeploy')}
+        icon={<PowerOffIcon />}
+        onClick={() => launchUndeploy()}
+        size="sm"
+        isCircle
+      />
+    );
+  }
+
+  if (deployable) {
+    return (
+      <Button
+        variant="secondary"
+        aria-label={t('Deploy')}
+        icon={<PlayIcon />}
+        onClick={() => onDeploy(item)}
+        size="sm"
+        isCircle
+      />
+    );
+  }
+
+  const disabledTooltip =
+    (item.status === 'NotDeployed' || item.status === 'Error') && !hasRepo
+      ? t('No source repository to deploy')
+      : t('Function is not ready to deploy yet');
+
   return (
-    <Button
-      variant="plain"
-      aria-label={t('Delete')}
-      icon={<TrashIcon />}
-      isDisabled={!mainResource}
-      onClick={() => launchDelete()}
-    />
+    <Tooltip content={disabledTooltip}>
+      <Button
+        variant="secondary"
+        aria-label={t('Deploy')}
+        icon={<PlayIcon />}
+        isAriaDisabled
+        size="sm"
+        isCircle
+      />
+    </Tooltip>
   );
 }

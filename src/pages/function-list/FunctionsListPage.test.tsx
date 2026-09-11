@@ -268,7 +268,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(await screen.findByText('Success: ScaledToZero')).toBeInTheDocument();
     expect(screen.getByText('0')).toBeInTheDocument();
   });
 

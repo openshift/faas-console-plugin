@@ -54,12 +54,21 @@ type commit struct {
 	} `json:"parents"`
 }
 
+type dispatchRecord struct {
+	Owner    string `json:"owner"`
+	Repo     string `json:"repo"`
+	Workflow string `json:"workflow"`
+	Ref      string `json:"ref"`
+}
+
 // Server is a fake GitHub API HTTP server with in-memory state.
 type Server struct {
 	mu    sync.Mutex
 	user  User
 	pat   string           // required PAT for API routes (empty = no auth check)
 	repos map[string]*repo // "owner/name" -> repo
+
+	dispatches []dispatchRecord // recorded workflow_dispatch calls
 
 	pubKey    [32]byte
 	privKey   [32]byte
@@ -135,10 +144,12 @@ func (s *Server) routes() {
 	// Actions secrets
 	s.mux.HandleFunc("GET /repos/{owner}/{repo}/actions/secrets/public-key", s.handleGetPublicKey)
 	s.mux.HandleFunc("PUT /repos/{owner}/{repo}/actions/secrets/{name}", s.handlePutSecret)
+	s.mux.HandleFunc("POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches", s.handleDispatchWorkflow)
 
 	// Admin API (for test setup)
 	s.mux.HandleFunc("POST /_admin/seed", s.handleAdminSeed)
 	s.mux.HandleFunc("POST /_admin/reset", s.handleAdminReset)
+	s.mux.HandleFunc("GET /_admin/dispatches", s.handleAdminDispatches)
 }
 
 // --- GitHub API handlers ---
@@ -628,6 +639,33 @@ func (s *Server) handlePutSecret(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 
+func (s *Server) handleDispatchWorkflow(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rp := s.getRepo(r)
+	if rp == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+
+	var body struct {
+		Ref string `json:"ref"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	s.dispatches = append(s.dispatches, dispatchRecord{
+		Owner:    r.PathValue("owner"),
+		Repo:     r.PathValue("repo"),
+		Workflow: r.PathValue("workflow"),
+		Ref:      body.Ref,
+	})
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // --- Admin API handlers ---
 
 type seedRequest struct {
@@ -686,7 +724,19 @@ func (s *Server) handleAdminReset(w http.ResponseWriter, _ *http.Request) {
 	defer s.mu.Unlock()
 
 	s.repos = make(map[string]*repo)
+	s.dispatches = nil
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reset"})
+}
+
+func (s *Server) handleAdminDispatches(w http.ResponseWriter, _ *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := s.dispatches
+	if out == nil {
+		out = []dispatchRecord{}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // --- Helpers ---

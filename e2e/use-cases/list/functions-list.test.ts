@@ -39,7 +39,8 @@ test.describe('Functions list', () => {
       await expect(row).toBeVisible();
       await expect(row.getByText('NotDeployed')).toBeVisible();
       await expect(row.getByRole('button', { name: 'Edit' })).toBeEnabled();
-      await expect(row.getByRole('button', { name: 'Delete' })).toBeDisabled();
+      await expect(row.getByRole('button', { name: 'Deploy' })).toBeEnabled();
+      await expect(row.getByRole('button', { name: 'Undeploy' })).toHaveCount(0);
     });
 
     await test.step('refresh re-fetches the list', async () => {
