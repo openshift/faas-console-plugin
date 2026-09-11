@@ -1,38 +1,3 @@
-import type { Language } from '@patternfly/react-code-editor';
-
-const extensionMap: Record<string, string> = {
-  js: 'javascript',
-  jsx: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  go: 'go',
-  py: 'python',
-  yaml: 'yaml',
-  yml: 'yaml',
-  json: 'json',
-  md: 'markdown',
-  sh: 'shell',
-  bash: 'shell',
-  html: 'html',
-  css: 'css',
-  xml: 'xml',
-  toml: 'plaintext',
-  txt: 'plaintext',
-};
-
-const filenameMap: Record<string, string> = {
-  Dockerfile: 'dockerfile',
-  Makefile: 'plaintext',
-};
-
-export function getLanguageFromPath(path: string): Language {
-  const filename = path.split('/').pop() ?? '';
-  if (filenameMap[filename]) return filenameMap[filename] as Language;
-
-  const ext = filename.split('.').pop() ?? '';
-  return (extensionMap[ext] ?? 'plaintext') as Language;
-}
-
 export function parseFuncYaml(funcYaml: string): {
   name: string;
   namespace: string;

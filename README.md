@@ -66,7 +66,9 @@ PRs merge via Prow when they have both `approved` and `lgtm` labels.
 Installs OpenShift Serverless, Knative Serving, and the Functions operator (which deploys the console plugin). The operator catalog always contains the latest console plugin build, kept current automatically by Konflux.
 
 ```shell
-# 1. Install the operators
+# 1. Install the operators. Wait a few minutes for the installation to finish.
+#    If you want to observe the installation, use this command right after:
+#    oc get csv -n openshift-serverless -w
 oc apply -f https://raw.githubusercontent.com/openshift/faas-console-plugin/master/install.yaml
 
 # 2. Install Knative Serving (requires the Serverless operator CRDs)
