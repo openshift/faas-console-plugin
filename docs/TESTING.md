@@ -21,7 +21,7 @@ Not every test double is a mock. Use the correct term:
 
 | Term | Purpose | Examples |
 |------|---------|----------|
-| **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub` (MSW handler returning configured responses), `useK8sWatchResourceStub` |
+| **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub`, `getFilesStub`, `putFilesStub` (MSW handlers), `useK8sWatchResourceStub` |
 | **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewSimpleClientset` (in-memory K8s client). Frontend: `authenticateGithubFake` (populates sessionStorage instead of real OAuth) |
 | **Mock** | Asserts expectations inside the double | Use sparingly. Prefer stubs with assertions in the test body. |
 | **Spy** | Records calls for later assertion | Not currently used. Prefer asserting on observable output. |
@@ -60,7 +60,8 @@ Shared test infrastructure lives in `src/common/testing/`:
 | File | Purpose |
 | ------ | --------- |
 | `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
-| `functionsClientStub.ts` | MSW handler that intercepts `listFunctions` requests with configurable responses, errors, and delays |
+| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`) |
+| `testData.ts` | Test data factories for shared test fixtures (`repoListItem`) |
 | `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
 | `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
@@ -97,7 +98,7 @@ Tests replace external dependencies at two boundaries using test doubles:
    ```typescript
    it('shows NotDeployed status for repos without cluster deployment', async () => {
      // Arrange
-     listFunctionsStub({ responses: [repoListItem('orphan-func', 'orphan-func', 'demo', 'node')] });
+     listFunctionsStub({ responses: [repoListItem({ repoName: 'orphan-func', name: 'orphan-func', namespace: 'demo', runtime: 'node' })] });
 
      // Act
      render(

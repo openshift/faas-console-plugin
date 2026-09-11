@@ -21,13 +21,13 @@ import { CodeIcon } from '@patternfly/react-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router';
-import { EditToolbar } from './components/EditToolbar';
-import { FileTreeView } from './components/FileTreeView';
+import { getFiles, listFunctions, putFiles } from '../../common/clients/functionsClient';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthProvider } from '../../common/context/AuthProvider';
-import { getFiles, listFunctions, putFiles } from '../../common/clients/functionsClient';
 import { FileEntry, FunctionListItem } from '../../common/types';
-import { getLanguageFromPath, handlerMap } from '../../common/utils/utils';
+import { handlerMap } from '../../common/utils/utils';
+import { EditToolbar } from './components/EditToolbar';
+import { FileTreeView } from './components/FileTreeView';
 
 // --- page component ---
 
@@ -238,6 +238,39 @@ function useFunctionEditPage(): FunctionEditPageState {
     onFileDelete,
     saveFiles,
   };
+}
+
+function getLanguageFromPath(path: string): Language {
+  const extensionMap: Record<string, string> = {
+    js: 'javascript',
+    jsx: 'javascript',
+    ts: 'typescript',
+    tsx: 'typescript',
+    go: 'go',
+    py: 'python',
+    yaml: 'yaml',
+    yml: 'yaml',
+    json: 'json',
+    md: 'markdown',
+    sh: 'shell',
+    bash: 'shell',
+    html: 'html',
+    css: 'css',
+    xml: 'xml',
+    toml: 'plaintext',
+    txt: 'plaintext',
+  };
+
+  const filenameMap: Record<string, string> = {
+    Dockerfile: 'dockerfile',
+    Makefile: 'plaintext',
+  };
+
+  const filename = path.split('/').pop() ?? '';
+  if (filenameMap[filename]) return filenameMap[filename] as Language;
+
+  const ext = filename.split('.').pop() ?? '';
+  return (extensionMap[ext] ?? 'plaintext') as Language;
 }
 
 async function resolveRepoContent(
