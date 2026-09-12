@@ -4,6 +4,7 @@ import { FAKE_GH_PAT } from './constants';
 
 interface DevEnv {
   fakeGithubPort?: number;
+  clusterAPIURL?: string;
 }
 
 function readDevEnv(): DevEnv {
@@ -25,6 +26,15 @@ export function fakeGithubUrl(): string {
   return `http://localhost:${env.fakeGithubPort}`;
 }
 
+export function clusterAPIURL(): string {
+  if (process.env.CLUSTER_API_URL) return process.env.CLUSTER_API_URL;
+  const env = readDevEnv();
+  if (!env.clusterAPIURL) {
+    throw new Error('clusterAPIURL not found in .dev-env.json. Start dev with: make dev-fake-gh');
+  }
+  return env.clusterAPIURL;
+}
+
 interface SeedFile {
   path: string;
   mode: string;
@@ -37,12 +47,14 @@ export async function seedRepo(
   branch: string,
   topics: string[],
   files: SeedFile[],
+  variables?: Record<string, string>,
 ): Promise<void> {
   const url = fakeGithubUrl();
+  const mergedVariables = { CLUSTER_API_URL: clusterAPIURL(), ...variables };
   const resp = await fetch(`${url}/_admin/seed`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ owner, repo: name, branch, topics, files }),
+    body: JSON.stringify({ owner, repo: name, branch, topics, files, variables: mergedVariables }),
   });
   if (!resp.ok) {
     throw new Error(

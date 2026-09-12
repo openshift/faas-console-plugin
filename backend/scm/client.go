@@ -48,6 +48,8 @@ type Client interface {
 	PushFiles(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
+	GetVariable(ctx context.Context, owner, repo, name string) (string, error)
+	StoreVariable(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
 }
 
@@ -79,6 +81,8 @@ type ClientStub struct {
 	OnPushFiles      func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
 	OnInitRepo       func(ctx context.Context, owner, name, branch string, topics []string) error
 	OnStoreSecret    func(ctx context.Context, owner, repo, name, value string) error
+	OnGetVariable    func(ctx context.Context, owner, repo, name string) (string, error)
+	OnStoreVariable  func(ctx context.Context, owner, repo, name, value string) error
 	OnDeleteRepo     func(ctx context.Context, owner, repo string) error
 }
 
@@ -127,6 +131,20 @@ func (s *ClientStub) InitRepo(ctx context.Context, owner, name, branch string, t
 func (s *ClientStub) StoreSecret(ctx context.Context, owner, repo, name, value string) error {
 	if s.OnStoreSecret != nil {
 		return s.OnStoreSecret(ctx, owner, repo, name, value)
+	}
+	return nil
+}
+
+func (s *ClientStub) GetVariable(ctx context.Context, owner, repo, name string) (string, error) {
+	if s.OnGetVariable != nil {
+		return s.OnGetVariable(ctx, owner, repo, name)
+	}
+	return "", nil
+}
+
+func (s *ClientStub) StoreVariable(ctx context.Context, owner, repo, name, value string) error {
+	if s.OnStoreVariable != nil {
+		return s.OnStoreVariable(ctx, owner, repo, name, value)
 	}
 	return nil
 }

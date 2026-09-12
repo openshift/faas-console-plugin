@@ -272,6 +272,40 @@ func (c *ghClient) InitRepo(ctx context.Context, owner, name, branch string, top
 	return nil
 }
 
+func (c *ghClient) GetVariable(ctx context.Context, owner, repo, name string) (string, error) {
+	variable, _, err := c.client.Actions.GetRepoVariable(ctx, owner, repo, name)
+	if err != nil {
+		var ghErr *ghlib.ErrorResponse
+		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
+			return "", nil
+		}
+		return "", fmt.Errorf("get variable %s: %w", name, mapErr(err))
+	}
+	return variable.GetValue(), nil
+}
+
+func (c *ghClient) StoreVariable(ctx context.Context, owner, repo, name, value string) error {
+	_, err := c.client.Actions.CreateRepoVariable(ctx, owner, repo, ghlib.ActionsCreateVariableRequest{
+		Name:  name,
+		Value: value,
+	})
+	if err != nil {
+		var ghErr *ghlib.ErrorResponse
+		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusConflict {
+			newValue := value
+			_, updateErr := c.client.Actions.UpdateRepoVariable(ctx, owner, repo, name, ghlib.ActionsUpdateVariableRequest{
+				Value: &newValue,
+			})
+			if updateErr != nil {
+				return fmt.Errorf("update variable %s: %w", name, mapErr(updateErr))
+			}
+			return nil
+		}
+		return fmt.Errorf("store variable %s: %w", name, mapErr(err))
+	}
+	return nil
+}
+
 func (c *ghClient) StoreSecret(ctx context.Context, owner, repo, name, value string) error {
 	pubKey, _, err := c.client.Actions.GetRepoPublicKey(ctx, owner, repo)
 	if err != nil {

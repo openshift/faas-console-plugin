@@ -82,7 +82,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace)
+		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace, h.externalAPIServerURL)
 	}()
 	go func() {
 		defer wg.Done()
@@ -125,7 +125,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func listRepoFunctions(ctx context.Context, pat, namespace string) ([]listItem, error) {
+func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string) ([]listItem, error) {
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 
 	repos, err := client.ListRepos(ctx)
@@ -134,55 +134,71 @@ func listRepoFunctions(ctx context.Context, pat, namespace string) ([]listItem, 
 	}
 
 	items := make([]listItem, len(repos))
-	for i, repo := range repos {
-		items[i] = listItem{
-			Owner:         repo.Owner,
-			RepoName:      repo.Name,
-			RepoURL:       repo.URL,
-			DefaultBranch: repo.DefaultBranch,
-			Source:        sourceRepo,
-		}
-	}
+	excluded := make([]bool, len(repos))
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
 	for i, repo := range repos {
 		g.Go(func() error {
+			items[i] = listItem{
+				Owner:         repo.Owner,
+				RepoName:      repo.Name,
+				RepoURL:       repo.URL,
+				DefaultBranch: repo.DefaultBranch,
+				Source:        sourceRepo,
+			}
+
+			repoClusterURL, err := client.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterAPIURL)
+			if err != nil {
+				slog.Warn("failed to read variable", "variable", repoVarClusterAPIURL, "repo", repo.Owner+"/"+repo.Name, "err", err)
+				// keep the repo on transient errors rather than hiding it
+			} else if repoClusterURL != clusterAPIURL {
+				// Filter out repos whose CLUSTER_API_URL variable does not match this cluster. The variable is written alongside
+				// the KUBECONFIG secret at repo creation, so a mismatch means the secret points to a different cluster
+				// (from where it was created) and deploying from this console would target the wrong cluster.
+				excluded[i] = true
+				return nil
+			}
+
 			content, err := client.GetFileContent(gctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
 			if err != nil {
 				slog.Warn("failed to read func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", err)
-				items[i].Err = "failed to read func.yaml"
+				if namespace != "" {
+					excluded[i] = true
+				} else {
+					items[i].Err = "failed to read func.yaml"
+				}
 				return nil
 			}
-			name, namespace, runtime, parseErr := parseFuncYaml(content)
+			name, funcNamespace, runtime, parseErr := parseFuncYaml(content)
 			if parseErr != nil {
 				slog.Warn("failed to parse func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", parseErr)
-				items[i].Err = "invalid func.yaml"
+				if namespace != "" {
+					excluded[i] = true
+				} else {
+					items[i].Err = "invalid func.yaml"
+				}
 				return nil
 			}
 			items[i].Name = name
-			items[i].Namespace = namespace
+			items[i].Namespace = funcNamespace
 			items[i].Runtime = runtime
+
+			if namespace != "" && funcNamespace != namespace {
+				excluded[i] = true
+			}
 			return nil
 		})
 	}
 	_ = g.Wait()
 
-	if namespace != "" {
-		items = filterByNamespace(items, namespace)
-	}
-
-	return items, nil
-}
-
-func filterByNamespace(items []listItem, namespace string) []listItem {
-	filtered := make([]listItem, 0, len(items))
-	for _, item := range items {
-		if item.Namespace == namespace {
+	filtered := items[:0]
+	for i, item := range items {
+		if !excluded[i] {
 			filtered = append(filtered, item)
 		}
 	}
-	return filtered
+	return filtered, nil
 }
 
 func (h *Handlers) listClusterFunctions(ctx context.Context, ocpToken, namespace string) ([]listItem, error) {

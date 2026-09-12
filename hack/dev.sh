@@ -91,7 +91,8 @@ write_dev_env() {
   "backendPort": $BACKEND_PORT,
   "pluginPort": $PLUGIN_PORT,
   "consolePort": $CONSOLE_PORT,
-  "fakeGithubPort": $FAKE_GH_PORT
+  "fakeGithubPort": $FAKE_GH_PORT,
+  "clusterAPIURL": "$KUBE_API_SERVER"
 }
 EOF
   else
@@ -280,9 +281,9 @@ main() {
   check_prerequisites
   install_dependencies
   stop_dev
+  resolve_kube_api_server
   write_dev_env
   extract_cluster_ca
-  resolve_kube_api_server
   trap 'stop_dev' EXIT INT TERM
   if $FAKE_GH; then
     start_fakegithub

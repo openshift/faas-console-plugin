@@ -17,6 +17,11 @@ import (
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
+const (
+	repoSecretKubeconfig = "KUBECONFIG"
+	repoVarClusterAPIURL = "CLUSTER_API_URL"
+)
+
 var (
 	validBranch      = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
 	validRuntimes    = map[string]bool{"node": true, "python": true, "go": true, "quarkus": true}
@@ -135,12 +140,19 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		}
 	}()
 
-	if err := client.StoreSecret(ctx, req.Owner, req.Repo, "KUBECONFIG", kubeconfig); err != nil {
+	if err := client.StoreSecret(ctx, req.Owner, req.Repo, repoSecretKubeconfig, kubeconfig); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
 		}
 		slog.Error("failed to store CI secret", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store secret: %w", err))
+	}
+	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoVarClusterAPIURL, h.externalAPIServerURL); err != nil {
+		if errors.Is(err, scm.ErrUnauthorized) {
+			return err
+		}
+		slog.Error("failed to store cluster variable", "owner", req.Owner, "repo", req.Repo, "err", err)
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store variable: %w", err))
 	}
 	if err := client.PushFiles(ctx, req.Owner, req.Repo, req.Branch, "Initialize Knative function project", files); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {

@@ -174,6 +174,32 @@ var _ = Describe("FakeGitHub Server", func() {
 			})
 		})
 
+		Describe("StoreVariable + GetVariable", func() {
+			It("stores a variable and reads it back", func() {
+				err := cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL", "https://api.my-cluster.example.com:6443")
+				Expect(err).NotTo(HaveOccurred())
+
+				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value).To(Equal("https://api.my-cluster.example.com:6443"))
+			})
+
+			It("returns empty string when variable does not exist", func() {
+				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "NO_SUCH_VAR")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value).To(BeEmpty())
+			})
+
+			It("overwrites a variable when stored again", func() {
+				Expect(cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL", "first")).To(Succeed())
+				Expect(cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL", "second")).To(Succeed())
+
+				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(value).To(Equal("second"))
+			})
+		})
+
 		Describe("DeleteRepo", func() {
 			It("removes the repo so it is no longer listed", func() {
 				err := cl.DeleteRepo(context.Background(), "testuser", "test-func")

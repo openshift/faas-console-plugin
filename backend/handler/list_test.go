@@ -35,6 +35,9 @@ var _ = Describe("GET /api/v1/func/list", func() {
 					{Owner: "alice", Name: "my-func", URL: "https://github.com/alice/my-func", DefaultBranch: "main"},
 				}, nil
 			},
+			OnGetVariable: func(ctx context.Context, owner, repo, name string) (string, error) {
+				return "https://api.my-cluster.example.com:6443", nil
+			},
 			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
 				return "name: my-func\nnamespace: demo\nruntime: go\n", nil
 			},
@@ -42,7 +45,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		(&Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}).HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -293,6 +296,87 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		(&Handlers{}).HandleListFunctions(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+	})
+
+	It("excludes repos whose CLUSTER_API_URL variable points to a different cluster", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "this-cluster", URL: "https://github.com/alice/this-cluster", DefaultBranch: "main"},
+					{Owner: "alice", Name: "other-cluster", URL: "https://github.com/alice/other-cluster", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetVariable: func(ctx context.Context, owner, repo, name string) (string, error) {
+				if repo == "other-cluster" {
+					return "https://api.other-cluster.example.com:6443", nil
+				}
+				return "https://api.my-cluster.example.com:6443", nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: " + repo + "\nnamespace: demo\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+
+		w := httptest.NewRecorder()
+		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h.HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("this-cluster"))
+	})
+
+	It("includes repos when GetVariable returns a transient error", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "my-func", URL: "https://github.com/alice/my-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetVariable: func(ctx context.Context, owner, repo, name string) (string, error) {
+				return "", errors.New("github unavailable")
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: my-func\nnamespace: demo\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+
+		w := httptest.NewRecorder()
+		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h.HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("my-func"))
+	})
+
+	It("excludes repos without a CLUSTER_API_URL variable", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "legacy-func", URL: "https://github.com/alice/legacy-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: legacy-func\nnamespace: demo\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+
+		w := httptest.NewRecorder()
+		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h.HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(BeEmpty())
 	})
 
 	It("returns 401 when the SCM token is invalid", func() {

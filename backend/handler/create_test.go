@@ -140,6 +140,24 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			withClusterStub(&cluster.ClientStub{})
 		}, http.StatusBadGateway),
 
+		Entry("StoreVariable returns ErrUnauthorized", func() {
+			withSCMStub(&scm.ClientStub{
+				OnStoreVariable: func(ctx context.Context, owner, repo, name, value string) error {
+					return scm.ErrUnauthorized
+				},
+			})
+			withClusterStub(&cluster.ClientStub{})
+		}, http.StatusUnauthorized),
+
+		Entry("StoreVariable returns generic error", func() {
+			withSCMStub(&scm.ClientStub{
+				OnStoreVariable: func(ctx context.Context, owner, repo, name, value string) error {
+					return errors.New("github unavailable")
+				},
+			})
+			withClusterStub(&cluster.ClientStub{})
+		}, http.StatusBadGateway),
+
 		Entry("PushFiles returns ErrUnauthorized", func() {
 			withSCMStub(&scm.ClientStub{
 				OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
@@ -314,6 +332,47 @@ var _ = Describe("POST /api/v1/func/create", func() {
 			w := doCreate(func() {
 				withSCMStub(&scm.ClientStub{
 					OnStoreSecret: func(ctx context.Context, owner, repo, name, value string) error {
+						return errors.New("github down")
+					},
+					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {
+						recordCall("deleteRepo")
+						return nil
+					},
+				})
+				withClusterStub(&cluster.ClientStub{
+					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
+						recordCall("deleteServiceAccount")
+						return nil
+					},
+					OnDeleteRole: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRole")
+						return nil
+					},
+					OnDeleteRoleBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteRoleBinding")
+						return nil
+					},
+					OnDeleteImageBuilderBinding: func(ctx context.Context, namespace string) error {
+						recordCall("deleteImageBuilderBinding")
+						return nil
+					},
+				})
+			})
+			Expect(w.Code).To(Equal(http.StatusBadGateway))
+			Expect(calls).To(HaveKey("deleteServiceAccount"))
+			Expect(calls).To(HaveKey("deleteRole"))
+			Expect(calls).To(HaveKey("deleteRoleBinding"))
+			Expect(calls).To(HaveKey("deleteImageBuilderBinding"))
+			Expect(calls).To(HaveKey("deleteRepo"))
+		})
+
+		It("rolls back cluster resources and repo when StoreVariable fails", func() {
+			calls := map[string]int{}
+			recordCall := func(key string) { calls[key]++ }
+
+			w := doCreate(func() {
+				withSCMStub(&scm.ClientStub{
+					OnStoreVariable: func(ctx context.Context, owner, repo, name, value string) error {
 						return errors.New("github down")
 					},
 					OnDeleteRepo: func(ctx context.Context, owner, repo string) error {

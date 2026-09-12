@@ -76,5 +76,7 @@ make install-frontend
 log::info "Installing Playwright browsers..."
 npx playwright install chromium
 
+export CLUSTER_API_URL=$(oc get infrastructure cluster -o jsonpath='{.status.apiServerURL}')
+
 log::info "Running Playwright e2e tests..."
 make test-e2e
