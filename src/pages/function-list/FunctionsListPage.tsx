@@ -25,8 +25,9 @@ import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction, FunctionListItem } from '../../common/types';
+import { BuildStatus, ClusterFunction, FunctionListItem } from '../../common/types';
 import { useCluster } from '../../common/clients/useCluster';
+import { useBuildStatus } from '../../common/clients/useBuildStatus';
 import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
 
@@ -210,15 +211,18 @@ function useFunctionListPage(): {
     // to 'get resources from all namespaces'
     isAllNamespacesKey(namespace) ? undefined : namespace,
   );
+  const buildStatuses = useBuildStatus(connectionId);
 
   const functions = useMemo(
     () =>
       functionItems.map((item) => {
         // keyed by namespace/name - the same function name can exist in multiple namespaces
         const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
-        return cf ? enrichItem(item, cf) : item;
+        const enriched = cf ? enrichItem(item, cf) : item;
+        const build = buildStatuses.get(`${item.owner}/${item.repoName}`);
+        return build ? mergeBuild(enriched, build, Boolean(cf)) : enriched;
       }),
-    [functionItems, clusterFunctions],
+    [functionItems, clusterFunctions, buildStatuses],
   );
 
   const reposLoaded = !isAuthenticated || (namespaceLoaded && prevNamespace === namespace);
@@ -247,6 +251,7 @@ function newItem(item: FunctionListItem): FunctionTableItem {
   return {
     name: item.name || item.repoName,
     repoName: item.repoName,
+    owner: item.owner,
     namespace: item.namespace,
     runtime: item.runtime,
     status: item.err ? 'Error' : 'NotDeployed',
@@ -264,4 +269,40 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
     replicas: cf.replicas,
     mainResource: cf.mainResource,
   };
+}
+
+// mergeBuild overlays build status onto a function: one the cluster knows about
+// keeps its cluster status with the build shown only as a secondary indicator,
+// otherwise the build status becomes the primary status.
+//
+// The gate is cluster presence (inCluster), not the status value. A live
+// function reports Deploying for a moment while a new revision rolls out, and
+// overwriting that with Building made the row flicker through Building on every
+// redeploy. Cluster presence also separates the two sources of Error: a broken
+// ksvc keeps Error as primary, while a repo-level error (no cluster resource)
+// still falls through to the build status.
+function mergeBuild(
+  item: FunctionTableItem,
+  build: BuildStatus,
+  inCluster: boolean,
+): FunctionTableItem {
+  if (inCluster) {
+    if (build.buildStatus === 'Building') {
+      return { ...item, buildActivity: 'Building' };
+    }
+    if (build.buildStatus === 'Failed') {
+      return { ...item, buildActivity: 'Failed', buildRunURL: build.runURL };
+    }
+    // Succeeded / None: nothing to overlay on a cluster-known function.
+    return item;
+  }
+  // Not in the cluster at all: show only the build status.
+  if (build.buildStatus === 'Building') {
+    return { ...item, status: 'Building' };
+  }
+  if (build.buildStatus === 'Failed') {
+    return { ...item, status: 'BuildFailed', buildRunURL: build.runURL };
+  }
+  // Succeeded / None: fall through to the cluster-derived status.
+  return item;
 }

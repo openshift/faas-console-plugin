@@ -40,6 +40,16 @@ func (r Registry) Client(platform Platform, token string) Client {
 	return client
 }
 
+type WorkflowRunsOrErr struct {
+	Runs []RepoRun
+	Err  error
+}
+
+type WorkflowWatch interface {
+	ResultChan() <-chan WorkflowRunsOrErr
+	Stop()
+}
+
 type Client interface {
 	GetUser(ctx context.Context) (*User, error)
 	ListRepos(ctx context.Context) ([]Repo, error)
@@ -49,6 +59,7 @@ type Client interface {
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
+	WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 type Repo struct {
@@ -56,6 +67,17 @@ type Repo struct {
 	Name          string `json:"name"`
 	URL           string `json:"url"`
 	DefaultBranch string `json:"defaultBranch"`
+}
+
+// FullName is the "owner/name" identifier, matching GitHub's full_name field.
+// Used to correlate a repo across cluster and build state.
+func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
+
+// RepoRun pairs a repo with its latest workflow run. A nil Run means the repo
+// has no run yet (including when the workflow file does not exist there).
+type RepoRun struct {
+	Repo Repo
+	Run  *WorkflowRun
 }
 
 type User struct {
@@ -71,15 +93,27 @@ type FileEntry struct {
 	Deleted bool   `json:"deleted,omitempty"`
 }
 
+// WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
+// repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
+// (including when the workflow file does not exist in the repo).
+type WorkflowRun struct {
+	ID         int64
+	Status     string // queued | in_progress | completed
+	Conclusion string // success | failure | cancelled | timed_out | ""
+	HeadSHA    string
+	HTMLURL    string
+}
+
 type ClientStub struct {
-	OnGetUser        func(ctx context.Context) (*User, error)
-	OnListRepos      func(ctx context.Context) ([]Repo, error)
-	OnGetFileContent func(ctx context.Context, owner, repo, ref, path string) (string, error)
-	OnGetFiles       func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
-	OnPushFiles      func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
-	OnInitRepo       func(ctx context.Context, owner, name, branch string, topics []string) error
-	OnStoreSecret    func(ctx context.Context, owner, repo, name, value string) error
-	OnDeleteRepo     func(ctx context.Context, owner, repo string) error
+	OnGetUser           func(ctx context.Context) (*User, error)
+	OnListRepos         func(ctx context.Context) ([]Repo, error)
+	OnGetFileContent    func(ctx context.Context, owner, repo, ref, path string) (string, error)
+	OnGetFiles          func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
+	OnPushFiles         func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
+	OnInitRepo          func(ctx context.Context, owner, name, branch string, topics []string) error
+	OnStoreSecret       func(ctx context.Context, owner, repo, name, value string) error
+	OnDeleteRepo        func(ctx context.Context, owner, repo string) error
+	OnWatchWorkflowRuns func(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -136,4 +170,25 @@ func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 		return s.OnDeleteRepo(ctx, owner, repo)
 	}
 	return nil
+}
+
+func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error) {
+	if s.OnWatchWorkflowRuns != nil {
+		return s.OnWatchWorkflowRuns(ctx, workflowFile)
+	}
+	// A closed channel ends the stream immediately. A nil one would block the
+	// caller's receive forever, so an unconfigured stub would hang rather than
+	// fail.
+	ch := make(chan WorkflowRunsOrErr)
+	close(ch)
+	return &stubWatch{ch: ch}, nil
+}
+
+type stubWatch struct {
+	ch chan WorkflowRunsOrErr
+}
+
+func (w *stubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.ch }
+func (w *stubWatch) Stop() {
+	close(w.ch)
 }

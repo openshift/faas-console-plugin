@@ -233,8 +233,114 @@ var _ = Describe("FakeGitHub Server", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repos).To(BeEmpty())
 		})
+
+		It("stores a scripted workflow run via /_admin/actions/runs", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+
+			setWorkflowRun(ts, `{
+				"owner": "testuser", "repo": "test-func", "branch": "main",
+				"headSha": "abc123", "status": "in_progress", "conclusion": ""
+			}`)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("in_progress"))
+			Expect(run.HeadSHA).To(Equal("abc123"))
+		})
+
+		It("clears workflow runs on reset", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","status":"completed","conclusion":"success"}`)
+
+			resetFakeGitHub(ts)
+			seedRepo(ts)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).To(BeNil())
+		})
+	})
+
+	Describe("LatestWorkflowRun", func() {
+		It("returns nil when the repo has no runs", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).To(BeNil())
+		})
+
+		It("returns the latest in-progress run", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"main","headSha":"sha1","status":"in_progress","conclusion":""}`)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("in_progress"))
+			Expect(run.Conclusion).To(BeEmpty())
+			Expect(run.HeadSHA).To(Equal("sha1"))
+			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+		})
+
+		It("filters by branch", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{"owner":"testuser","repo":"test-func","branch":"other","status":"completed","conclusion":"success"}`)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).To(BeNil())
+		})
+
+		It("scopes to the func workflow file, ignoring runs of other workflows", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main",
+				"status":"completed","conclusion":"success","workflow":"other.yaml"
+			}`)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).To(BeNil())
+		})
+
+		It("returns a completed failed run", func() {
+			ts, cl := startServer()
+			seedRepo(ts)
+			setWorkflowRun(ts, `{
+				"owner":"testuser","repo":"test-func","branch":"main","headSha":"badsha",
+				"status":"completed","conclusion":"failure"
+			}`)
+
+			run := latestRun(cl, "testuser", "test-func")
+			Expect(run).NotTo(BeNil())
+			Expect(run.Status).To(Equal("completed"))
+			Expect(run.Conclusion).To(Equal("failure"))
+			Expect(run.HTMLURL).To(ContainSubstring("/actions/runs/"))
+		})
 	})
 })
+
+// latestRun drives WatchWorkflowRuns and returns the given repo's latest run
+// from the initial snapshot. The repo must be discoverable (seeded with the
+// serverless-function topic) before calling. WatchWorkflowRuns uses the repo's
+// default branch, so callers seed runs on the default branch (main).
+func latestRun(cl scm.Client, owner, repo string) *scm.WorkflowRun {
+	ctx, cancel := context.WithCancel(context.Background())
+	DeferCleanup(cancel)
+	watch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	var event scm.WorkflowRunsOrErr
+	EventuallyWithOffset(1, watch.ResultChan()).Should(Receive(&event))
+	ExpectWithOffset(1, event.Err).NotTo(HaveOccurred())
+	for _, rr := range event.Runs {
+		if rr.Repo.Owner == owner && rr.Repo.Name == repo {
+			return rr.Run
+		}
+	}
+	return nil
+}
 
 func startServer() (*httptest.Server, scm.Client) {
 	srv := fakegithub.New(fakegithub.User{Login: "testuser", AvatarURL: "https://example.com/avatar"}, testPAT)
@@ -256,6 +362,16 @@ func seedRepo(ts *httptest.Server) {
 		]
 	}`
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/_admin/seed", strings.NewReader(body))
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := ts.Client().Do(req)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	ExpectWithOffset(1, resp.StatusCode).To(Equal(200))
+	resp.Body.Close()
+}
+
+func setWorkflowRun(ts *httptest.Server, body string) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+"/_admin/actions/runs", strings.NewReader(body))
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := ts.Client().Do(req)

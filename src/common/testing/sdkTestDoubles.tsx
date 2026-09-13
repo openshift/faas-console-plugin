@@ -234,3 +234,85 @@ export function setActiveNamespace(ns: string) {
 // START: isAllNamespaceKeyFake ------------------------------------------------
 export const isAllNamespaceKeyFake = (ns: string) => ns === '#ALL_NS#';
 // END: isAllNamespaceKeyFake --------------------------------------------------
+
+// START: consoleFetchStreamStub -----------------------------------------------
+// Test double for the SSE stream consumed by useBuildStatus. Mirrors the
+// setFixtures pattern above: module-level fixtures that tests set, and a stub
+// function wired into the mocked consoleFetch.
+//
+// Each element of `frames` is enqueued as a separate ReadableStream chunk, so
+// tests can split a single SSE frame across chunk boundaries to exercise the
+// hook's cross-read buffering.
+
+let frames: string[] = [];
+let streamError: unknown = null;
+let streamCalls = 0;
+let nullBodyCalls = 0;
+let lastStreamArgs: unknown[] = [];
+
+export function setStreamFrames(newFrames: string[]) {
+  frames = newFrames;
+  streamError = null;
+}
+
+// setNullBodyForNext makes the next n consoleFetch calls resolve 2xx with a null
+// body, simulating a body-less response the hook must recover from.
+export function setNullBodyForNext(n: number) {
+  nullBodyCalls = n;
+}
+
+// setStreamError makes the next consoleFetch reject, simulating an HTTP or
+// network failure. Attach a `code` (HTTP status) to simulate an auth failure.
+export function setStreamError(err: unknown) {
+  streamError = err;
+}
+
+export function resetStreamFrames() {
+  frames = [];
+  streamError = null;
+  streamCalls = 0;
+  nullBodyCalls = 0;
+  lastStreamArgs = [];
+}
+
+// streamFetchCalls reports how many times the stubbed consoleFetch was invoked,
+// so tests can assert reconnect versus stop behaviour.
+export function streamFetchCalls(): number {
+  return streamCalls;
+}
+
+// streamFetchLastArgs reports the arguments of the most recent consoleFetch call
+// (url, options, timeout), so tests can assert how the request was configured.
+export function streamFetchLastArgs(): unknown[] {
+  return lastStreamArgs;
+}
+
+// buildStatusFrame formats a single SSE build-status event. functions is keyed
+// by "owner/repo", matching the backend wire shape.
+export function buildStatusFrame(functions: Record<string, unknown>): string {
+  return `event: build-status\ndata: ${JSON.stringify({ functions })}\n\n`;
+}
+
+// consoleFetchStub stands in for consoleFetch(url, options, timeout): it records
+// its arguments and serves the configured frames (or error) as the response body.
+export const consoleFetchStub = (...args: unknown[]): Promise<Response> => {
+  streamCalls++;
+  lastStreamArgs = args;
+  if (streamError) return Promise.reject(streamError);
+  if (nullBodyCalls > 0) {
+    nullBodyCalls--;
+    return Promise.resolve(new Response(null, { status: 200 }));
+  }
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encoder = new TextEncoder();
+      for (const chunk of frames) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  });
+  return Promise.resolve(new Response(stream, { status: 200 }));
+};
+// END: consoleFetchStreamStub -------------------------------------------------

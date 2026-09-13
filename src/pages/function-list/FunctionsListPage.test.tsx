@@ -33,6 +33,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
       </>
     ),
     consoleFetchJSON,
+    consoleFetch: sdkTestDoubles.consoleFetchStub,
     SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
     ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
     ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
@@ -51,6 +52,7 @@ describe('FunctionsListPage', () => {
   beforeEach(() => {
     logoutGithubFake();
     authenticateGithubFake();
+    sdkTestDoubles.resetStreamFrames();
   });
 
   afterEach(() => {
@@ -299,6 +301,199 @@ describe('FunctionsListPage', () => {
     );
 
     expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+  });
+
+  it('shows Building as the primary status when the function is not running', async () => {
+    // No cluster fixture, so the function is NotDeployed: the build status is the
+    // most useful thing to show, so Building becomes the primary status.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Progress: Building')).toBeInTheDocument();
+  });
+
+  it('keeps Running with a build-in-progress indicator when the cluster is Running', async () => {
+    // Non-destructive: a serving function keeps its green Running status while a
+    // new revision builds; the build is surfaced only as a secondary spinner.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    expect(screen.queryByText('Progress: Building')).not.toBeInTheDocument();
+  });
+
+  it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({
+        [`twoGiants/${funcName}`]: {
+          buildStatus: 'Failed',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+    // The failed rebuild is surfaced as a secondary indicator linking to the run.
+    expect(await screen.findByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('keeps ScaledToZero with a build-failed indicator when the cluster is scaled to zero', async () => {
+    // A scaled-to-zero function is deployed and available (idle, cold-starts on
+    // demand), so a failed rebuild must not overwrite it with BuildFailed.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures({
+      knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
+      deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+    });
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({
+        [`twoGiants/${funcName}`]: {
+          buildStatus: 'Failed',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('keeps Deploying with a build-in-progress indicator while a new revision rolls out', async () => {
+    // A live function reports Deploying for a moment when the build applies a new
+    // revision. Overwriting that with Building flickered the row through a status
+    // it had already passed on every redeploy.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Progress: Deploying')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    expect(screen.queryByText('Progress: Building')).not.toBeInTheDocument();
+  });
+
+  it('keeps a cluster Error with a build-failed indicator when the latest build failed', async () => {
+    // Ready=False means a deployed revision is broken, which matters more than
+    // the failed rebuild, so the build drops to a secondary indicator.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures({
+      knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
+      deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
+    });
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({
+        [`twoGiants/${funcName}`]: {
+          buildStatus: 'Failed',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('shows BuildFailed for a repo-level error with no cluster resource', async () => {
+    // Error from FunctionListItem.err is not a cluster status, so the build
+    // status still takes over as it does for NotDeployed.
+    listFunctionsStub({ responses: [{ ...repoListItem(funcName), err: 'cannot read func.yaml' }] });
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({
+        [`twoGiants/${funcName}`]: {
+          buildStatus: 'Failed',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
+  });
+
+  it('shows BuildFailed with a run link from the build stream', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setStreamFrames([
+      sdkTestDoubles.buildStatusFrame({
+        [`twoGiants/${funcName}`]: {
+          buildStatus: 'Failed',
+          runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+        },
+      }),
+    ]);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Error: BuildFailed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
   });
 
   it('uses func.yaml name instead of repo name for cluster matching', async () => {

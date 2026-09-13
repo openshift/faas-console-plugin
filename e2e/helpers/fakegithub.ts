@@ -71,3 +71,35 @@ export async function deleteRepoOnFakeGithub(owner: string, name: string): Promi
     );
   }
 }
+
+interface WorkflowRunInput {
+  headSha?: string;
+  status: string; // queued | in_progress | completed
+  conclusion?: string; // success | failure | ...
+}
+
+export async function setWorkflowRun(
+  owner: string,
+  name: string,
+  branch: string,
+  run: WorkflowRunInput,
+): Promise<void> {
+  const url = fakeGithubUrl();
+  const resp = await fetch(`${url}/_admin/actions/runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      owner,
+      repo: name,
+      branch,
+      headSha: run.headSha ?? '',
+      status: run.status,
+      conclusion: run.conclusion ?? '',
+    }),
+  });
+  if (!resp.ok) {
+    throw new Error(
+      `Failed to set workflow run for ${owner}/${name} in fake GitHub: ${resp.status} ${await resp.text()}`,
+    );
+  }
+}
