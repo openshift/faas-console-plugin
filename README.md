@@ -69,7 +69,12 @@ Installs OpenShift Serverless, Knative Serving, and the Functions operator (whic
 # 1. Install the operators
 oc apply -f https://raw.githubusercontent.com/openshift/faas-console-plugin/master/install.yaml
 
-# 2. Install Knative Serving (requires the Serverless operator CRDs)
+# 2. Wait for the Serverless operator CRDs to be established
+until oc wait --for=condition=Established crd/knativeservings.operator.knative.dev --timeout=10s 2>/dev/null; do
+  echo "Waiting for knativeservings CRD..."; sleep 10
+done
+
+# 3. Install Knative Serving
 oc apply -f - <<EOF
 apiVersion: operator.knative.dev/v1beta1
 kind: KnativeServing
@@ -79,7 +84,8 @@ metadata:
 spec: {}
 EOF
 
-# 3. Enable the console plugin - can also be done through the UI
+# 4. Enable the console plugin - can also be done through the UI
+# Note: the console pod restarts after this - you may be redirected to login, which is expected.
 oc patch consoles.operator.openshift.io cluster --type=json \
   --patch='[{"op":"add","path":"/spec/plugins/-","value":"console-functions-plugin"}]'
 ```
