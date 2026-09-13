@@ -40,6 +40,16 @@ func (r Registry) Client(platform Platform, token string) Client {
 	return client
 }
 
+type WorkflowRunsOrErr struct {
+	Runs []RepoRun
+	Err  error
+}
+
+type WorkflowWatch interface {
+	ResultChan() <-chan WorkflowRunsOrErr
+	Stop()
+}
+
 type Client interface {
 	GetUser(ctx context.Context) (*User, error)
 	ListRepos(ctx context.Context) ([]Repo, error)
@@ -49,7 +59,7 @@ type Client interface {
 	InitRepo(ctx context.Context, owner, name, branch string, topics []string) error
 	StoreSecret(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
-	WatchWorkflowRuns(ctx context.Context, workflowFile string) (<-chan []RepoRun, error)
+	WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 type Repo struct {
@@ -103,7 +113,7 @@ type ClientStub struct {
 	OnInitRepo          func(ctx context.Context, owner, name, branch string, topics []string) error
 	OnStoreSecret       func(ctx context.Context, owner, repo, name, value string) error
 	OnDeleteRepo        func(ctx context.Context, owner, repo string) error
-	OnWatchWorkflowRuns func(ctx context.Context, workflowFile string) (<-chan []RepoRun, error)
+	OnWatchWorkflowRuns func(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -162,14 +172,23 @@ func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return nil
 }
 
-func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string) (<-chan []RepoRun, error) {
+func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error) {
 	if s.OnWatchWorkflowRuns != nil {
 		return s.OnWatchWorkflowRuns(ctx, workflowFile)
 	}
 	// A closed channel ends the stream immediately. A nil one would block the
 	// caller's receive forever, so an unconfigured stub would hang rather than
 	// fail.
-	ch := make(chan []RepoRun)
+	ch := make(chan WorkflowRunsOrErr)
 	close(ch)
-	return ch, nil
+	return &stubWatch{ch: ch}, nil
+}
+
+type stubWatch struct {
+	ch chan WorkflowRunsOrErr
+}
+
+func (w *stubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.ch }
+func (w *stubWatch) Stop() {
+	close(w.ch)
 }

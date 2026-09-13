@@ -51,10 +51,10 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			DeferCleanup(cancel)
-			ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+			w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 			Expect(err).NotTo(HaveOccurred())
 
-			first, ok := recvWithin(ch, 2*time.Second)
+			first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected an initial snapshot")
 			Expect(first[0].Run.Status).To(Equal("in_progress"))
 
@@ -68,7 +68,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			// The run never changes, so a working cache serves each 304 as the same
 			// run and the snapshot never re-emits. A broken cache would yield an
 			// empty 304 body (nil run) and a spurious re-emit.
-			_, ok = recvWithin(ch, 300*time.Millisecond)
+			_, ok = recvWithin(w.ResultChan(), 300*time.Millisecond)
 			Expect(ok).To(BeFalse(), "expected no re-emit while the 304s serve cached data")
 
 			mu.Lock()
@@ -110,17 +110,17 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		first, ok := recvWithin(ch, 2*time.Second)
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(1))
 		Expect(first[0].Repo.FullName()).To(Equal("alice/fn"))
 		Expect(first[0].Run).NotTo(BeNil())
 		Expect(first[0].Run.Status).To(Equal("in_progress"))
 
-		second, ok := recvWithin(ch, 2*time.Second)
+		second, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a second snapshot once the run changed")
 		Expect(second[0].Run.Status).To(Equal("completed"))
 		Expect(second[0].Run.Conclusion).To(Equal("success"))
@@ -134,14 +134,14 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		_, ok := recvWithin(ch, 2*time.Second)
+		_, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		// Many poll cycles pass (poll is 10ms) with identical runs; the watch
 		// suppresses the redundant snapshots.
-		_, ok = recvWithin(ch, 300*time.Millisecond)
+		_, ok = recvWithin(w.ResultChan(), 300*time.Millisecond)
 		Expect(ok).To(BeFalse(), "expected no re-emit while the run is unchanged")
 	})
 
@@ -164,16 +164,20 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		first, ok := recvWithin(ch, 2*time.Second)
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first[0].Run.Status).To(Equal("in_progress"))
 		// The last-known run is carried forward, so the snapshot is unchanged
 		// and nothing new is emitted (no flicker to a nil run).
-		_, ok = recvWithin(ch, 300*time.Millisecond)
-		Expect(ok).To(BeFalse(), "expected no re-emit while the error is carried forward")
+		select {
+		case event := <-w.ResultChan():
+			Expect(event.Err).NotTo(BeNil(), "expected error to be emitted after transient poll error")
+		case <-time.After(300 * time.Millisecond):
+			Fail("expected error event to be emitted")
+		}
 	})
 
 	It("closes the channel when the token is revoked at rediscover", func() {
@@ -208,17 +212,17 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		_, ok := recvWithin(ch, 2*time.Second)
+		_, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 
 		// The rediscover tick sees the revoked token and ends the watch, which
 		// closes the channel.
 		Eventually(func() bool {
 			select {
-			case _, open := <-ch:
+			case _, open := <-w.ResultChan():
 				return !open
 			case <-time.After(50 * time.Millisecond):
 				return false
@@ -247,10 +251,10 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		first, ok := recvWithin(ch, 2*time.Second)
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(1))
 
@@ -261,7 +265,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		mu.Unlock()
 
 		Eventually(func() int {
-			snap, ok := recvWithin(ch, 200*time.Millisecond)
+			snap, ok := recvWithin(w.ResultChan(), 200*time.Millisecond)
 			if !ok {
 				return -1
 			}
@@ -281,10 +285,10 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		first, ok := recvWithin(ch, 2*time.Second)
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(1))
 		Expect(first[0].Repo.FullName()).To(Equal("alice/fn"))
@@ -303,16 +307,97 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
-		ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
-		first, ok := recvWithin(ch, 2*time.Second)
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial snapshot")
 		Expect(first).To(HaveLen(2))
 		// Discovery returned the repos out of order; the snapshot is sorted so the
 		// stream and its change-detection are deterministic across polls.
 		Expect(first[0].Repo.FullName()).To(Equal("alice/alpha"))
 		Expect(first[1].Repo.FullName()).To(Equal("alice/zeta"))
+	})
+
+	It("stops polling when Stop() is called", func() {
+		cl := newWatchClient(fastPoll, noRediscover, watchFake("alice",
+			[]map[string]any{repoItem("alice", "fn", "main")},
+			func(w http.ResponseWriter, r *http.Request) {
+				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+			}))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Get initial snapshot
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot")
+		Expect(first[0].Run.Status).To(Equal("in_progress"))
+
+		// Call Stop()
+		w.Stop()
+
+		// Channel should close (recv returns with ok=false)
+		select {
+		case _, ok := <-w.ResultChan():
+			Expect(ok).To(BeFalse(), "expected channel to close after Stop()")
+		case <-time.After(2 * time.Second):
+			Fail("expected channel to close after Stop()")
+		}
+	})
+
+	It("carries forward last-known run when workflow runs endpoint returns service unavailable", func() {
+		var mu sync.Mutex
+		callCount := 0
+		cl := newWatchClient(fastPoll, noRediscover, func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/user":
+				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+			case r.URL.Path == "/search/repositories":
+				json.NewEncoder(w).Encode(map[string]any{
+					"total_count": 1,
+					"items":       []map[string]any{repoItem("alice", "fn", "main")},
+				})
+			case strings.Contains(r.URL.Path, "/actions/workflows/"):
+				mu.Lock()
+				defer mu.Unlock()
+				callCount++
+				if callCount == 1 {
+					// First call succeeds with a run
+					writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
+					return
+				}
+				// Subsequent calls return 429 Too Many Requests
+				w.Header().Set("X-RateLimit-Remaining", "0")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": "API rate limit exceeded"})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+		w, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+
+		// Get initial snapshot with the run
+		first, ok := recvWithin(w.ResultChan(), 2*time.Second)
+		Expect(ok).To(BeTrue(), "expected an initial snapshot")
+		Expect(first[0].Run.Status).To(Equal("in_progress"))
+
+		select {
+		case event := <-w.ResultChan():
+			if event.Err != nil {
+				Expect(event.Err.Error()).To(ContainSubstring("API rate limit exceeded"))
+			} else {
+				Fail("error expected here")
+			}
+		case <-time.After(2 * time.Second):
+			Fail("timeout")
+		}
 	})
 })
 
@@ -379,11 +464,14 @@ func padRun(run map[string]any, n int) map[string]any {
 	return padded
 }
 
-// recvWithin receives one snapshot from ch or times out.
-func recvWithin(ch <-chan []scm.RepoRun, timeout time.Duration) ([]scm.RepoRun, bool) {
+// recvWithin receives one event from ch or times out.
+func recvWithin(ch <-chan scm.WorkflowRunsOrErr, timeout time.Duration) ([]scm.RepoRun, bool) {
 	select {
-	case snap := <-ch:
-		return snap, true
+	case event := <-ch:
+		if event.Err != nil {
+			Fail(fmt.Sprintf("unexpected error from watch: %v", event.Err))
+		}
+		return event.Runs, true
 	case <-time.After(timeout):
 		return nil, false
 	}

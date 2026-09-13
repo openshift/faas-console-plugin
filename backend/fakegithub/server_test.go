@@ -329,11 +329,12 @@ var _ = Describe("FakeGitHub Server", func() {
 func latestRun(cl scm.Client, owner, repo string) *scm.WorkflowRun {
 	ctx, cancel := context.WithCancel(context.Background())
 	DeferCleanup(cancel)
-	ch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
+	watch, err := cl.WatchWorkflowRuns(ctx, "func-deploy.yaml")
 	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	var snap []scm.RepoRun
-	EventuallyWithOffset(1, ch).Should(Receive(&snap))
-	for _, rr := range snap {
+	var event scm.WorkflowRunsOrErr
+	EventuallyWithOffset(1, watch.ResultChan()).Should(Receive(&event))
+	ExpectWithOffset(1, event.Err).NotTo(HaveOccurred())
+	for _, rr := range event.Runs {
 		if rr.Repo.Owner == owner && rr.Repo.Name == repo {
 			return rr.Run
 		}

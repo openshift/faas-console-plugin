@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -59,7 +60,7 @@ var _ = Describe("BuildWatch", func() {
 
 	It("returns 401 when the SCM token is rejected during discovery", func() {
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 				return nil, scm.ErrUnauthorized
 			},
 		}
@@ -72,7 +73,7 @@ var _ = Describe("BuildWatch", func() {
 
 	It("returns 502 when discovery fails with a non-auth error", func() {
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 				return nil, errors.New("github unreachable")
 			},
 		}
@@ -86,10 +87,10 @@ var _ = Describe("BuildWatch", func() {
 	It("emits a heartbeat comment on the heartbeat interval", func() {
 		// The watch never emits a snapshot, so the only output is the heartbeat
 		// that keeps the SSE connection alive.
-		ch := make(chan []scm.RepoRun)
+		ch := make(chan scm.WorkflowRunsOrErr)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
-				return ch, nil
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				return &testWatch{ch: ch}, nil
 			},
 		}
 
@@ -101,30 +102,30 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
-		ch := make(chan []scm.RepoRun, 4)
+		ch := make(chan scm.WorkflowRunsOrErr, 4)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
-				return ch, nil
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				return &testWatch{ch: ch}, nil
 			},
 		}
 
 		reader := startWatchStream(stub, noHeartbeat)
 
-		ch <- []scm.RepoRun{{
+		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
 			Run:  &scm.WorkflowRun{Status: "in_progress"},
-		}}
+		}}}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the first snapshot")
 		Expect(first).To(ContainSubstring(`"alice/fn":{"buildStatus":"Building"}`))
 
-		ch <- []scm.RepoRun{{
+		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
 			Run: &scm.WorkflowRun{
 				Status: "completed", Conclusion: "failure",
 				HTMLURL: "https://github.com/alice/fn/actions/runs/1",
 			},
-		}}
+		}}}
 		second, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the second snapshot")
 		Expect(second).To(ContainSubstring(`"buildStatus":"Failed"`))
@@ -135,56 +136,128 @@ var _ = Describe("BuildWatch", func() {
 	// frame's shape, that a repo with no run carries no empty conclusion, runURL
 	// or headSHA keys.
 	It("omits the optional fields for a repo with no run", func() {
-		ch := make(chan []scm.RepoRun, 1)
+		ch := make(chan scm.WorkflowRunsOrErr, 1)
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
-				return ch, nil
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				return &testWatch{ch: ch}, nil
 			},
 		}
 
 		reader := startWatchStream(stub, noHeartbeat)
 
-		ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}
+		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: nil}}}
 		frame, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
 		Expect(frame).To(ContainSubstring(`"alice/fn":{"buildStatus":"None"}`))
 	})
 
 	It("ends the stream when the watch channel closes", func() {
-		ch := make(chan []scm.RepoRun, 1)
+		ch := make(chan scm.WorkflowRunsOrErr)
+		tw := &testWatch{ch: ch}
 		stub := &scm.ClientStub{
-			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
-				return ch, nil
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				return tw, nil
 			},
 		}
 
 		reader := startWatchStream(stub, noHeartbeat)
 
-		ch <- []scm.RepoRun{{
+		ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{
 			Repo: scm.Repo{Owner: "alice", Name: "fn"},
 			Run:  &scm.WorkflowRun{Status: "in_progress"},
-		}}
+		}}}
 		first, ok := readSSEDataWithin(reader, 2*time.Second)
 		Expect(ok).To(BeTrue(), "expected an initial frame")
 		Expect(first).To(ContainSubstring(`"buildStatus":"Building"`))
 
 		// Closing the channel signals the watch ended (e.g. the token was revoked
 		// mid-stream); the handler ends the SSE stream, so the body reaches EOF.
-		close(ch)
+		tw.Stop()
 		errCh := make(chan error, 1)
 		go func() {
-			for {
-				if _, err := reader.ReadString('\n'); err != nil {
-					errCh <- err
-					return
-				}
-			}
+			_, err := io.Copy(io.Discard, reader)
+			errCh <- err
 		}()
 		select {
 		case err := <-errCh:
-			Expect(err).To(MatchError(io.EOF))
+			Expect(err).To(BeNil())
 		case <-time.After(2 * time.Second):
 			Fail("expected the stream to close after the watch channel closed")
+		}
+	})
+
+	It("exits the stream when an error is emitted from the watch", func() {
+		ch := make(chan scm.WorkflowRunsOrErr, 1)
+		stub := &scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				return &testWatch{ch: ch}, nil
+			},
+		}
+
+		reader := startWatchStream(stub, noHeartbeat)
+
+		errCh := make(chan error, 1)
+		go func() {
+			_, err := io.Copy(io.Discard, reader)
+			errCh <- err
+		}()
+
+		// Emit an error from the watch
+		ch <- scm.WorkflowRunsOrErr{Err: errors.New("watch error")}
+
+		select {
+		case err := <-errCh:
+			Expect(err).To(BeNil())
+		case <-time.After(2 * time.Second):
+			Fail("expected the stream to close after an error is emitted")
+		}
+	})
+
+	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
+		stopCalled := make(chan bool)
+
+		ch := make(chan scm.WorkflowRunsOrErr, 1)
+
+		// Create a mock watch that tracks if Stop() is called
+		mockWatch := &trackingWatch{
+			ch:         ch,
+			stopCalled: stopCalled,
+		}
+
+		stub := &scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+				return mockWatch, nil
+			},
+		}
+
+		mux := http.NewServeMux()
+		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeat(fastHeartbeat)))
+		ts := httptest.NewServer(mux)
+		DeferCleanup(ts.Close)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/watch", nil)
+		Expect(err).NotTo(HaveOccurred())
+		req.Header.Set("X-SCM-Token", "pat")
+
+		resp, err := ts.Client().Do(req)
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(func() { resp.Body.Close() })
+
+		// Let the stream start
+		reader := bufio.NewReader(resp.Body)
+		_, err = reader.ReadString('\n')
+		Expect(err).NotTo(HaveOccurred())
+
+		// Cancel the request context
+		cancel()
+
+		// The handler should call watch.Stop() to properly clean up the polling goroutine
+		select {
+		case <-stopCalled:
+			// Success: Stop was called
+		case <-time.After(2 * time.Second):
+			Fail("expected watch.Stop() to be called when request context is cancelled")
 		}
 	})
 
@@ -193,15 +266,15 @@ var _ = Describe("BuildWatch", func() {
 		// the buildStatus its SSE frame carries, so the mapping is pinned at the
 		// wire contract the frontend consumes.
 		buildStatusFor := func(run *scm.WorkflowRun) string {
-			ch := make(chan []scm.RepoRun, 1)
+			ch := make(chan scm.WorkflowRunsOrErr, 1)
 			stub := &scm.ClientStub{
-				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
-					return ch, nil
+				OnWatchWorkflowRuns: func(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
+					return &testWatch{ch: ch}, nil
 				},
 			}
 
 			reader := startWatchStream(stub, noHeartbeat)
-			ch <- []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}
+			ch <- scm.WorkflowRunsOrErr{Runs: []scm.RepoRun{{Repo: scm.Repo{Owner: "alice", Name: "fn"}, Run: run}}}
 			data, ok := readSSEDataWithin(reader, 2*time.Second)
 			Expect(ok).To(BeTrue(), "expected a frame for the snapshot")
 
@@ -243,6 +316,34 @@ var _ = Describe("BuildWatch", func() {
 		})
 	})
 })
+
+// testWatch wraps a channel for testing; it implements scm.WorkflowWatch.
+type testWatch struct {
+	ch       chan scm.WorkflowRunsOrErr
+	stopOnce sync.Once
+}
+
+func (w *testWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
+func (w *testWatch) Stop() {
+	w.stopOnce.Do(func() {
+		close(w.ch)
+	})
+}
+
+// trackingWatch is a mock that tracks whether Stop() was called.
+type trackingWatch struct {
+	ch         chan scm.WorkflowRunsOrErr
+	stopCalled chan bool
+}
+
+func (w *trackingWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
+func (w *trackingWatch) Stop() {
+	close(w.ch)
+	select {
+	case w.stopCalled <- true:
+	default:
+	}
+}
 
 // buildWatchWithStub returns the handler wired to stub instead of the SCM
 // registry it defaults to, ignoring the token the way the stubs ignore

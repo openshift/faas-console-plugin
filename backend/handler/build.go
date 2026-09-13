@@ -92,7 +92,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 
 	// WatchWorkflowRuns discovers repos synchronously, so auth failures surface
 	// here, as a normal HTTP status, before the response switches to SSE.
-	runs, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
+	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			writeError(w, http.StatusUnauthorized, "invalid SCM token")
@@ -102,6 +102,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 		writeError(w, http.StatusBadGateway, "failed to list repositories")
 		return
 	}
+	defer watch.Stop()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -124,14 +125,20 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 				return
 			}
 			flusher.Flush()
-		case snapshot, ok := <-runs:
+		case event, ok := <-watch.ResultChan():
 			if !ok {
 				// Watch ended (cancelled, or the token was revoked mid-stream).
 				// End the stream so the client reconnects, hits a 401 on its
 				// initial request, and takes its re-auth path.
 				return
 			}
-			data, err := json.Marshal(toSnapshot(snapshot))
+			if event.Err != nil {
+				slog.Error("build watch: stream error", "err", event.Err)
+				// End the stream so the client reconnects and takes its re-auth path.
+				// We could also potentially push error event to the stream.
+				return
+			}
+			data, err := json.Marshal(toSnapshot(event.Runs))
 			if err != nil {
 				slog.Warn("build watch: marshal snapshot failed", "err", err)
 				continue

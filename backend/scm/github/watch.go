@@ -22,39 +22,59 @@ const (
 	defaultWatchRediscoverInterval = 30 * time.Second
 )
 
+// workflowWatch implements scm.WorkflowWatch. The result channel carries both
+// snapshots and errors; the caller must handle both.
+type workflowWatch struct {
+	ch     chan scm.WorkflowRunsOrErr
+	cancel context.CancelFunc
+}
+
+func (w *workflowWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
+func (w *workflowWatch) Stop() {
+	// Cancel the polling loop's context. The loop will clean up and close the channel.
+	w.cancel()
+}
+
 // WatchWorkflowRuns implements scm.Client. Repo discovery runs synchronously so
 // auth failures are returned to the caller rather than lost in the goroutine.
-func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (<-chan []scm.RepoRun, error) {
+// The returned watch's lifetime is independent of ctx; call Stop() to terminate.
+func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (scm.WorkflowWatch, error) {
 	repos, err := c.ListRepos(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make(chan []scm.RepoRun)
+	// Create a new context for the polling loop, independent of the caller's ctx.
+	// The loop terminates when this context is cancelled via Stop().
+	pollCtx, cancel := context.WithCancel(context.Background())
+
+	ch := make(chan scm.WorkflowRunsOrErr)
+	watch := &workflowWatch{ch: ch, cancel: cancel}
+
 	go func() {
-		defer close(out)
+		defer close(ch)
 
 		// Carried forward when a per-repo poll fails transiently: a flaky GitHub
 		// error would otherwise reset the run to nil and flicker the status.
 		prevRuns := make(map[string]*scm.WorkflowRun)
 		var prevSnapshot []scm.RepoRun
 
-		// The channel carries changes, not every poll.
-		emit := func(snapshot []scm.RepoRun) bool {
-			if reflect.DeepEqual(snapshot, prevSnapshot) {
+		emitWithErr := func(snapshot []scm.RepoRun, err error) bool {
+			// Skip emitting if the snapshot hasn't changed and there's no error.
+			if reflect.DeepEqual(snapshot, prevSnapshot) && err == nil {
 				return true
 			}
 			select {
-			case out <- snapshot:
+			case ch <- scm.WorkflowRunsOrErr{Runs: snapshot, Err: err}:
 				prevSnapshot = snapshot
 				return true
-			case <-ctx.Done():
+			case <-pollCtx.Done():
 				return false
 			}
 		}
 
 		pollAndEmit := func() bool {
-			snapshot := c.pollRuns(ctx, repos, workflowFile, prevRuns)
+			snapshot, pollErr := c.pollRuns(pollCtx, repos, workflowFile, prevRuns)
 			// Rebuilding the index rather than updating it prunes repos that
 			// dropped out of discovery, so it cannot grow unbounded.
 			next := make(map[string]*scm.WorkflowRun, len(snapshot))
@@ -62,7 +82,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 				next[rr.Repo.FullName()] = rr.Run
 			}
 			prevRuns = next
-			return emit(snapshot)
+			return emitWithErr(snapshot, pollErr)
 		}
 
 		if !pollAndEmit() {
@@ -76,10 +96,10 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-pollCtx.Done():
 				return
 			case <-rediscover.C:
-				latest, err := c.ListRepos(ctx)
+				latest, err := c.ListRepos(pollCtx)
 				if err != nil {
 					// Unlike a per-repo poll error, which is only carried
 					// forward, this one is unambiguous: end the stream rather
@@ -99,14 +119,15 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFile string) (
 			}
 		}
 	}()
-	return out, nil
+	return watch, nil
 }
 
 // pollRuns fetches the latest run for each repo concurrently. A per-repo error
-// carries that repo's last-known run forward from prevRuns instead of surfacing
-// on the channel. prevRuns is only read here (the caller updates it), so the
-// concurrent reads are safe.
-func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]*scm.WorkflowRun) []scm.RepoRun {
+// carries that repo's last-known run forward from prevRuns instead of breaking
+// the snapshot. The returned error is non-nil if any repo failed; the snapshot
+// is still valid (using carried-forward runs where needed). prevRuns is only
+// read here (the caller updates it), so the concurrent reads are safe.
+func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile string, prevRuns map[string]*scm.WorkflowRun) ([]scm.RepoRun, error) {
 	snapshot := make([]scm.RepoRun, len(repos))
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -118,12 +139,15 @@ func (c *ghClient) pollRuns(ctx context.Context, repos []scm.Repo, workflowFile 
 				run = prevRuns[repo.FullName()]
 			}
 			snapshot[i] = scm.RepoRun{Repo: repo, Run: run}
-			return nil
+			return err
 		})
 	}
-	_ = g.Wait()
+	err := g.Wait()
 	sort.Slice(snapshot, func(i, j int) bool { return snapshot[i].Repo.FullName() < snapshot[j].Repo.FullName() })
-	return snapshot
+	if err != nil {
+		return snapshot, fmt.Errorf("poll workflow runs: %w", err)
+	}
+	return snapshot, nil
 }
 
 func (c *ghClient) latestWorkflowRun(ctx context.Context, owner, repo, branch, workflowFile string) (*scm.WorkflowRun, error) {
