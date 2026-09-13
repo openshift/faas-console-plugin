@@ -30,6 +30,7 @@ import {
 } from '../../../common/types';
 import { AuthContext } from '../../../common/context/AuthProvider';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
+import { NamespaceField } from './NamespaceField';
 
 const OCP_INTERNAL_REGISTRY = 'image-registry.openshift-image-registry.svc:5000/';
 
@@ -59,8 +60,12 @@ interface CreateFunctionFormProps {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
   isSubmitting: boolean;
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  namespaceMissing: boolean;
   onSubmit: (data: CreateFunctionFormData) => void;
   onCancel: () => void;
+  inputNamespace: string;
   onNamespaceChange: (namespace: string) => void;
 }
 
@@ -69,17 +74,24 @@ export function CreateFunctionForm({
   configMaps,
   onSubmit,
   onCancel,
+  inputNamespace,
   onNamespaceChange,
   isSubmitting,
+  canCreateNamespaces,
+  namespaces,
+  namespaceMissing,
 }: CreateFunctionFormProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { fields, setField, setEnvVars, isValid } = useCreateFunctionForm(onNamespaceChange);
+  const { fields, registry, setField, setNamespace, setEnvVars, isValid } = useCreateFunctionForm(
+    inputNamespace,
+    onNamespaceChange,
+  );
 
   return (
     <Form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(fields);
+        onSubmit({ ...fields, namespace: inputNamespace, registry });
       }}
     >
       <FormSection title={t('GitHub Settings')}>
@@ -125,16 +137,15 @@ export function CreateFunctionForm({
           </FormSelect>
         </FormGroup>
         <FormGroup label={t('Registry')} isRequired fieldId="registry">
-          <TextInput id="registry" isRequired isDisabled value={fields.registry} />
+          <TextInput id="registry" isRequired isDisabled value={registry} />
         </FormGroup>
-        <FormGroup label={t('Namespace')} isRequired fieldId="namespace">
-          <TextInput
-            id="namespace"
-            isRequired
-            value={fields.namespace}
-            onChange={(_, val) => setField('namespace', val)}
-          />
-        </FormGroup>
+        <NamespaceField
+          canCreateNamespaces={canCreateNamespaces}
+          namespaces={namespaces}
+          namespaceMissing={namespaceMissing}
+          value={inputNamespace}
+          onChange={setNamespace}
+        />
       </FormSection>
       <EnvVarSection
         secrets={secrets}
@@ -142,7 +153,7 @@ export function CreateFunctionForm({
         plainEnvVars={fields.plainEnvVars}
         secretEnvVars={fields.secretEnvVars}
         configMapEnvVars={fields.configMapEnvVars}
-        namespace={fields.namespace}
+        namespace={inputNamespace}
         onEnvVarChange={setEnvVars}
       />
       <ActionGroup>
@@ -162,41 +173,46 @@ export function CreateFunctionForm({
   );
 }
 
-function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
+// The namespace is owned by the page, not the form, so it is not a field here. The
+// registry is derived rather than owned: it is always the internal registry plus the
+// current namespace.
+type OwnedFields = Omit<CreateFunctionFormData, 'namespace' | 'registry'>;
+
+function useCreateFunctionForm(
+  inputNamespace: string,
+  onNamespaceChange: (namespace: string) => void,
+) {
   const { user } = useContext(AuthContext);
-  const [fields, setFields] = useState<CreateFunctionFormData>({
+  const [fields, setFields] = useState<OwnedFields>({
     owner: user?.name ?? '',
     repo: '',
     branch: '',
     name: '',
     runtime: 'node',
-    registry: OCP_INTERNAL_REGISTRY,
-    namespace: '',
     plainEnvVars: [],
     secretEnvVars: [],
     configMapEnvVars: [],
   });
-  const setField = (key: keyof CreateFunctionFormData, value: string) => {
-    setFields((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === 'namespace') {
-        next.registry = OCP_INTERNAL_REGISTRY + value;
-        next.secretEnvVars = next.secretEnvVars.map((e) => ({
-          ...e,
-          resourceName: '',
-          resourceKey: '',
-        }));
-        next.configMapEnvVars = next.configMapEnvVars.map((e) => ({
-          ...e,
-          resourceName: '',
-          resourceKey: '',
-        }));
-      }
-      return next;
-    });
-    if (key === 'namespace') {
-      onNamespaceChange(value);
-    }
+
+  const registry = OCP_INTERNAL_REGISTRY + inputNamespace;
+
+  const setField = (key: keyof OwnedFields, value: string) => {
+    setFields((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Secrets and ConfigMaps are namespace scoped, so a namespace change invalidates every
+  // resource selection made against the previous one.
+  const setNamespace = (namespace: string) => {
+    setFields((prev) => ({
+      ...prev,
+      secretEnvVars: prev.secretEnvVars.map((e) => ({ ...e, resourceName: '', resourceKey: '' })),
+      configMapEnvVars: prev.configMapEnvVars.map((e) => ({
+        ...e,
+        resourceName: '',
+        resourceKey: '',
+      })),
+    }));
+    onNamespaceChange(namespace);
   };
 
   const setEnvVars = (field: EnvVarField, vars: PlainEnvVar[] | ResourceEnvVar[]) => {
@@ -208,14 +224,15 @@ function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
     fields.repo &&
     fields.branch &&
     fields.name &&
-    fields.registry &&
-    fields.namespace &&
+    inputNamespace &&
     areEnvVarsValid(fields.plainEnvVars, fields.secretEnvVars, fields.configMapEnvVars),
   );
 
   return {
     fields,
+    registry,
     setField,
+    setNamespace,
     setEnvVars,
     isValid,
   };

@@ -3,13 +3,14 @@ import { Alert, PageSection } from '@patternfly/react-core';
 import { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
+import { createFunction } from '../../common/clients/functionsClient';
+import { useCluster } from '../../common/clients/useCluster';
+import { useNamespaceOptions } from '../../common/clients/useNamespaceOptions';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { useCluster } from '../../common/clients/useCluster';
-import { createFunction } from '../../common/clients/functionsClient';
 import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/types';
 import { errorMessage } from '../../common/utils/utils';
+import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 
 export default function FunctionCreatePage() {
   return (
@@ -29,7 +30,11 @@ function FunctionCreatePageContent() {
     isConnectedToForge,
     secrets,
     configMaps,
+    canCreateNamespaces,
+    namespaces,
+    namespaceMissing,
     onNamespaceChange,
+    inputNamespace,
   } = useFunctionCreatePage();
 
   return (
@@ -60,7 +65,11 @@ function FunctionCreatePageContent() {
             onSubmit={handleSubmit}
             onCancel={handleCancel}
             onNamespaceChange={onNamespaceChange}
+            inputNamespace={inputNamespace}
             isSubmitting={isSubmitting}
+            canCreateNamespaces={canCreateNamespaces}
+            namespaces={namespaces}
+            namespaceMissing={namespaceMissing}
           />
         )}
       </PageSection>
@@ -74,15 +83,40 @@ function useFunctionCreatePage(): {
   isSubmitting: boolean;
   isConnectedToForge: boolean;
   error: string | null;
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  namespaceMissing: boolean;
+  inputNamespace: string;
   handleSubmit: (data: CreateFunctionFormData) => Promise<void>;
   handleCancel: () => void;
   onNamespaceChange: (namespace: string) => void;
 } {
   const navigate = useNavigate();
   const isConnectedToForge = useContext(AuthContext).isAuthenticated;
-  const [namespace, setNamespace] = useState('');
-  const debouncedNamespace = useDebouncedValue(namespace, 300);
-  const { secrets, configMaps } = useCluster([], debouncedNamespace);
+
+  const { canCreateNamespaces, namespaces } = useNamespaceOptions();
+
+  // The only namespace state on the page. Everything below it is derived, and the form and
+  // the namespace field are fully controlled from here; neither keeps a copy.
+  const [inputNamespace, setInputNamespace] = useState('');
+
+  // A developer with a single accessible namespace gets a disabled input, so there is no
+  // edit to react to; their namespace is derived from the list rather than typed.
+  const effectiveNamespace =
+    !canCreateNamespaces && namespaces.length === 1 ? namespaces[0] : inputNamespace;
+
+  // Only the namespace-scoped watch is debounced. The value handed to the form is always
+  // the live one, so the input never lags behind or reverts what the user typed.
+  const debouncedNamespace = useDebouncedValue(effectiveNamespace, 500);
+
+  const { secrets, configMaps } = useCluster({
+    functionNames: [],
+    namespace: debouncedNamespace,
+  });
+
+  const trimmed = debouncedNamespace.trim();
+  const namespaceMissing =
+    canCreateNamespaces && !!trimmed && namespaces.length > 0 && !namespaces.includes(trimmed);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,7 +157,11 @@ function useFunctionCreatePage(): {
     isConnectedToForge,
     secrets,
     configMaps,
-    onNamespaceChange: setNamespace,
+    canCreateNamespaces,
+    inputNamespace: effectiveNamespace,
+    onNamespaceChange: setInputNamespace,
+    namespaces,
+    namespaceMissing,
   };
 }
 

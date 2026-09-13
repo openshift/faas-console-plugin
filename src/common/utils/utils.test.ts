@@ -1,4 +1,4 @@
-import { getLanguageFromPath, parseFuncYaml } from './utils';
+import { getLanguageFromPath, isSystemNamespace, parseFuncYaml } from './utils';
 
 describe('getLanguageFromPath', () => {
   it.each([
@@ -16,6 +16,28 @@ describe('getLanguageFromPath', () => {
     ['', 'plaintext'],
   ])('returns correct language for %s', (path, expected) => {
     expect(getLanguageFromPath(path)).toBe(expected);
+  });
+});
+
+describe('isSystemNamespace', () => {
+  it.each([
+    ['default', true],
+    ['openshift', true],
+    ['kube-system', true],
+    ['kube-public', true],
+    ['kube-node-lease', true],
+    ['openshift-monitoring', true],
+    ['openshift-image-registry', true],
+    ['kube-anything', true],
+    ['knative-serving', true],
+    ['my-functions', false],
+    ['demo', false],
+    ['openshiftish', false],
+    ['kubeless', false],
+    ['', false],
+    ['   ', false],
+  ])('returns %s -> %s', (namespace, expected) => {
+    expect(isSystemNamespace(namespace)).toBe(expected);
   });
 });
 
