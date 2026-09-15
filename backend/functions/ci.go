@@ -13,6 +13,10 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
+// WorkflowFilename aliases func's default workflow file name, keeping build
+// status queries scoped to the workflow generateGithubCIFiles actually writes.
+const WorkflowFilename = cigithub.DefaultGitHubWorkflowFilename
+
 var ciGenerators = map[scm.Platform]func(string, ScaffoldConfig) error{
 	scm.GitHub: generateGithubCIFiles,
 }
