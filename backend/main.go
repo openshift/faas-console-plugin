@@ -34,6 +34,7 @@ func main() {
 	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
 	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL (for testing with fake server)")
+	saTokenExpiry := flag.String("sa-token-expiry", "7d", "Token expiry in days, hours or seconds")
 	flag.Parse()
 
 	if *ghAPIURL != "" {
@@ -55,7 +56,13 @@ func main() {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
 	}
 
-	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer)
+	saTokenExpiryParsed, err := config.ParseSATokenExpiry(*saTokenExpiry)
+	if err != nil {
+		log.Printf("Failed to parse --sa-token-expiry-%s: %v, using default", *saTokenExpiry, err)
+		saTokenExpiryParsed = config.DefaultSATokenExpiry
+	}
+
+	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, saTokenExpiryParsed)
 	if err != nil {
 		log.Fatal(err)
 	}

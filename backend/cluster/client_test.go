@@ -363,10 +363,32 @@ var _ = Describe("Kubernetes cluster client", func() {
 			})
 			cl := &k8sClient{clientset: cs}
 
-			token, err := cl.RequestToken(context.Background(), "default")
+			tokenStatus, err := cl.RequestToken(context.Background(), "default", 30*24*60*60)
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(token).To(Equal("sa-token-value"))
+			Expect(tokenStatus.Token).To(Equal("sa-token-value"))
+		})
+
+		It("requests a token with the configured expiry", func() {
+			var requestedExpiry *int64
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				if action.GetSubresource() != "token" {
+					return false, nil, nil
+				}
+				tr := action.(k8stesting.CreateAction).GetObject().(*authenticationv1.TokenRequest)
+				requestedExpiry = tr.Spec.ExpirationSeconds
+				return true, &authenticationv1.TokenRequest{
+					Status: authenticationv1.TokenRequestStatus{Token: "sa-token-value"},
+				}, nil
+			})
+			cl := &k8sClient{clientset: cs}
+
+			_, err := cl.RequestToken(context.Background(), "default", 7*24*60*60)
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(requestedExpiry).NotTo(BeNil())
+			Expect(*requestedExpiry).To(Equal(int64(7 * 24 * 60 * 60)))
 		})
 
 		It("returns an error when the token endpoint is unavailable", func() {
@@ -379,7 +401,7 @@ var _ = Describe("Kubernetes cluster client", func() {
 			})
 			cl := &k8sClient{clientset: cs}
 
-			_, err := cl.RequestToken(context.Background(), "default")
+			_, err := cl.RequestToken(context.Background(), "default", 30*24*60*60)
 
 			Expect(err).To(HaveOccurred())
 		})

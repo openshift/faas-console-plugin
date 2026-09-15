@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 )
 
@@ -153,11 +154,20 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 		})
 		return body
 	}
+	withValidPutSCMStub := func(stub *scm.ClientStub) {
+		if stub.OnGetFileContent == nil {
+			stub.OnGetFileContent = func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: my-func\nnamespace: demo\nruntime: go\n", nil
+			}
+		}
+		withSCMStub(stub)
+	}
 
 	It("commits the changes to the branch", func() {
 		var gotOwner, gotRepo, gotBranch, gotMessage string
 		var gotFiles []scm.FileEntry
-		withSCMStub(&scm.ClientStub{
+		withClusterStub(&cluster.ClientStub{})
+		withValidPutSCMStub(&scm.ClientStub{
 			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 				gotOwner, gotRepo, gotBranch, gotMessage = owner, repo, branch, message
 				gotFiles = files
@@ -166,11 +176,12 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 		})
 
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(validPutBody()))
+		req.Header.Set("Authorization", "Bearer ocp-token")
 		req.Header.Set("X-SCM-Token", "test-pat")
 		req.SetPathValue("owner", "alice")
 		req.SetPathValue("name", "my-func")
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandlePutFiles(w, req)
+		(&Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}).HandlePutFiles(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusNoContent))
 		Expect(gotOwner).To(Equal("alice"))
@@ -291,35 +302,39 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 	})
 
 	It("returns 401 when the SCM token is invalid", func() {
-		withSCMStub(&scm.ClientStub{
+		withClusterStub(&cluster.ClientStub{})
+		withValidPutSCMStub(&scm.ClientStub{
 			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 				return scm.ErrUnauthorized
 			},
 		})
 
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(validPutBody()))
+		req.Header.Set("Authorization", "Bearer ocp-token")
 		req.Header.Set("X-SCM-Token", "bad-token")
 		req.SetPathValue("owner", "alice")
 		req.SetPathValue("name", "my-func")
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandlePutFiles(w, req)
+		(&Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}).HandlePutFiles(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 502 when the SCM API is unavailable", func() {
-		withSCMStub(&scm.ClientStub{
+		withClusterStub(&cluster.ClientStub{})
+		withValidPutSCMStub(&scm.ClientStub{
 			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
 				return errors.New("connection refused")
 			},
 		})
 
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(validPutBody()))
+		req.Header.Set("Authorization", "Bearer ocp-token")
 		req.Header.Set("X-SCM-Token", "test-pat")
 		req.SetPathValue("owner", "alice")
 		req.SetPathValue("name", "my-func")
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandlePutFiles(w, req)
+		(&Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}).HandlePutFiles(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusBadGateway))
 	})

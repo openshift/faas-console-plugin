@@ -14,6 +14,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	authenticationv1 "k8s.io/api/authentication/v1"
 )
 
 var _ = Describe("POST /api/v1/func/create", func() {
@@ -72,6 +73,28 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		Expect(gotPushBranch).To(Equal("main"))
 		Expect(gotPushMessage).To(Equal("Initialize Knative function project"))
 		Expect(gotPushFiles).NotTo(BeEmpty())
+	})
+
+	It("uses the configured service account token expiry", func() {
+		var requestedExpiry int64
+		withSCMStub(&scm.ClientStub{})
+		withClusterStub(&cluster.ClientStub{
+			OnRequestToken: func(ctx context.Context, namespace string, saTokenExpiry int64) (*authenticationv1.TokenRequestStatus, error) {
+				requestedExpiry = saTokenExpiry
+				return &authenticationv1.TokenRequestStatus{Token: "stub-token"}, nil
+			},
+		})
+		h, err := New("", "", "https://api.test-cluster.example.com:6443", 7*24*60*60)
+		Expect(err).NotTo(HaveOccurred())
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
+		req.Header.Set("X-SCM-Token", "test-pat")
+		req.Header.Set("Authorization", "Bearer ocp-token")
+		w := httptest.NewRecorder()
+
+		h.HandleFuncCreate(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusCreated))
+		Expect(requestedExpiry).To(Equal(int64(7 * 24 * 60 * 60)))
 	})
 
 	DescribeTable("maps upstream errors to HTTP status codes",
@@ -243,7 +266,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	)
 
 	Describe("rollback on failure", func() {
-		It("rolls back cluster resources when GenerateKubeconfig fails", func() {
+		It("rolls back cluster resources when requesting the service account token fails", func() {
 			calls := map[string]int{}
 			recordCall := func(key string) { calls[key]++ }
 
@@ -255,8 +278,8 @@ var _ = Describe("POST /api/v1/func/create", func() {
 					},
 				})
 				withClusterStub(&cluster.ClientStub{
-					OnRequestToken: func(ctx context.Context, namespace string) (string, error) {
-						return "", errors.New("token endpoint unavailable")
+					OnRequestToken: func(ctx context.Context, namespace string, saTokenExpiry int64) (*authenticationv1.TokenRequestStatus, error) {
+						return nil, errors.New("token endpoint unavailable")
 					},
 					OnDeleteServiceAccount: func(ctx context.Context, namespace string) error {
 						recordCall("deleteServiceAccount")

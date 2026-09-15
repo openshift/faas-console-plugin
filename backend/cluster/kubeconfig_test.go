@@ -44,7 +44,10 @@ var _ = Describe("GenerateKubeconfig", func() {
 	It("returns a valid kubeconfig with the token and server URL", func() {
 		cl, _ := fullFakeClient("sa-token-value")
 
-		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
+		tokenStatus, err := cl.RequestToken(context.Background(), "default", 30*24*60*60)
+		Expect(err).NotTo(HaveOccurred())
+
+		kubeconfig, err := GenerateKubeconfig("default", fakeAPIURL, tokenStatus.Token, nil)
 
 		Expect(err).NotTo(HaveOccurred())
 
@@ -61,10 +64,9 @@ var _ = Describe("GenerateKubeconfig", func() {
 	})
 
 	It("embeds the CA certificate when the cluster uses a private CA", func() {
-		cl, _ := fullFakeClient("sa-token-value")
 		caCert := []byte("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
 
-		kubeconfig, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, caCert)
+		kubeconfig, err := GenerateKubeconfig("default", fakeAPIURL, "sa-token-value", caCert)
 
 		Expect(err).NotTo(HaveOccurred())
 		var parsed map[string]any
@@ -74,26 +76,8 @@ var _ = Describe("GenerateKubeconfig", func() {
 		Expect(cluster).To(HaveKey("certificate-authority-data"))
 	})
 
-	It("returns an error when requesting the service account token fails", func() {
-		cs := fake.NewSimpleClientset()
-		cs.PrependReactor("create", "serviceaccounts", func(action k8stesting.Action) (bool, runtime.Object, error) {
-			if action.GetSubresource() == "token" {
-				return true, nil, forbiddenFor("serviceaccounts")
-			}
-			return false, nil, nil
-		})
-		cl := &k8sClient{clientset: cs}
-
-		_, err := GenerateKubeconfig(context.Background(), cl, "default", fakeAPIURL, nil)
-
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("request token"))
-	})
-
 	It("returns an error when the external API server URL is empty", func() {
-		cl, _ := fullFakeClient("sa-token-value")
-
-		_, err := GenerateKubeconfig(context.Background(), cl, "default", "", nil)
+		_, err := GenerateKubeconfig("default", "", "sa-token-value", nil)
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("API server URL is required"))

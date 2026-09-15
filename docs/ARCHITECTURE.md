@@ -100,7 +100,7 @@ Go + `net/http` standard library. Key dependencies:
 | Dependency | Role |
 |---|---|
 | `k8s.io/client-go` | Kubernetes API client (SA, RBAC, TokenRequest, kubeconfig) |
-| `google/go-github/v72` | GitHub API client |
+| `google/go-github/v90` | GitHub API client |
 | `knative.dev/func` | Function scaffold generation |
 | `onsi/ginkgo` + `onsi/gomega` | Test framework |
 
@@ -114,7 +114,7 @@ Go + `net/http` standard library. Key dependencies:
 | `handler` | HTTP handlers: input validation, orchestration, error mapping |
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
 | `scm/github` | go-github implementation of `scm.Client` |
-| `config` | Package-level wiring vars (`SCMRegistry`, constants) |
+| `config` | Runtime configuration, package-level wiring vars (`SCMRegistry`), constants, and service account token expiry parsing |
 | `tlsreload` | Reloads the serving cert/key from disk on change (fsnotify plus a poll fallback), swapping an atomic `*tls.Certificate` via `GetCertificate` so rotated certs are served without a restart |
 
 ### Dependency Rules
@@ -125,7 +125,7 @@ Go + `net/http` standard library. Key dependencies:
 - `cluster` is for provisioning (write RBAC/SA, request tokens); `functions` is for the function lifecycle (list and scaffold generation). Both talk to the cluster but answer different questions, so they stay separate rather than sharing one client interface
 - `scm` has no knowledge of cluster or functions
 - `functions` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
-- `config` is imported by `handler` and `main` only — it is the wiring layer
+- `config` is imported by `handler`, `functions`, and `main` only; it owns runtime configuration and package-level wiring
 
 ### Key Decisions
 
@@ -146,6 +146,9 @@ Everything that wraps `knative.dev/func` lives in this one package, so there is 
 **External API URL resolved at Helm install time**
 The URL embedded in generated kubeconfigs (`externalAPIServerURL`) comes from the Infrastructure CR (`config.openshift.io/v1/Infrastructure/cluster`) via Helm `lookup` at install time, injected as `--external-api-server-url`. It is not fetched at runtime. This eliminates the need for a `ClusterRole` to query the Infrastructure CR from within the pod.
 
+**Deployment credentials are short-lived and refreshed before file updates**
+The backend requests service account tokens with a configurable lifetime, set by `--sa-token-expiry` and defaulting to seven days. When a function is created, its kubeconfig is stored as the `KUBECONFIG` SCM secret and the token expiration timestamp is stored as the `KUBECONFIG_EXPIRE_AT` SCM variable. Before pushing edited files, the handler refreshes both values when the token has 24 hours or less remaining. Missing or malformed expiration metadata also triggers a refresh. Refresh uses the caller's OCP bearer token and the namespace from the repository's `func.yaml`; no cluster credentials are retained by the backend.
+
 **TLS serving certificate reloaded at runtime by an fsnotify + poll hybrid**
 The OCP service CA operator rotates the serving cert/key automatically. `tlsreload.Reloader` watches the mounted pair with fsnotify and atomically swaps the cached `*tls.Certificate` served via `tls.Config.GetCertificate`, so a rotation is picked up without restarting the pod. A poll ticker running every 30 seconds operates alongside the watcher as a safety net for events fsnotify can miss, in particular the atomic `..data` symlink swap Kubernetes uses for mounted secrets: when a watched file is removed or renamed the watch is re-added to the new file, and the poll guarantees the change is eventually observed regardless. Polling stays active during watcher setup failures and the 3-second watcher restart delays. Watcher events and poll ticks are processed on one goroutine, so `reload` and its content hash remain serialized and the swap needs only a plain atomic `Store` (no mutex). fsnotify was promoted from an existing indirect dependency; the heavier `k8s.io/apiserver/dynamiccertificates` and `controller-runtime/certwatcher` (which pulls in Prometheus) were avoided. Reloads are content-hashed to skip re-parsing when the pair is unchanged, and the last valid pair is retained when an update is incomplete or invalid.
 
@@ -165,4 +168,4 @@ The OCP service CA operator rotates the serving cert/key automatically. `tlsrelo
 
 
 **Handlers are stateless**
-`Handlers` holds only static config. Every request creates its own cluster client authenticated with the caller's OCP bearer token — there is no shared connection or session.
+`Handlers` holds only static configuration, including the requested service account token lifetime. Cluster clients are request-scoped, authenticated with the caller's OCP bearer token, and created only when an operation needs cluster access. There is no shared connection, credential, or session.

@@ -40,6 +40,9 @@ spec:
             {{- if .Values.plugin.ghApiUrl }}
             - "--gh-api-url={{ .Values.plugin.ghApiUrl }}"
             {{- end }}
+            {{- if .Values.plugin.saTokenExpiry }}
+            - "--sa-token-expiry={{ .Values.plugin.saTokenExpiry }}"
+            {{- end }}
           {{- if .Values.plugin.funcCliVersion }}
           env:
             - name: FUNC_CLI_VERSION
