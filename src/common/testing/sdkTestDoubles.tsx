@@ -15,14 +15,18 @@ type WatchFixtures = {
   deps: K8sResourceKind[];
   secrets: K8sResourceKind[];
   configMaps: K8sResourceKind[];
+  projects: K8sResourceKind[];
   knLoaded?: boolean;
   depLoaded?: boolean;
   secretLoaded?: boolean;
   cmLoaded?: boolean;
-  knError?: Error;
-  depError?: Error;
-  secretError?: Error;
-  cmError?: Error;
+  projectsLoaded?: boolean;
+  canCreate?: boolean;
+  accessLoading?: boolean;
+  knError?: unknown;
+  depError?: unknown;
+  secretError?: unknown;
+  cmError?: unknown;
 };
 
 const watchFixtures: WatchFixtures = {
@@ -30,10 +34,14 @@ const watchFixtures: WatchFixtures = {
   deps: [],
   secrets: [],
   configMaps: [],
+  projects: [],
   knLoaded: true,
   depLoaded: true,
   secretLoaded: true,
   cmLoaded: true,
+  projectsLoaded: true,
+  canCreate: false,
+  accessLoading: false,
 };
 
 export function setWatchFixtures(opts: Partial<WatchFixtures>) {
@@ -41,15 +49,35 @@ export function setWatchFixtures(opts: Partial<WatchFixtures>) {
   watchFixtures.deps = opts.deps ?? [];
   watchFixtures.secrets = opts.secrets ?? [];
   watchFixtures.configMaps = opts.configMaps ?? [];
+  watchFixtures.projects = opts.projects ?? [];
   watchFixtures.knLoaded = opts.knLoaded ?? true;
   watchFixtures.depLoaded = opts.depLoaded ?? true;
   watchFixtures.secretLoaded = opts.secretLoaded ?? true;
   watchFixtures.cmLoaded = opts.cmLoaded ?? true;
+  watchFixtures.projectsLoaded = opts.projectsLoaded ?? true;
+  watchFixtures.canCreate = opts.canCreate ?? false;
+  watchFixtures.accessLoading = opts.accessLoading ?? false;
   watchFixtures.knError = opts.knError;
   watchFixtures.depError = opts.depError;
   watchFixtures.secretError = opts.secretError;
   watchFixtures.cmError = opts.cmError;
 }
+
+export function projectFixture(name: string): K8sResourceKind {
+  return { metadata: { name } };
+}
+
+// Mirrors the SDK's gating: an empty group+resource with the third arg set skips the
+// review entirely, so a consumer that does not need namespace options never fires a
+// SelfSubjectAccessReview.
+export const useAccessReviewStub = (
+  attrs: { group?: string; resource?: string; verb?: string },
+  _impersonate?: unknown,
+  noCheck?: boolean,
+): [boolean, boolean] => {
+  if (noCheck && !attrs.group && !attrs.resource) return [false, false];
+  return [watchFixtures.canCreate ?? false, watchFixtures.accessLoading ?? false];
+};
 
 export function funcFixture(name: string): Partial<WatchFixtures> {
   return {
@@ -161,6 +189,9 @@ export const useK8sWatchResourceStub = (config: WatchK8sResource) => {
       watchFixtures.depLoaded,
       watchFixtures.depError,
     ];
+
+  if (group === 'project.openshift.io' && kind === 'Project')
+    return [watchFixtures.projects, watchFixtures.projectsLoaded, null];
 
   if (!group && kind === 'Secret') {
     return [

@@ -204,12 +204,12 @@ function useFunctionListPage(): {
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(
+  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster({
     functionNames,
     // if namespace === #ALL_NS# then we pass 'undefined' to watcher which equals
     // to 'get resources from all namespaces'
-    isAllNamespacesKey(namespace) ? undefined : namespace,
-  );
+    namespace: isAllNamespacesKey(namespace) ? undefined : namespace,
+  });
 
   const functions = useMemo(
     () =>
