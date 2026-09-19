@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/kube"
 	authenticationv1 "k8s.io/api/authentication/v1"
@@ -28,13 +29,8 @@ type Client interface {
 	DeleteRoleBinding(ctx context.Context, namespace string) error
 	CreateImageBuilderBinding(ctx context.Context, namespace string) (bool, error)
 	DeleteImageBuilderBinding(ctx context.Context, namespace string) error
-	RequestToken(ctx context.Context, namespace string) (string, error)
+	RequestToken(ctx context.Context, namespace string, saTokenExpirty int64) (*authenticationv1.TokenRequestStatus, error)
 }
-
-// DefaultTokenExpiry is the requested SA token lifetime in seconds. Matches the
-// previous frontend behaviour. Security concern: a long-lived token in an SCM
-// Actions secret increases exposure if leaked; shorter expiry is a follow-up.
-const DefaultTokenExpiry int64 = 365 * 24 * 60 * 60 // 1 year
 
 // New creates a cluster client authenticated with token.
 // When host is non-empty (dev/test) it is used as the API server URL directly.
@@ -180,18 +176,17 @@ func (c *k8sClient) DeleteImageBuilderBinding(ctx context.Context, namespace str
 	return nil
 }
 
-func (c *k8sClient) RequestToken(ctx context.Context, namespace string) (string, error) {
-	expiry := DefaultTokenExpiry
+func (c *k8sClient) RequestToken(ctx context.Context, namespace string, saTokenExpiry int64) (*authenticationv1.TokenRequestStatus, error) {
 	result, err := c.clientset.CoreV1().ServiceAccounts(namespace).CreateToken(ctx, saName, &authenticationv1.TokenRequest{
 		Spec: authenticationv1.TokenRequestSpec{
-			ExpirationSeconds: &expiry,
+			ExpirationSeconds: &saTokenExpiry,
 		},
 	}, metav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("request token: %w", err)
+		return nil, fmt.Errorf("request token: %w", err)
 	}
 	slog.Info("service account token issued", "namespace", namespace, "expires", result.Status.ExpirationTimestamp)
-	return result.Status.Token, nil
+	return &result.Status, nil
 }
 
 type ClientStub struct {
@@ -199,7 +194,7 @@ type ClientStub struct {
 	OnApplyRole                 func(ctx context.Context, namespace string) (bool, error)
 	OnCreateRoleBinding         func(ctx context.Context, namespace string) (bool, error)
 	OnCreateImageBuilderBinding func(ctx context.Context, namespace string) (bool, error)
-	OnRequestToken              func(ctx context.Context, namespace string) (string, error)
+	OnRequestToken              func(ctx context.Context, namespace string, saTokenExpiry int64) (*authenticationv1.TokenRequestStatus, error)
 	OnDeleteServiceAccount      func(ctx context.Context, namespace string) error
 	OnDeleteRole                func(ctx context.Context, namespace string) error
 	OnDeleteRoleBinding         func(ctx context.Context, namespace string) error
@@ -234,11 +229,14 @@ func (s *ClientStub) CreateImageBuilderBinding(ctx context.Context, namespace st
 	return true, nil
 }
 
-func (s *ClientStub) RequestToken(ctx context.Context, namespace string) (string, error) {
+func (s *ClientStub) RequestToken(ctx context.Context, namespace string, saTokenExpiry int64) (*authenticationv1.TokenRequestStatus, error) {
 	if s.OnRequestToken != nil {
-		return s.OnRequestToken(ctx, namespace)
+		return s.OnRequestToken(ctx, namespace, saTokenExpiry)
 	}
-	return "stub-token", nil
+	return &authenticationv1.TokenRequestStatus{
+		Token:               "stub-token",
+		ExpirationTimestamp: metav1.NewTime(time.Now().Add(time.Duration(saTokenExpiry) * time.Second)),
+	}, nil
 }
 
 func (s *ClientStub) DeleteServiceAccount(ctx context.Context, namespace string) error {

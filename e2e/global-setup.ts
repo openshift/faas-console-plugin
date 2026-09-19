@@ -1,7 +1,11 @@
+import { execFile } from 'child_process';
 import { rm } from 'fs/promises';
 import * as path from 'path';
+import { promisify } from 'util';
 import { resetFakeGithub, seedRepo } from './helpers/fakegithub';
 import { E2E_USER, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from './helpers/constants';
+
+const execFileAsync = promisify(execFile);
 
 // Force a fresh login on every run to avoid stale CSRF tokens when switching clusters.
 export default async function globalSetup() {
@@ -27,4 +31,26 @@ export default async function globalSetup() {
       },
     ],
   );
+
+  try {
+    await execFileAsync('oc', [
+      'get',
+      'serviceaccount',
+      'func-scm',
+      '--namespace',
+      PRESEEDED_FUNC_NAMESPACE,
+    ]);
+  } catch (error) {
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+
+    await execFileAsync('oc', [
+      'create',
+      'serviceaccount',
+      'func-scm',
+      '--namespace',
+      PRESEEDED_FUNC_NAMESPACE,
+    ]);
+  }
 }

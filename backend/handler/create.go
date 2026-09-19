@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
@@ -18,8 +19,9 @@ import (
 )
 
 const (
-	repoSecretKubeconfig = "KUBECONFIG"
-	repoVarClusterAPIURL = "CLUSTER_API_URL"
+	repoSecretKubeconfig   = "KUBECONFIG"
+	repoKubeconfigExpireAt = "KUBECONFIG_EXPIRE_AT"
+	repoVarClusterAPIURL   = "CLUSTER_API_URL"
 )
 
 var (
@@ -119,7 +121,12 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		}
 	}()
 
-	kubeconfig, err := cluster.GenerateKubeconfig(ctx, cl, req.Namespace, h.externalAPIServerURL, h.caCert)
+	tokenStatus, err := cl.RequestToken(ctx, req.Namespace, h.saTokenExpiry)
+	if err != nil {
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("request token: %w", err))
+	}
+
+	kubeconfig, err := cluster.GenerateKubeconfig(req.Namespace, h.externalAPIServerURL, tokenStatus.Token, h.caCert)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("generate kubeconfig: %w", err))
 	}
@@ -146,6 +153,13 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		}
 		slog.Error("failed to store CI secret", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store secret: %w", err))
+	}
+	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoKubeconfigExpireAt, tokenStatus.ExpirationTimestamp.Time.UTC().Format(time.RFC3339)); err != nil {
+		if errors.Is(err, scm.ErrUnauthorized) {
+			return err
+		}
+		slog.Error("failed to store EXPIRE_AT variable", "owner", req.Owner, "repo", req.Repo, "err", err)
+		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store variable: %w", err))
 	}
 	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoVarClusterAPIURL, h.externalAPIServerURL); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
