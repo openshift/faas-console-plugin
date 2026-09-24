@@ -13,7 +13,7 @@ COPY locales/ locales/
 COPY config/ config/
 RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node ./.yarn/releases/yarn-4.18.0.cjs build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1789950433@sha256:15c3098dc4639e8a0e6a1bc77b50964513a1d76dccae4b07b9808101c5addd04 AS gobuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1790174511@sha256:0a4666f7a4eb0644c97a73cba198eb268691b270d97831822689e7a2088f87be AS gobuilder
 ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 WORKDIR /opt/app-root/src
