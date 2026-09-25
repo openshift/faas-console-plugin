@@ -173,12 +173,12 @@ func (h *Handlers) listRepoFunctions(ctx context.Context, pat, ocpToken, namespa
 				Source:        sourceRepo,
 			}
 
-			repoClusterURL, err := scmClient.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterAPIURL)
+			repoClusterID, err := scmClient.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterID)
 			if err != nil {
-				slog.Warn("failed to read variable", "variable", repoVarClusterAPIURL, "repo", repo.Owner+"/"+repo.Name, "err", err)
+				slog.Warn("failed to read variable", "variable", repoVarClusterID, "repo", repo.Owner+"/"+repo.Name, "err", err)
 				// keep the repo on transient errors rather than hiding it
-			} else if repoClusterURL != h.externalAPIServerURL {
-				// Filter out repos whose CLUSTER_API_URL variable does not match this cluster. The variable is written alongside
+			} else if repoClusterID != h.clusterID {
+				// Filter out repos whose CLUSTER_ID variable does not match this cluster. The variable is written alongside
 				// the KUBECONFIG secret at repo creation, so a mismatch means the secret points to a different cluster
 				// (from where it was created) and deploying from this console would target the wrong cluster.
 				excluded[i] = true
