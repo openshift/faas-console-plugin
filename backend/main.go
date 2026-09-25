@@ -33,6 +33,7 @@ func main() {
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
 	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
+	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
 	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL (for testing with fake server)")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
 	flag.Parse()
@@ -51,6 +52,10 @@ func main() {
 		log.Fatal("--external-api-server-url is required")
 	}
 
+	if *clusterID == "" {
+		log.Fatal("--cluster-id is required")
+	}
+
 	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		log.Fatalf("Failed to create sub filesystem: %v", err)
@@ -64,7 +69,7 @@ func main() {
 		}
 	}
 
-	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, saTokenExpiryParsed)
+	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed)
 	if err != nil {
 		log.Fatal(err)
 	}

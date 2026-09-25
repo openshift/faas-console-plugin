@@ -176,12 +176,12 @@ var _ = Describe("FakeGitHub Server", func() {
 
 		Describe("StoreVariable + GetVariable", func() {
 			It("stores a variable and reads it back", func() {
-				err := cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL", "https://api.my-cluster.example.com:6443")
+				err := cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_ID", "my-cluster-id-abc123")
 				Expect(err).NotTo(HaveOccurred())
 
-				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL")
+				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "CLUSTER_ID")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(value).To(Equal("https://api.my-cluster.example.com:6443"))
+				Expect(value).To(Equal("my-cluster-id-abc123"))
 			})
 
 			It("returns empty string when variable does not exist", func() {
@@ -191,10 +191,10 @@ var _ = Describe("FakeGitHub Server", func() {
 			})
 
 			It("overwrites a variable when stored again", func() {
-				Expect(cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL", "first")).To(Succeed())
-				Expect(cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL", "second")).To(Succeed())
+				Expect(cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_ID", "first")).To(Succeed())
+				Expect(cl.StoreVariable(context.Background(), "testuser", "test-func", "CLUSTER_ID", "second")).To(Succeed())
 
-				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "CLUSTER_API_URL")
+				value, err := cl.GetVariable(context.Background(), "testuser", "test-func", "CLUSTER_ID")
 				Expect(err).NotTo(HaveOccurred())
 				Expect(value).To(Equal("second"))
 			})
