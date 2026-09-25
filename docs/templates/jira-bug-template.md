@@ -5,7 +5,7 @@
 
 <One sentence describing what is broken and where.>
 
-Every bug fix requires a regression test (see [Testing](../TESTING.md#approach)).
+Every bug fix requires a regression test (see [TESTING.md](https://github.com/twoGiants/ocp-faas-console-plugin/blob/master/docs/TESTING.md#L16)).
 
 ### Steps to Reproduce
 

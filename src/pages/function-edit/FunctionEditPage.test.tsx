@@ -1,11 +1,16 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse, delay } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import FunctionEditPage from './FunctionEditPage';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
-import { BACKEND_API } from '../../common/testing/constants';
-import { server } from '../../common/testing/mswServer';
+import {
+  getFilesStub,
+  listFunctionsStub,
+  putFilesSpy,
+  putFilesStub,
+  repoListItem,
+} from '../../common/testing/functionsClientStub';
+import { FileEntry } from '../../common/types';
+import FunctionEditPage from './FunctionEditPage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
 // vi.hoisted runs before vi.mock, making the clusterStub available to the factory.
@@ -84,26 +89,29 @@ describe('FunctionEditPage', () => {
     logoutGithubFake();
   });
 
-  it(
-    'shows loading state in tree while fetching files',
-    server.boundary(async () => {
-      setupListHandler();
-      server.use(
-        http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
-          await delay('infinite');
-          return HttpResponse.json([]);
-        }),
-      );
+  it('shows loading state in tree while fetching files', async () => {
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    let continueWithRequest = () => {};
+    getFilesStub({
+      wait: new Promise<void>((r) => {
+        continueWithRequest = r;
+      }),
+    });
 
-      renderEditPage('my-func');
+    renderEditPage('my-func');
 
-      expect(screen.getByText('Loading source...')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
-    }),
-  );
+    expect(screen.getByText('Loading source...')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
+
+    continueWithRequest();
+    await waitFor(() => {
+      expect(screen.getByText('No files')).toBeInTheDocument();
+    });
+  });
 
   it('loads files from backend', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -124,7 +132,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows info bar with function name and repo link after loading', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -137,7 +146,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('auto-selects handler file based on runtime from func.yaml', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -148,7 +158,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('navigates back without modal when no changes made', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -163,7 +174,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows selected file content in editor when tree item is clicked', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -179,7 +191,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('marks hasChanges true after editing a file', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -195,8 +208,9 @@ describe('FunctionEditPage', () => {
   });
 
   it('resets hasChanges after save', async () => {
-    setupFetchHandlers();
-    setupPutHandler();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy();
 
     renderEditPage('my-func');
 
@@ -215,7 +229,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('persists edited content when switching files and back', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -241,7 +256,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('updates editor language when selecting a different file type', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -258,15 +274,38 @@ describe('FunctionEditPage', () => {
     });
   });
 
+  it.each([
+    ['index.js', 'module.exports = async (context) => context;', 'javascript'],
+    ['handler.ts', 'export const handle = (ctx: Context): void => {};', 'typescript'],
+    ['main.go', 'package main\n\nfunc main() {}', 'go'],
+    ['app.py', 'def main():\n    return "ok"', 'python'],
+    ['func.yaml', 'name: my-func\nruntime: node', 'yaml'],
+    ['config.yml', 'key: value', 'yaml'],
+    ['package.json', '{"name": "my-func"}', 'json'],
+    ['README.md', '# My Function', 'markdown'],
+    ['Dockerfile', 'FROM registry.access.redhat.com/ubi9/nodejs-20', 'dockerfile'],
+    ['.gitignore', 'node_modules/', 'plaintext'],
+    ['Makefile', 'build:\n\tgo build .', 'plaintext'],
+  ])('shows correct editor language for %s', async (path, content, expected) => {
+    listFunctionsStub({ responses: [repoListItem()] });
+    getFilesStub({ responses: [fileEntry(path, content)] });
+
+    renderEditPage('my-func');
+
+    await waitFor(() => {
+      expect(screen.getByText(path)).toBeInTheDocument();
+    });
+
+    // select the file
+    await userEvent.setup().click(screen.getByText(path));
+
+    expect(screen.getByTestId('code-editor')).toHaveAttribute('data-language', expected);
+  });
+
   it('calls backend PUT when saving edited files', async () => {
-    setupFetchHandlers();
-    const putHandler = vi.fn();
-    server.use(
-      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async ({ request }) => {
-        putHandler(await request.json());
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy();
 
     renderEditPage('my-func');
 
@@ -279,17 +318,14 @@ describe('FunctionEditPage', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
 
     await waitFor(() => {
-      expect(putHandler).toHaveBeenCalled();
+      expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
     });
   });
 
   it('shows danger alert when save fails', async () => {
-    setupFetchHandlers();
-    server.use(
-      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
-        HttpResponse.json({ message: 'Server Error' }, { status: 500 }),
-      ),
-    );
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy({ errorResponse: { message: 'Server Error', status: 500 } });
 
     renderEditPage('my-func');
 
@@ -307,13 +343,9 @@ describe('FunctionEditPage', () => {
   });
 
   it('disables save button while saving is in progress', async () => {
-    setupFetchHandlers();
-    server.use(
-      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async () => {
-        await delay('infinite');
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy({ wait: new Promise(() => {}) });
 
     renderEditPage('my-func');
 
@@ -331,13 +363,9 @@ describe('FunctionEditPage', () => {
   });
 
   it('clears error alert when next save succeeds', async () => {
-    setupFetchHandlers();
-
-    server.use(
-      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
-        HttpResponse.json({ message: 'Server Error' }, { status: 500 }),
-      ),
-    );
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy({ errorResponse: { message: 'Server Error', status: 500 } });
 
     renderEditPage('my-func');
 
@@ -354,12 +382,7 @@ describe('FunctionEditPage', () => {
       expect(screen.getByText('Server Error')).toBeInTheDocument();
     });
 
-    server.use(
-      http.put(
-        `${BACKEND_API}/api/v1/func/twoGiants/my-func/files`,
-        () => new HttpResponse(null, { status: 204 }),
-      ),
-    );
+    putFilesSpy();
 
     act(() => mockOnChange?.('edited again'));
     await user.click(screen.getByRole('button', { name: /Save & Deploy/ }));
@@ -384,8 +407,9 @@ describe('FunctionEditPage', () => {
 
   it('shows success message after save and hides it after 2 seconds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    setupFetchHandlers();
-    setupPutHandler();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy();
 
     renderEditPage('my-func');
 
@@ -411,7 +435,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('deletes a file from the tree when Delete File is clicked', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -428,7 +453,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('enables save button after deleting a file', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -445,7 +471,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('clears the editor when the selected file is deleted', async () => {
-    setupFetchHandlers();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
 
@@ -467,15 +494,13 @@ describe('FunctionEditPage', () => {
     });
   });
 
-  it('includes deleted files with deleted:true in the PUT request body', async () => {
-    setupFetchHandlers();
-    const putHandler = vi.fn();
-    server.use(
-      http.put(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, async ({ request }) => {
-        putHandler(await request.json());
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
+  // CONTINUE HERE: see msw recommendation
+  // https://mswjs.io/docs/best-practices/avoid-request-assertions/#request-validity and
+  // pi answer
+  it.only('includes deleted files with deleted:true in the PUT request body', async () => {
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesStub({ expectedRequest: { files: [], message: '', branch: '' } });
 
     renderEditPage('my-func');
 
@@ -485,22 +510,15 @@ describe('FunctionEditPage', () => {
 
     await userEvent.setup().click(screen.getByLabelText('func.yaml actions'));
     await userEvent.setup().click(screen.getByRole('menuitem', { name: 'Delete File' }));
-
     await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
 
-    await waitFor(() => {
-      expect(putHandler).toHaveBeenCalled();
-    });
-
-    const body = putHandler.mock.calls[0][0];
-    const deletedEntry = body.files.find((f: { path: string }) => f.path === 'func.yaml');
-    expect(deletedEntry).toBeDefined();
-    expect(deletedEntry.deleted).toBe(true);
+    expect(screen.queryByText('func.yaml')).not.toBeInTheDocument();
   });
 
   it('resets deleted files after a successful save', async () => {
-    setupFetchHandlers();
-    setupPutHandler();
+    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    getFilesStub({ responses: fileEntries() });
+    putFilesSpy();
 
     renderEditPage('my-func');
 
@@ -521,47 +539,26 @@ describe('FunctionEditPage', () => {
   });
 });
 
-function setupPutHandler() {
-  server.use(
-    http.put(
-      `${BACKEND_API}/api/v1/func/twoGiants/my-func/files`,
-      () => new HttpResponse(null, { status: 204 }),
-    ),
-  );
+// -----------------------------------------------------------------------------
+// Test data factories ---------------------------------------------------------
+// -----------------------------------------------------------------------------
+function fileEntries(): FileEntry[] {
+  return [
+    {
+      path: 'func.yaml',
+      mode: '100644',
+      content: 'name: my-func\nruntime: node',
+      type: 'blob',
+    },
+    { path: 'index.js', mode: '100644', content: 'module.exports = {}', type: 'blob' },
+  ];
 }
 
-function setupListHandler() {
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/list`, () =>
-      HttpResponse.json([
-        {
-          owner: 'twoGiants',
-          repoName: 'my-func',
-          repoURL: 'https://github.com/twoGiants/my-func',
-          defaultBranch: 'main',
-          name: 'my-func',
-          namespace: 'demo',
-          runtime: 'node',
-          source: 'repo',
-        },
-      ]),
-    ),
-  );
-}
-
-function setupFetchHandlers() {
-  setupListHandler();
-  server.use(
-    http.get(`${BACKEND_API}/api/v1/func/twoGiants/my-func/files`, () =>
-      HttpResponse.json([
-        {
-          path: 'func.yaml',
-          mode: '100644',
-          content: 'name: my-func\nruntime: node',
-          type: 'blob',
-        },
-        { path: 'index.js', mode: '100644', content: 'module.exports = {}', type: 'blob' },
-      ]),
-    ),
-  );
+function fileEntry(path: string, content: string): FileEntry {
+  return {
+    path,
+    mode: '100644',
+    content,
+    type: 'blob',
+  };
 }

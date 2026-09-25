@@ -78,6 +78,8 @@ Here is a good example from a [commit to the Bitcoin core](https://github.com/bi
 
    fail(), clear(n) and exceptions() are just never called. Delete
    them.
+
+   Issue SRVOCF-1000
 ```
 
 ## Context

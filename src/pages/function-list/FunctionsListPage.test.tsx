@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
-import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+import { listFunctionsStub, repoListItem } from '../../common/testing/functionsClientStub';
 import { FunctionListItem } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
 
@@ -87,7 +87,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders table when functions are loaded', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
     render(
@@ -114,7 +114,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows NotDeployed status for repos without cluster deployment', async () => {
-    listFunctionsStub({ responses: [repoListItem('orphan-func', 'orphan-func', 'demo', 'node')] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: 'orphan-func', name: 'orphan-func', runtime: 'node' })] });
 
     render(
       <MemoryRouter>
@@ -175,7 +175,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('renders the setup guide button in the list description', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
 
     render(
       <MemoryRouter>
@@ -187,7 +187,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows repo and cluster-only functions together in a union list', async () => {
-    listFunctionsStub({ responses: [repoListItem('repo-func'), clusterListItem('cluster-func')] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: 'repo-func', name: 'repo-func' }), clusterListItem('cluster-func')] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [
         sdkTestDoubles.ksvcFixture('repo-func', 'True'),
@@ -238,7 +238,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('enriches function with status, replicas, and URL from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
 
     render(
@@ -256,7 +256,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows ScaledToZero status and 0 replicas from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -273,7 +273,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows Deploying status from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
 
     render(
@@ -286,7 +286,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('shows Error status from ClusterFunction', async () => {
-    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
     sdkTestDoubles.setWatchFixtures({
       knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
       deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
@@ -302,7 +302,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
-    listFunctionsStub({ responses: [repoListItem('my-repo', funcName, 'demo', 'node')] });
+    listFunctionsStub({ responses: [repoListItem({ repoName: 'my-repo', name: funcName, runtime: 'node' })] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
     render(
       <MemoryRouter>
@@ -316,8 +316,8 @@ describe('FunctionsListPage', () => {
 
   describe('Refresh button behaviour', () => {
     it('re-fetch updates list after refresh if a repo was deleted', async () => {
-      const salesFuncRepoItem = repoListItem('sales-aggregator', 'sales-aggregator', 'demo', 'go');
-      const transcribeFuncRepoItem = repoListItem('transcriber', 'transcriber', 'demo', 'go');
+      const salesFuncRepoItem = repoListItem({ repoName: 'sales-aggregator', name: 'sales-aggregator' });
+      const transcribeFuncRepoItem = repoListItem({ repoName: 'transcriber', name: 'transcriber' });
 
       listFunctionsStub({
         responses: [salesFuncRepoItem, transcribeFuncRepoItem],
@@ -346,7 +346,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('does not show spinner on refresh button during initial page load', async () => {
-      listFunctionsStub({ responses: [repoListItem(funcName)] });
+      listFunctionsStub({ responses: [repoListItem({ repoName: funcName, name: funcName })] });
 
       render(
         <MemoryRouter>
@@ -361,7 +361,7 @@ describe('FunctionsListPage', () => {
 
     it('shows spinner on refresh button only while a button-triggered refresh is in flight', async () => {
       listFunctionsStub({
-        responses: [repoListItem('fn-a')],
+        responses: [repoListItem({ repoName: 'fn-a', name: 'fn-a' })],
       });
 
       render(
@@ -376,7 +376,7 @@ describe('FunctionsListPage', () => {
       // verify that the spinner is gone
       let continueWithRequest = () => {};
       listFunctionsStub({
-        responses: [repoListItem('fn-a')],
+        responses: [repoListItem({ repoName: 'fn-a', name: 'fn-a' })],
         wait: new Promise<void>((r) => {
           continueWithRequest = r;
         }),
@@ -543,23 +543,5 @@ function clusterListItem(name: string, namespace = 'demo', runtime = 'node'): Fu
     namespace,
     runtime,
     source: 'cluster',
-  };
-}
-
-function repoListItem(
-  repoName: string,
-  name?: string,
-  namespace = 'demo',
-  runtime = 'go',
-): FunctionListItem {
-  return {
-    owner: 'twoGiants',
-    repoName,
-    repoURL: `https://github.com/twoGiants/${repoName}`,
-    defaultBranch: 'main',
-    name: name ?? repoName,
-    namespace,
-    runtime,
-    source: 'repo',
   };
 }

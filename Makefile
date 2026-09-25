@@ -62,6 +62,9 @@ lint-frontend: install-frontend ## Run eslint and stylelint
 unit-frontend: install-frontend ## Run Vitest unit tests
 	yarn test
 
+watch-unit-frontend: install-frontend ## Watch Vitest unit tests using dot reporter
+	yarn test:watch:silent
+
 type-check: ## Run TypeScript compiler check
 	yarn type-check
 
