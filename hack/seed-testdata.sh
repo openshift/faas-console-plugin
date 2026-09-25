@@ -89,10 +89,12 @@ read_dev_env() {
 
   FAKE_GH_URL="http://localhost:${FAKE_GH_PORT:-}"
 
-  CLUSTER_API_URL=$(oc whoami --show-server 2>/dev/null) || {
+  oc whoami &>/dev/null || {
     log::error "Not logged in to OpenShift. Run 'oc login' first."
     exit 1
   }
+
+  CLUSTER_ID=$(oc get clusterversion version -o jsonpath='{.spec.clusterID}')
 }
 
 # --- Seed functions ---
@@ -106,7 +108,7 @@ seed_repo() {
     --arg repo "$FUNC_NAME" \
     --arg ns "$NAMESPACE" \
     --arg runtime "$RUNTIME" \
-    --arg cluster "$CLUSTER_API_URL" \
+    --arg cluster "$CLUSTER_ID" \
     '{
       owner: $owner,
       repo: $repo,
@@ -117,7 +119,7 @@ seed_repo() {
         mode: "100644",
         content: "name: \($repo)\nruntime: \($runtime)\nnamespace: \($ns)\n"
       }],
-      variables: { CLUSTER_API_URL: $cluster }
+      variables: { CLUSTER_ID: $cluster }
     }')
 
   curl -sf -X POST "${FAKE_GH_URL}/_admin/seed" \
