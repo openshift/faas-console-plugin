@@ -3,7 +3,7 @@ import { AsyncQueue } from './AsyncQueue';
 
 describe('AsyncQueue', () => {
   it('dequeue waits for enqueued value', async () => {
-    const queue = new AsyncQueue<string>();
+    await using queue = new AsyncQueue<string>();
 
     const deqPromise = queue.dequeue();
 
@@ -124,5 +124,14 @@ describe('AsyncQueue', () => {
     const remaining = await Promise.allSettled([p1, p2, p3, p4, p5]);
     const rejected = remaining.filter((r) => r.status === 'rejected').length;
     expect(rejected).toBe(4);
+  });
+
+  it('dequeue rejects after async disposal', async () => {
+    const q = await (async () => {
+      await using queue = new AsyncQueue<string>();
+      return queue;
+    })();
+
+    await expect(q.dequeue()).rejects.toThrow('queue closed');
   });
 });

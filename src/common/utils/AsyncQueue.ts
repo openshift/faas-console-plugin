@@ -53,4 +53,10 @@ export class AsyncQueue<T> {
       },
     };
   }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    if (!this.closed) {
+      this.close();
+    }
+  }
 }
