@@ -11,18 +11,18 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 import { http, HttpResponse } from 'msw';
 import { server } from '../testing/mswServer';
 import { consoleFetch } from '@openshift-console/dynamic-plugin-sdk';
-import { BuildSnapshot, createBuildStatusEventSource } from './functionsClient';
+import {
+  BuildSnapshot,
+  BuildStatusEventSource,
+  createBuildStatusEventSource,
+} from './functionsClient';
 import { AsyncQueue } from '../utils/AsyncQueue';
 
 const BUILD_WATCH_URL =
   '/api/proxy/plugin/console-functions-plugin/backend/api/v1/func/build/watch';
 
 describe('createBuildStatusEventSource', () => {
-  const createdSources: ReturnType<typeof createBuildStatusEventSource>[] = [];
-
   afterEach(() => {
-    createdSources.forEach((source) => source.close());
-    createdSources.length = 0;
     vi.useRealTimers();
     vi.restoreAllMocks();
     server.resetHandlers();
@@ -69,7 +69,7 @@ describe('createBuildStatusEventSource', () => {
   ])('$description', async ({ frames, expectedKey, expectedStatus }) => {
     useStaticEventStream(frames);
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
@@ -80,7 +80,7 @@ describe('createBuildStatusEventSource', () => {
     const sseFrames = 'event: error\ndata: github API rate limited\n\n';
     useStaticEventStream(sseFrames);
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
@@ -96,7 +96,7 @@ describe('createBuildStatusEventSource', () => {
       ),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using errorQueue = captureErrors(eventSource);
 
     const error = await errorQueue.dequeue();
@@ -117,7 +117,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using openQueue = new AsyncQueue<void>();
     eventSource.addEventListener('open', () => {
       openQueue.enqueue(undefined);
@@ -134,7 +134,7 @@ describe('createBuildStatusEventSource', () => {
 
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
 
     // Listener that throws
     eventSource.addEventListener('build-status', () => {
@@ -166,7 +166,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     eventSource.addEventListener('error', () => {
       errorCount++;
     });
@@ -201,7 +201,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using errorQueue = captureErrors(eventSource);
     await using eventQueue = captureBuildStatuses(eventSource);
 
@@ -238,7 +238,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     // Advance past reconnect delay (first request is made immediately)
@@ -256,7 +256,7 @@ describe('createBuildStatusEventSource', () => {
       'event: build-status\ndata: {"functions":{"a/b":{"buildStatus":"Failed"}}}\n\n';
     useStaticEventStream(sseFrames);
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     const event1 = await eventQueue.dequeue();
@@ -281,7 +281,7 @@ describe('createBuildStatusEventSource', () => {
     const sseFrame = `event: build-status\ndata: ${JSON.stringify(largePayload)}\n\n`;
     useStaticEventStream(sseFrame);
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
@@ -318,7 +318,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     const event1 = await eventQueue.dequeue();
@@ -357,7 +357,7 @@ describe('createBuildStatusEventSource', () => {
       },
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
 
     let gotBuildStatus = false;
     let gotError = false;
@@ -405,7 +405,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     const event = await eventQueue.dequeue();
@@ -433,7 +433,7 @@ describe('createBuildStatusEventSource', () => {
       }),
     );
 
-    const eventSource = createTrackedSource();
+    await using eventSource = createEventSource();
     await using eventQueue = captureBuildStatuses(eventSource);
 
     frameQueue.enqueue(
@@ -456,10 +456,14 @@ describe('createBuildStatusEventSource', () => {
     expect(raceResult).toBe('timeout');
   });
 
-  function createTrackedSource() {
+  // makes our EventSource disposable so we can use automatic 'await using' cleanup
+  function createEventSource(): BuildStatusEventSource & AsyncDisposable {
     const source = createBuildStatusEventSource();
-    createdSources.push(source);
-    return source;
+    return Object.assign(source, {
+      async [Symbol.asyncDispose]() {
+        source.close();
+      },
+    });
   }
 
   function useStaticEventStream(frames: string) {
