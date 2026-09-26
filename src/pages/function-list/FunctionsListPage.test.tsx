@@ -132,7 +132,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
-    const queue = new AsyncQueue<BuildSnapshot['functions']>();
+    await using queue = new AsyncQueue<BuildSnapshot['functions']>();
     listFunctionsStub({ responses: [repoListItem(funcName)] });
     watchBuildsStub(queue);
 
@@ -156,7 +156,6 @@ describe('FunctionsListPage', () => {
 
     // Emit Succeeded status
     queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
-    queue.close();
 
     // Building indicator should disappear (Succeeded on NotDeployed shows nothing)
     await waitFor(() => {
@@ -165,7 +164,7 @@ describe('FunctionsListPage', () => {
   });
 
   it('updates multiple functions with different status transitions', async () => {
-    const queue = new AsyncQueue<BuildSnapshot['functions']>();
+    await using queue = new AsyncQueue<BuildSnapshot['functions']>();
     const func1 = 'func-alpha';
     const func2 = 'func-beta';
     listFunctionsStub({
@@ -217,8 +216,6 @@ describe('FunctionsListPage', () => {
       expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
       expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
     });
-
-    queue.close();
   });
 
   it('renders a spinner while loading', () => {
