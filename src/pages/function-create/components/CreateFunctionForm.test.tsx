@@ -10,6 +10,7 @@ const authContext = {
   user: testUser,
   connectionId: 0,
   onLogin: vi.fn(),
+  onLogout: vi.fn(),
 };
 
 function renderWithContext(ui: React.ReactElement) {
@@ -18,6 +19,13 @@ function renderWithContext(ui: React.ReactElement) {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+// AuthProvider reaches the SDK through SessionService. Nothing here fetches, so
+// stub it out rather than let vite try to compile the SDK's stylesheets.
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  consoleFetch: vi.fn(),
+  consoleFetchJSON: Object.assign(vi.fn(), { post: vi.fn() }),
 }));
 
 const emptySecrets: K8sKeyedResource[] = [];

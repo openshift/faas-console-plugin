@@ -1,7 +1,9 @@
 import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 
-export const PAT_KEY = 'func-console-pat';
 export const USER_KEY = 'func-console-user';
+export const SESSION_TOKEN_KEY = 'faas-console-session-token';
+export const SESSION_HEADER = 'X-FUNC-SESSION';
+export const SESSION_EXPIRED_EVENT = 'session-expired';
 export const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
 export const FUNCTION_NAME_LABEL = 'function.knative.dev/name';

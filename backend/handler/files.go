@@ -18,9 +18,9 @@ import (
 var validGitRef = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
 
 func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+	credential, err := h.extractCredentialFromSession(r)
+	if err != nil {
+		writeSessionError(w, err)
 		return
 	}
 
@@ -41,7 +41,7 @@ func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, credential.Secret)
 	files, err := client.GetFiles(r.Context(), owner, name, ref)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
@@ -69,9 +69,9 @@ type putFilesTarget struct {
 }
 
 func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+	credential, err := h.extractCredentialFromSession(r)
+	if err != nil {
+		writeSessionError(w, err)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, credential.Secret)
 	target := putFilesTarget{owner: owner, repo: name, branch: req.Branch}
 	if err := h.refreshKubeconfig(r, client, target); err != nil {
 		if responseErr, ok := errors.AsType[*httpError](err); ok {

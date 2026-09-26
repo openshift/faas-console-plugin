@@ -1,7 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
-import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import {
+  authenticateGithubFake,
+  logoutGithubFake,
+  logoutStub,
+} from '../../common/testing/authFake';
 import { listFunctionsStub } from '../../common/testing/functionsClientStub';
 import { FunctionListItem } from '../../common/types';
 import FunctionsListPage from './FunctionsListPage';
@@ -23,9 +27,13 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
     return json;
   };
 
+  const consoleFetch = async (url: string, options?: RequestInit) =>
+    fetch(new URL(url, 'http://localhost').href, options);
+
   return {
     NamespaceBar: () => null,
     DocumentTitle: ({ children }: { children: string }) => children,
+    consoleFetch,
     ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
       <>
         {title}
@@ -160,6 +168,26 @@ describe('FunctionsListPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'No functions found', hidden: true }),
     ).toBeInTheDocument();
+  });
+
+  it('clears the listed functions when the user disconnects', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    logoutStub();
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'twoGiants' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect' }));
+
+    await waitFor(() => expect(screen.queryByText(funcName)).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Connect to GitHub' })).toBeInTheDocument();
   });
 
   it('renders UserAvatar in header', () => {

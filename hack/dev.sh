@@ -123,6 +123,16 @@ backend_gh_flag() {
   fi
 }
 
+ensure_session_namespace() {
+  # The backend puts session Secrets in the namespace the chart installs into,
+  # reading POD_NAMESPACE in the pod and hardcoding the same name on a laptop,
+  # where there is no pod to ask. It is not configurable from here. Dev does not
+  # require the plugin to have ever been deployed to this cluster, so create it.
+  local ns="console-functions-plugin"
+  oc get namespace "$ns" &>/dev/null 2>&1 || oc create namespace "$ns"
+  log::info "Session Secrets go to namespace $ns"
+}
+
 start_backend() {
   log::info "Building Go backend..."
   make build-backend
@@ -282,6 +292,7 @@ main() {
   install_dependencies
   stop_dev
   resolve_kube_api_server
+  ensure_session_namespace
   write_dev_env
   extract_cluster_ca
   trap 'stop_dev' EXIT INT TERM

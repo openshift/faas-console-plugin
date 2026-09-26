@@ -12,15 +12,27 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
+
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/github"
+	"github.com/openshift/faas-console-plugin/backend/session"
 	"github.com/openshift/faas-console-plugin/backend/tlsreload"
 )
 
-const defaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+const (
+	defaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+	// defaultSessionNamespace is where the chart installs the plugin, and so
+	// where its Secrets belong. It is the answer for local runs only: in the pod
+	// POD_NAMESPACE reports where the chart actually went and wins. There is no
+	// third way to set it, so dev sessions always land in one predictable place.
+	defaultSessionNamespace = "console-functions-plugin"
+)
 
 //go:embed static/*
 var staticFiles embed.FS
@@ -64,14 +76,33 @@ func main() {
 		}
 	}
 
-	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, saTokenExpiryParsed)
+	// A non-empty --kube-host means the backend runs outside the cluster, on a
+	// developer's laptop.
+	cfg, err := sessionRESTConfig(*kubeHost != "")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		namespace = defaultSessionNamespace
+	}
+	sessionStore, err := session.NewStore(cfg, namespace)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Storing sessions as Secrets in namespace %q", namespace)
+
+	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, saTokenExpiryParsed, sessionStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
-	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
+	mux.HandleFunc("POST /api/v1/auth/login", h.HandleLogin)
+	mux.HandleFunc("POST /api/v1/auth/session", h.HandleResumeSession)
+	mux.HandleFunc("POST /api/v1/auth/logout", h.HandleLogout)
 	mux.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
 	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
 	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
@@ -116,6 +147,29 @@ func main() {
 		log.Printf("TLS certificate not found, listening on http://%s", ln.Addr())
 		log.Fatal(http.Serve(ln, muxHandler))
 	}
+}
+
+// sessionRESTConfig builds the client config the session store talks to the
+// cluster with. Outside the pod there is no ServiceAccount token to read, so a
+// developer's kubeconfig stands in for it; both point at a real cluster.
+func sessionRESTConfig(dev bool) (*rest.Config, error) {
+	var cfg *rest.Config
+	var err error
+	if dev {
+		rules := clientcmd.NewDefaultClientConfigLoadingRules()
+		cfg, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, &clientcmd.ConfigOverrides{}).ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("load kubeconfig: %w", err)
+		}
+	} else {
+		cfg, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("load in-cluster config: %w", err)
+		}
+	}
+	cfg.ContentConfig = rest.ContentConfig{ContentType: "application/json"}
+	cfg.Timeout = 30 * time.Second
+	return cfg, nil
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
