@@ -2,8 +2,11 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
-import { listFunctionsStub } from '../../common/testing/functionsClientStub';
+import { listFunctionsStub, watchBuildsStub } from '../../common/testing/functionsClientStub';
+import { server } from '../../common/testing/mswServer';
 import { FunctionListItem } from '../../common/types';
+import { BuildSnapshot } from '../../common/clients/functionsClient';
+import { AsyncQueue } from '../../common/utils/AsyncQueue';
 import FunctionsListPage from './FunctionsListPage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -33,6 +36,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
       </>
     ),
     consoleFetchJSON,
+    consoleFetch: async (url: string, options?: RequestInit) =>
+      fetch(new URL(url, 'http://localhost').href, options),
     SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
     ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
     ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
@@ -54,11 +59,172 @@ describe('FunctionsListPage', () => {
   });
 
   afterEach(() => {
+    server.resetHandlers();
     act(() => sdkTestDoubles.reset());
   });
 
   afterAll(() => {
     logoutGithubFake();
+  });
+
+  it('displays build watcher error alert with message when stream fails', async () => {
+    const functionItem = repoListItem('my-repo');
+    listFunctionsStub({ responses: [functionItem] });
+    watchBuildsStub({ message: 'Service Unavailable', status: 503 });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Verify error alert title and HTTP error message are displayed
+    const errorStatusText = 'Service Unavailable';
+    await waitFor(() => {
+      expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
+    });
+  });
+
+  it('clears build watcher error alert when stream recovers', async () => {
+    // Fake timers with shouldAdvanceTime option. See RTL issue #1198:
+    // https://github.com/testing-library/react-testing-library/issues/1198
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    using _ = withFakeTimers();
+
+    const functionItem = repoListItem('my-repo');
+    listFunctionsStub({ responses: [functionItem] });
+
+    // Initial endpoint response is an error
+    const errorStatusText = 'Service Unavailable';
+    watchBuildsStub({ message: errorStatusText, status: 503 });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Verify error alert is displayed with the actual error message
+    await waitFor(() => {
+      expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
+    });
+
+    // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
+    watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
+
+    // Advance past reconnect delay (3000ms)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3500);
+    });
+
+    // Error should clear after reconnection
+    await waitFor(
+      () => {
+        expect(screen.queryByText('Error watching build statuses')).not.toBeInTheDocument();
+      },
+      { timeout: 500 },
+    );
+  });
+
+  // idea: this could be shared utility function, there are at least two similar tests
+  function withFakeTimers(): Disposable {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    return {
+      [Symbol.dispose]() {
+        vi.runOnlyPendingTimers();
+        vi.useRealTimers();
+      },
+    };
+  }
+
+  it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
+    await using queue = new AsyncQueue<BuildSnapshot['functions']>();
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    watchBuildsStub(queue);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Initial state: NotDeployed with no build activity
+    expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
+
+    // Emit Building status
+    queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+
+    // Should show building indicator
+    await waitFor(() => {
+      expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    });
+
+    // Emit Succeeded status
+    queue.enqueue({ [`twoGiants/${funcName}`]: { buildStatus: 'Succeeded' } });
+
+    // Building indicator should disappear (Succeeded on NotDeployed shows nothing)
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Build in progress')).not.toBeInTheDocument();
+    });
+  });
+
+  it('updates multiple functions with different status transitions', async () => {
+    await using queue = new AsyncQueue<BuildSnapshot['functions']>();
+    const func1 = 'func-alpha';
+    const func2 = 'func-beta';
+    listFunctionsStub({
+      responses: [repoListItem('repo-alpha', func1), repoListItem('repo-beta', func2)],
+    });
+    watchBuildsStub(queue);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Both functions render initially
+    expect(await screen.findByText(func1)).toBeInTheDocument();
+    expect(screen.getByText(func2)).toBeInTheDocument();
+
+    // Snapshot: func-alpha Building
+    queue.enqueue({
+      [`twoGiants/repo-alpha`]: { buildStatus: 'Building' },
+    });
+    await waitFor(() => {
+      const row1 = screen.getByText(func1).closest('tr');
+      const row2 = screen.getByText(func2).closest('tr');
+      expect(row1?.querySelector('[aria-label="Build in progress"]')).toBeInTheDocument();
+      expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+    });
+
+    // Snapshot: func-alpha Succeeded, func-beta Building
+    queue.enqueue({
+      [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
+      [`twoGiants/repo-beta`]: { buildStatus: 'Building' },
+    });
+    await waitFor(() => {
+      const row1 = screen.getByText(func1).closest('tr');
+      const row2 = screen.getByText(func2).closest('tr');
+      expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+      expect(row2?.querySelector('[aria-label="Build in progress"]')).toBeInTheDocument();
+    });
+
+    // Snapshot: both Succeeded
+    queue.enqueue({
+      [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
+      [`twoGiants/repo-beta`]: { buildStatus: 'Succeeded' },
+    });
+    await waitFor(() => {
+      const row1 = screen.getByText(func1).closest('tr');
+      const row2 = screen.getByText(func2).closest('tr');
+      expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+      expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+    });
   });
 
   it('renders a spinner while loading', () => {
@@ -282,7 +448,7 @@ describe('FunctionsListPage', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Progress: Deploying')).toBeInTheDocument();
+    expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
   });
 
   it('shows Error status from ClusterFunction', async () => {
@@ -299,6 +465,185 @@ describe('FunctionsListPage', () => {
     );
 
     expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+  });
+
+  it('shows NotDeployed with a build-in-progress indicator when the function is not yet deployed', async () => {
+    // No cluster fixture, so the function is NotDeployed. Building is always shown
+    // as a secondary indicator regardless of whether there is an existing deployment.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Info: NotDeployed')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    expect(screen.queryByText('Progress: Building')).not.toBeInTheDocument();
+  });
+
+  it('keeps Running with a build-in-progress indicator when the cluster is Running', async () => {
+    // Non-destructive: a serving function keeps its green Running status while a
+    // new revision builds; the build is surfaced only as a secondary spinner.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    expect(screen.queryByText('Progress: Building')).not.toBeInTheDocument();
+  });
+
+  it('keeps Running with a build-failed indicator when the cluster is Running', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Success: Running')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+    // The failed rebuild is surfaced as a secondary indicator linking to the run.
+    expect(await screen.findByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('keeps ScaledToZero with a build-failed indicator when the cluster is scaled to zero', async () => {
+    // A scaled-to-zero function is deployed and available (idle, cold-starts on
+    // demand), so a failed rebuild must not overwrite it with BuildFailed.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures({
+      knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')],
+      deps: [sdkTestDoubles.deploymentFixture(funcName, 0, 0)],
+    });
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('keeps Deploying with a build-in-progress indicator while a new revision rolls out', async () => {
+    // A live function reports Deploying for a moment when the build applies a new
+    // revision. Overwriting that with Building flickered the row through a status
+    // it had already passed on every redeploy.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures({ knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'True')] });
+    watchBuildsStub({ [`twoGiants/${funcName}`]: { buildStatus: 'Building' } });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Info: Deploying')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+    expect(screen.queryByText('Progress: Building')).not.toBeInTheDocument();
+  });
+
+  it('keeps a cluster Error with a build-failed indicator when the latest build failed', async () => {
+    // Ready=False means a deployed revision is broken, which matters more than
+    // the failed rebuild, so the build drops to a secondary indicator.
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    sdkTestDoubles.setWatchFixtures({
+      knSvcs: [sdkTestDoubles.ksvcFixture(funcName, 'False')],
+      deps: [sdkTestDoubles.deploymentFixture(funcName, 1, 0)],
+    });
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+    expect(screen.queryByText('Error: BuildFailed')).not.toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('shows BuildFailed for a repo-level error with no cluster resource', async () => {
+    // Error from FunctionListItem.err is not a cluster status, so the build
+    // status still takes over as it does for NotDeployed.
+    listFunctionsStub({ responses: [{ ...repoListItem(funcName), err: 'cannot read func.yaml' }] });
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
+  });
+
+  it('shows BuildFailed with a run link from the build stream', async () => {
+    listFunctionsStub({ responses: [repoListItem(funcName)] });
+    watchBuildsStub({
+      [`twoGiants/${funcName}`]: {
+        buildStatus: 'Failed',
+        runURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: BuildFailed')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Error: BuildFailed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
   });
 
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
