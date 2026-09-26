@@ -164,6 +164,63 @@ describe('FunctionsListPage', () => {
     });
   });
 
+  it('updates multiple functions with different status transitions', async () => {
+    const queue = new AsyncQueue<BuildSnapshot['functions']>();
+    const func1 = 'func-alpha';
+    const func2 = 'func-beta';
+    listFunctionsStub({
+      responses: [repoListItem('repo-alpha', func1), repoListItem('repo-beta', func2)],
+    });
+    watchBuildsStub(queue);
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    // Both functions render initially
+    expect(await screen.findByText(func1)).toBeInTheDocument();
+    expect(screen.getByText(func2)).toBeInTheDocument();
+
+    // Snapshot: func-alpha Building
+    queue.enqueue({
+      [`twoGiants/repo-alpha`]: { buildStatus: 'Building' },
+    });
+    await waitFor(() => {
+      const row1 = screen.getByText(func1).closest('tr');
+      const row2 = screen.getByText(func2).closest('tr');
+      expect(row1?.querySelector('[aria-label="Build in progress"]')).toBeInTheDocument();
+      expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+    });
+
+    // Snapshot: func-alpha Succeeded, func-beta Building
+    queue.enqueue({
+      [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
+      [`twoGiants/repo-beta`]: { buildStatus: 'Building' },
+    });
+    await waitFor(() => {
+      const row1 = screen.getByText(func1).closest('tr');
+      const row2 = screen.getByText(func2).closest('tr');
+      expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+      expect(row2?.querySelector('[aria-label="Build in progress"]')).toBeInTheDocument();
+    });
+
+    // Snapshot: both Succeeded
+    queue.enqueue({
+      [`twoGiants/repo-alpha`]: { buildStatus: 'Succeeded' },
+      [`twoGiants/repo-beta`]: { buildStatus: 'Succeeded' },
+    });
+    await waitFor(() => {
+      const row1 = screen.getByText(func1).closest('tr');
+      const row2 = screen.getByText(func2).closest('tr');
+      expect(row1?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+      expect(row2?.querySelector('[aria-label="Build in progress"]')).not.toBeInTheDocument();
+    });
+
+    queue.close();
+  });
+
   it('renders a spinner while loading', () => {
     listFunctionsStub();
     sdkTestDoubles.setWatchFixtures({ knLoaded: false, depLoaded: false });
