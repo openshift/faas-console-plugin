@@ -87,49 +87,58 @@ describe('FunctionsListPage', () => {
   });
 
   it('clears build watcher error alert when stream recovers', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    try {
-      // Fake timers with shouldAdvanceTime option. See RTL issue #1198:
-      // https://github.com/testing-library/react-testing-library/issues/1198
-      const functionItem = repoListItem('my-repo');
-      listFunctionsStub({ responses: [functionItem] });
+    // Fake timers with shouldAdvanceTime option. See RTL issue #1198:
+    // https://github.com/testing-library/react-testing-library/issues/1198
 
-      // Initial endpoint response is an error
-      const errorStatusText = 'Service Unavailable';
-      watchBuildsStub({ message: errorStatusText, status: 503 });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    using _ = withFakeTimers();
 
-      render(
-        <MemoryRouter>
-          <FunctionsListPage />
-        </MemoryRouter>,
-      );
+    const functionItem = repoListItem('my-repo');
+    listFunctionsStub({ responses: [functionItem] });
 
-      // Verify error alert is displayed with the actual error message
-      await waitFor(() => {
-        expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
-        expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
-      });
+    // Initial endpoint response is an error
+    const errorStatusText = 'Service Unavailable';
+    watchBuildsStub({ message: errorStatusText, status: 503 });
 
-      // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
-      watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
 
-      // Advance past reconnect delay (3000ms)
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(3500);
-      });
+    // Verify error alert is displayed with the actual error message
+    await waitFor(() => {
+      expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
+      expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
+    });
 
-      // Error should clear after reconnection
-      await waitFor(
-        () => {
-          expect(screen.queryByText('Error watching build statuses')).not.toBeInTheDocument();
-        },
-        { timeout: 500 },
-      );
-    } finally {
-      vi.runOnlyPendingTimers();
-      vi.useRealTimers();
-    }
+    // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
+    watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
+
+    // Advance past reconnect delay (3000ms)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3500);
+    });
+
+    // Error should clear after reconnection
+    await waitFor(
+      () => {
+        expect(screen.queryByText('Error watching build statuses')).not.toBeInTheDocument();
+      },
+      { timeout: 500 },
+    );
   });
+
+  // idea: this could be shared utility function, there are at least two similar tests
+  function withFakeTimers(): Disposable {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    return {
+      [Symbol.dispose]() {
+        vi.runOnlyPendingTimers();
+        vi.useRealTimers();
+      },
+    };
+  }
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
     await using queue = new AsyncQueue<BuildSnapshot['functions']>();
