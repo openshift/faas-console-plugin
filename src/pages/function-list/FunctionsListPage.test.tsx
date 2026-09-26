@@ -87,35 +87,48 @@ describe('FunctionsListPage', () => {
   });
 
   it('clears build watcher error alert when stream recovers', async () => {
-    const functionItem = repoListItem('my-repo');
-    listFunctionsStub({ responses: [functionItem] });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      // Fake timers with shouldAdvanceTime option. See RTL issue #1198:
+      // https://github.com/testing-library/react-testing-library/issues/1198
+      const functionItem = repoListItem('my-repo');
+      listFunctionsStub({ responses: [functionItem] });
 
-    // Initial endpoint response is an error
-    const errorStatusText = 'Service Unavailable';
-    watchBuildsStub({ message: errorStatusText, status: 503 });
+      // Initial endpoint response is an error
+      const errorStatusText = 'Service Unavailable';
+      watchBuildsStub({ message: errorStatusText, status: 503 });
 
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
+      render(
+        <MemoryRouter>
+          <FunctionsListPage />
+        </MemoryRouter>,
+      );
 
-    // Verify error alert is displayed with the actual error message
-    await waitFor(() => {
-      expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
-      expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
-    });
+      // Verify error alert is displayed with the actual error message
+      await waitFor(() => {
+        expect(screen.getByText('Error watching build statuses')).toBeInTheDocument();
+        expect(screen.getByText(new RegExp(errorStatusText))).toBeInTheDocument();
+      });
 
-    // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
-    watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
+      // Update MSW to return successful stream (reconnection will retry after RECONNECT_DELAY_MS)
+      watchBuildsStub({ 'twoGiants/my-repo': { buildStatus: 'Succeeded' } });
 
-    // Wait for reconnection (3000ms delay) and error to clear
-    await waitFor(
-      () => {
-        expect(screen.queryByText('Error watching build statuses')).not.toBeInTheDocument();
-      },
-      { timeout: 3500 },
-    );
+      // Advance past reconnect delay (3000ms)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3500);
+      });
+
+      // Error should clear after reconnection
+      await waitFor(
+        () => {
+          expect(screen.queryByText('Error watching build statuses')).not.toBeInTheDocument();
+        },
+        { timeout: 500 },
+      );
+    } finally {
+      vi.runOnlyPendingTimers();
+      vi.useRealTimers();
+    }
   });
 
   it('transitions build status from NotDeployed -> Building -> Succeeded', async () => {
