@@ -28,14 +28,16 @@ describe('useCluster', () => {
     it('reports not loaded while watches are pending', () => {
       setWatchFixtures({ knLoaded: false, depLoaded: false });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.loaded).toBe(false);
       expect(result.current.functions.size).toBe(0);
     });
 
     it('reports loaded when all watches complete', () => {
-      const { result } = renderHook(() => useCluster([funcName], namespace));
+      const { result } = renderHook(() =>
+        useCluster({ functionNames: [funcName], namespace: namespace }),
+      );
 
       expect(result.current.loaded).toBe(true);
       expect(result.current.functions.size).toBe(0);
@@ -44,7 +46,9 @@ describe('useCluster', () => {
     it('reports not loaded when secret watch is pending', () => {
       setWatchFixtures({ secretLoaded: false });
 
-      const { result } = renderHook(() => useCluster([funcName], namespace));
+      const { result } = renderHook(() =>
+        useCluster({ functionNames: [funcName], namespace: namespace }),
+      );
 
       expect(result.current.loaded).toBe(false);
     });
@@ -52,7 +56,9 @@ describe('useCluster', () => {
     it('reports not loaded when configmap watch is pending', () => {
       setWatchFixtures({ cmLoaded: false });
 
-      const { result } = renderHook(() => useCluster([funcName], namespace));
+      const { result } = renderHook(() =>
+        useCluster({ functionNames: [funcName], namespace: namespace }),
+      );
 
       expect(result.current.loaded).toBe(false);
     });
@@ -63,7 +69,7 @@ describe('useCluster', () => {
       const errMsg = 'ksvc watch failed';
       setWatchFixtures({ knError: new Error(errMsg) });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.error.message).toBe(errMsg);
     });
@@ -72,7 +78,7 @@ describe('useCluster', () => {
       const errMsg = 'deployment watch failed';
       setWatchFixtures({ depError: new Error(errMsg) });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.error.message).toBe(errMsg);
     });
@@ -81,7 +87,9 @@ describe('useCluster', () => {
       const errMsg = 'secret watch failed';
       setWatchFixtures({ secretError: new Error(errMsg) });
 
-      const { result } = renderHook(() => useCluster([funcName], namespace));
+      const { result } = renderHook(() =>
+        useCluster({ functionNames: [funcName], namespace: namespace }),
+      );
 
       expect(result.current.error.message).toBe(errMsg);
     });
@@ -90,7 +98,9 @@ describe('useCluster', () => {
       const errMsg = 'cm watch failed';
       setWatchFixtures({ cmError: new Error(errMsg) });
 
-      const { result } = renderHook(() => useCluster([funcName], namespace));
+      const { result } = renderHook(() =>
+        useCluster({ functionNames: [funcName], namespace: namespace }),
+      );
 
       expect(result.current.error.message).toBe(errMsg);
     });
@@ -98,7 +108,7 @@ describe('useCluster', () => {
     it('reports no error when watches succeed', () => {
       setWatchFixtures(funcFixture(funcName));
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.error).toBeNull();
     });
@@ -108,7 +118,7 @@ describe('useCluster', () => {
     it('pairs ksvc with deployment by revision label', () => {
       setWatchFixtures(funcFixture(funcName));
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.size).toBe(1);
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Running');
@@ -120,7 +130,7 @@ describe('useCluster', () => {
       func.deps![0].metadata!.labels = { [FUNCTION_NAME_LABEL]: funcName };
       setWatchFixtures(func);
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.size).toBe(1);
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Running');
@@ -138,14 +148,14 @@ describe('useCluster', () => {
         ],
       });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.size).toBe(1);
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.replicas).toBe(1);
     });
 
     it('returns empty map when no ksvc resources', () => {
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.size).toBe(0);
     });
@@ -158,7 +168,7 @@ describe('useCluster', () => {
         deps: [deploymentFixture(funcAName, 1, 1), deploymentFixture(funcBName, 0, 0)],
       });
 
-      const { result } = renderHook(() => useCluster([funcAName, funcBName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcAName, funcBName] }));
 
       expect(result.current.functions.size).toBe(2);
 
@@ -190,7 +200,7 @@ describe('useCluster', () => {
 
       setWatchFixtures({ knSvcs: [ksvcA, ksvcB], deps: [depB] });
 
-      const { result } = renderHook(() => useCluster(['shared-func']));
+      const { result } = renderHook(() => useCluster({ functionNames: ['shared-func'] }));
 
       // ns-a function has no deployment in its namespace → Deploying
       expect(result.current.functions.get(`${nsA}/shared-func`)?.status).toBe('Deploying');
@@ -203,7 +213,7 @@ describe('useCluster', () => {
     it('uses function.knative.dev/name label', () => {
       setWatchFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.name).toBe(funcName);
     });
@@ -213,7 +223,7 @@ describe('useCluster', () => {
     it('returns Deploying when deployment is undefined', () => {
       setWatchFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Deploying');
     });
@@ -221,7 +231,7 @@ describe('useCluster', () => {
     it('returns Running when Ready=True and replicas > 0', () => {
       setWatchFixtures(funcFixture(funcName));
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Running');
     });
@@ -232,7 +242,7 @@ describe('useCluster', () => {
         deps: [deploymentFixture(funcName, 0, 0)],
       });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('ScaledToZero');
     });
@@ -243,7 +253,7 @@ describe('useCluster', () => {
         deps: [deploymentFixture(funcName, 0, 0)],
       });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Error');
     });
@@ -254,7 +264,7 @@ describe('useCluster', () => {
         deps: [deploymentFixture(funcName, 1, 0)],
       });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Deploying');
     });
@@ -264,7 +274,7 @@ describe('useCluster', () => {
       func.knSvcs![0].status!.conditions[0].type = 'ConfigurationsReady';
       setWatchFixtures(func);
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.status).toBe('Deploying');
     });
@@ -274,7 +284,7 @@ describe('useCluster', () => {
     it('returns ksvc status url', () => {
       setWatchFixtures(funcFixture(funcName));
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.url).toBe(
         'https://my-func-demo.apps.example.com',
@@ -286,7 +296,7 @@ describe('useCluster', () => {
       ksvc.status = {};
       setWatchFixtures({ knSvcs: [ksvc] });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.url).toBe('');
     });
@@ -299,7 +309,7 @@ describe('useCluster', () => {
         deps: [deploymentFixture(funcName, 2, 2)],
       });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.replicas).toBe(2);
     });
@@ -307,7 +317,7 @@ describe('useCluster', () => {
     it('returns 0 when deployment is undefined', () => {
       setWatchFixtures({ knSvcs: [ksvcFixture(funcName, 'True')] });
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(result.current.functions.get(`${namespace}/${funcName}`)?.replicas).toBe(0);
     });
@@ -317,7 +327,7 @@ describe('useCluster', () => {
     it('returns the knative service', () => {
       setWatchFixtures(funcFixture(funcName));
 
-      const { result } = renderHook(() => useCluster([funcName]));
+      const { result } = renderHook(() => useCluster({ functionNames: [funcName] }));
 
       expect(
         result.current.functions.get(`${namespace}/${funcName}`)?.mainResource.apiVersion,
@@ -334,7 +344,7 @@ describe('useCluster', () => {
         secrets: [secretFixture(dbCreds, secretData), secretFixture(apiKey, { key: 'c2VjcmV0' })],
       });
 
-      const { result } = renderHook(() => useCluster([], namespace));
+      const { result } = renderHook(() => useCluster({ functionNames: [], namespace: namespace }));
 
       const secrets = result.current.secrets;
       expect(secrets[0].name).toBe(dbCreds);
@@ -346,7 +356,7 @@ describe('useCluster', () => {
         secrets: [secretFixture(dbCreds, secretData)],
       });
 
-      const { result } = renderHook(() => useCluster([], namespace));
+      const { result } = renderHook(() => useCluster({ functionNames: [], namespace: namespace }));
 
       const secretKeys = result.current.secrets[0].keys;
       expect(secretKeys[0]).toBe('username');
@@ -354,7 +364,7 @@ describe('useCluster', () => {
     });
 
     it('returns empty when no namespace provided', () => {
-      const { result } = renderHook(() => useCluster([]));
+      const { result } = renderHook(() => useCluster({ functionNames: [] }));
 
       expect(result.current.secrets.length).toBe(0);
     });
@@ -368,7 +378,7 @@ describe('useCluster', () => {
         configMaps: [configMapFixture(appConfig, configData)],
       });
 
-      const { result } = renderHook(() => useCluster([], namespace));
+      const { result } = renderHook(() => useCluster({ functionNames: [], namespace: namespace }));
 
       expect(result.current.configMaps[0].name).toBe(appConfig);
     });
@@ -378,7 +388,7 @@ describe('useCluster', () => {
         configMaps: [configMapFixture(appConfig, configData)],
       });
 
-      const { result } = renderHook(() => useCluster([], namespace));
+      const { result } = renderHook(() => useCluster({ functionNames: [], namespace: namespace }));
 
       const configMapKeys = result.current.configMaps[0].keys;
       expect(configMapKeys[0]).toBe('log-level');
@@ -386,7 +396,7 @@ describe('useCluster', () => {
     });
 
     it('returns empty when no namespace provided', () => {
-      const { result } = renderHook(() => useCluster([]));
+      const { result } = renderHook(() => useCluster({ functionNames: [] }));
 
       expect(result.current.configMaps.length).toBe(0);
     });

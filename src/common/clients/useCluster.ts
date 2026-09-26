@@ -12,16 +12,20 @@ import {
   REVISION_LABEL,
 } from '../types';
 
-export function useCluster(
-  functionNames: string[] = [],
-  namespace?: string,
-): {
+interface UseClusterProps {
+  functionNames: string[];
+  namespace?: string;
+}
+
+interface UseClusterResult {
   functions: ReadonlyMap<string, ClusterFunction>;
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
   loaded: boolean;
   error: Error;
-} {
+}
+
+export function useCluster({ functionNames, namespace }: UseClusterProps): UseClusterResult {
   const knSvcConfig = useMemo(
     () => newKsvcWatchConfig(functionNames, namespace),
     [functionNames, namespace],
