@@ -92,13 +92,22 @@ export function watchBuildsStub(
       ),
     );
   } else {
-    // SSE stream response with single snapshot
-    const frame = `event: build-status\ndata: ${JSON.stringify({ functions: val })}\n\n`;
+    // SSE stream response with single snapshot, connection stays open
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const frame = `event: build-status\ndata: ${JSON.stringify({ functions: val })}\n\n`;
+        controller.enqueue(encoder.encode(frame));
+        // Never close - keep connection alive indefinitely
+      },
+    });
     server.use(
-      http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
-        HttpResponse.text(frame, {
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
+      http.get(
+        `${BACKEND_API}/api/v1/func/build/watch`,
+        () =>
+          new Response(stream, {
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
       ),
     );
   }
