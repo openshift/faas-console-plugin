@@ -11,7 +11,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
 
 LOG_DIR=".dev-logs"
-CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
+# CONSOLE_IMAGE is resolved by hack/start-console.sh (auto-detects cluster version).
+# To override, export CONSOLE_IMAGE before running this script.
 BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000

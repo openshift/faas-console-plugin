@@ -17,7 +17,35 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CONSOLE_IMAGE=${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}
+# Resolve CONSOLE_IMAGE: user override > auto-detect from cluster > pinned fallback.
+# Using an image that matches the cluster version avoids webpack module federation
+# errors (e.g. "useNavigate is not a function") caused by version mismatch.
+_CONSOLE_REPO="quay.io/openshift/origin-console"
+_FALLBACK_TAG="4.22"
+
+if [ -n "${CONSOLE_IMAGE:-}" ]; then
+  echo "Console image (user override): $CONSOLE_IMAGE"
+else
+  _detected=""
+  if _oc_json=$(oc version -o json 2>/dev/null); then
+    _full_ver=$(echo "$_oc_json" | grep -o '"openshiftVersion": *"[^"]*"' | head -1 | sed 's/.*": *"//;s/".*//')
+    if [ -n "$_full_ver" ]; then
+      _major_minor=$(echo "$_full_ver" | grep -oE '^[0-9]+\.[0-9]+')
+      if [ -n "$_major_minor" ]; then
+        _detected="$_major_minor"
+      fi
+    fi
+  fi
+
+  if [ -n "$_detected" ]; then
+    CONSOLE_IMAGE="${_CONSOLE_REPO}:${_detected}"
+    echo "Console image (auto-detected cluster ${_detected}): $CONSOLE_IMAGE"
+  else
+    CONSOLE_IMAGE="${_CONSOLE_REPO}:${_FALLBACK_TAG}"
+    echo "Console image (fallback, could not detect cluster version): $CONSOLE_IMAGE"
+  fi
+fi
+
 CONSOLE_PORT=${CONSOLE_PORT:-9000}
 CONSOLE_IMAGE_PLATFORM=${CONSOLE_IMAGE_PLATFORM:="linux/amd64"}
 
