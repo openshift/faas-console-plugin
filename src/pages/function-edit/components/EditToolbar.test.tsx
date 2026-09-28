@@ -36,7 +36,7 @@ describe('EditToolbar', () => {
     expect(screen.getByRole('button', { name: 'Save & Deploy' })).toBeEnabled();
   });
 
-  it('shows success alert after save and auto-dismisses after 2s', async () => {
+  it('shows success alert after save and auto-dismisses after 3s', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onSave = vi.fn().mockResolvedValue(undefined);
@@ -44,14 +44,18 @@ describe('EditToolbar', () => {
 
     await user.click(screen.getByRole('button', { name: 'Save & Deploy' }));
 
-    expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
+    expect(
+      screen.getByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+    ).toBeInTheDocument();
 
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(3000);
     });
 
     await waitFor(() => {
-      expect(screen.queryByText('Pushed to GitHub. Deployment running...')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+      ).not.toBeInTheDocument();
     });
 
     vi.useRealTimers();

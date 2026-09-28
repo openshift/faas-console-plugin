@@ -64,7 +64,9 @@ test.describe('Delete file', () => {
     await test.step('save and verify success', async () => {
       await page.getByRole('button', { name: 'Save & Deploy' }).click();
 
-      await expect(page.getByText('Pushed to GitHub. Deployment running...')).toBeVisible({
+      await expect(
+        page.getByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+      ).toBeVisible({
         timeout: 10_000,
       });
 

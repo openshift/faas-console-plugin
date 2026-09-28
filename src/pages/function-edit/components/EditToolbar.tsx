@@ -100,8 +100,8 @@ function useEditToolbar(
     setSuccessMsg('');
     try {
       await onSave();
-      setSuccessMsg('Pushed to GitHub. Deployment running...');
-      dismissTimer.current = setTimeout(() => setSuccessMsg(''), 2000);
+      setSuccessMsg('Pushed to GitHub. Build and deploy workflow run initiated.');
+      dismissTimer.current = setTimeout(() => setSuccessMsg(''), 3000);
     } catch (err) {
       setErrorMsg(errorMessage(err));
     } finally {

@@ -365,7 +365,9 @@ describe('FunctionEditPage', () => {
     await user.click(screen.getByRole('button', { name: /Save & Deploy/ }));
 
     await waitFor(() => {
-      expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
+      expect(
+        screen.getByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+      ).toBeInTheDocument();
     });
   });
 
@@ -398,14 +400,18 @@ describe('FunctionEditPage', () => {
     await userEvent.setup().click(screen.getByRole('button', { name: /Save & Deploy/ }));
 
     await waitFor(() => {
-      expect(screen.getByText('Pushed to GitHub. Deployment running...')).toBeInTheDocument();
+      expect(
+        screen.getByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+      ).toBeInTheDocument();
     });
 
     await act(async () => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(3000);
     });
 
-    expect(screen.queryByText('Pushed to GitHub. Deployment running...')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+    ).not.toBeInTheDocument();
 
     vi.useRealTimers();
   });

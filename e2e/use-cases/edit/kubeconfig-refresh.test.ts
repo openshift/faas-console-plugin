@@ -29,7 +29,9 @@ async function editAndSave(page: Page, marker: string): Promise<void> {
   const saveButton = page.getByRole('button', { name: 'Save & Deploy' });
   await expect(saveButton).toBeEnabled({ timeout: 5_000 });
   await saveButton.click();
-  await expect(page.getByText('Pushed to GitHub. Deployment running...')).toBeVisible({
+  await expect(
+    page.getByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
+  ).toBeVisible({
     timeout: 15_000,
   });
   await expect(saveButton).toBeDisabled({ timeout: 5_000 });
