@@ -32,6 +32,17 @@ if ! oc whoami &>/dev/null; then
   exit 1
 fi
 
+if [ -n "${OCP_VERSION:-}" ]; then
+  cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+  if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
+    if [ "$(printf '%s\n' "$cluster_version" "$OCP_VERSION" | sort -V | head -n1)" = "$cluster_version" ]; then
+      log::warn "Cluster version (${cluster_version}) is older than dev target (${OCP_VERSION}). Deploying a ${OCP_VERSION} compatible plugin to a ${cluster_version} cluster."
+    else
+      log::warn "Cluster version (${cluster_version}) is newer than dev target (${OCP_VERSION}). Deploying a ${OCP_VERSION} compatible plugin to a ${cluster_version} cluster."
+    fi
+  fi
+fi
+
 # --- Build ---
 
 log::step "Building image"

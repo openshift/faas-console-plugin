@@ -17,7 +17,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-CONSOLE_IMAGE=${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}
+# The console image version determines which shared modules (React, react-router,
+# PatternFly) are exposed to the plugin via module federation. It must match the
+# OCP version the plugin is developed against so shared module versions align.
+# The cluster version is used as a proxy: the console bridge calls cluster APIs
+# and expects a matching cluster version, so mismatching the two can break the
+# console itself independently of any plugin concern.
+if [ -z "${OCP_VERSION:-}" ]; then
+  OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+fi
+# 4.23 was rebranded as 5.0 before release; no :4.23 image tag exists
+case "${OCP_VERSION:-}" in
+  4.23) OCP_VERSION="5.0" ;;
+esac
+CONSOLE_IMAGE="quay.io/openshift/origin-console:${OCP_VERSION:-latest}"
 CONSOLE_PORT=${CONSOLE_PORT:-9000}
 CONSOLE_IMAGE_PLATFORM=${CONSOLE_IMAGE_PLATFORM:="linux/amd64"}
 
