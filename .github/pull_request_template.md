@@ -19,6 +19,7 @@ Fixes [SRVOCF-XXX](https://redhat.atlassian.net/browse/SRVOCF-XXX)
 
 ## Checklist
 
+- [ ] This PR is focused and concise (if the work grew large, split into multiple PRs)
 - [ ] Updated `docs/ARCHITECTURE.md` (if there are relevant changes to our layered architecture)
 - [ ] Updated `docs/TESTING.md` (if there are relevant changes to our testing framework or setup)
 

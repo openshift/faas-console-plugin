@@ -3,6 +3,10 @@
 ```
 ### Summary
 
+Pre-development checklist:
+- [ ] Implement the story in small, concise PRs
+- [ ] Subtasks identified and prioritized (must-have / nice-to-have)
+
 <What and why. Keep it concise.>
 
 ### Scope

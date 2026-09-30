@@ -7,7 +7,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 ## Team Values
 
 - Support each other and find time for each other
-- Deliver high quality output
+- Deliver technical excellence
 - Communicate often and speak freely without hesitation
 - Care about bringing value to the customer
 
@@ -15,7 +15,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 
 | Guide | Description |
 |-------|-------------|
-| [Agile Workflow](docs/AGILE.md) | Issue tracking, branching, pull requests |
+| [Agile Workflow](docs/AGILE.md) | Issue tracking, ceremonies, branching, pull requests |
 | [Architecture](docs/ARCHITECTURE.md) | Layered architecture, dependency rules, and React patterns |
 | [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, commit conventions, CSS rules, and OCP plugin constraints |
 | [Testing](docs/TESTING.md) | TDD approach, test layers, mock strategy, and file conventions |
@@ -28,6 +28,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 | [Jira Epic](docs/templates/jira-epic-template.md) | Template for creating Jira epics |
 | [Jira Story](docs/templates/jira-story-template.md) | Template for creating Jira stories |
 | [Jira Bug](docs/templates/jira-bug-template.md) | Template for filing Jira bugs |
+| [Retrospective](docs/templates/retro-template.md) | Template for retrospective entries |
 
 ### Slash Commands
 
