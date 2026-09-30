@@ -243,7 +243,7 @@ check_prerequisites() {
   fi
 
   cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
-  if [ "$cluster_version" != "$OCP_VERSION" ]; then
+  if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
     if [ "$(printf '%s\n' "$cluster_version" "$OCP_VERSION" | sort -V | head -n1)" = "$cluster_version" ]; then
       log::warn "Cluster version (${cluster_version:-unknown}) is older than dev target (${OCP_VERSION}). The console image will be ${OCP_VERSION}."
     else
