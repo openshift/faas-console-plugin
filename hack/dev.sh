@@ -245,9 +245,7 @@ check_prerequisites() {
   cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
   if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
     if [ "$(printf '%s\n' "$cluster_version" "$OCP_VERSION" | sort -V | head -n1)" = "$cluster_version" ]; then
-      log::error "Cluster version (${cluster_version}) is below the minimum supported version (${OCP_VERSION}). The plugin will not load."
-      log::error "Log in to a ${OCP_VERSION}+ cluster or set OCP_VERSION to match your cluster."
-      exit 1
+      log::warn "Cluster version (${cluster_version}) is older than dev target (${OCP_VERSION}). The console image will be ${OCP_VERSION} so the plugin will load, but some cluster APIs may not be available."
     else
       log::warn "Cluster version (${cluster_version}) is newer than dev target (${OCP_VERSION}). The console image will be ${OCP_VERSION}."
     fi
