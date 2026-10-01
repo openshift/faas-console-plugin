@@ -21,7 +21,7 @@ import (
 const (
 	repoSecretKubeconfig   = "KUBECONFIG"
 	repoKubeconfigExpireAt = "KUBECONFIG_EXPIRE_AT"
-	repoVarClusterAPIURL   = "CLUSTER_API_URL"
+	repoVarClusterID       = "CLUSTER_ID"
 )
 
 var (
@@ -161,7 +161,7 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		slog.Error("failed to store EXPIRE_AT variable", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store variable: %w", err))
 	}
-	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoVarClusterAPIURL, h.externalAPIServerURL); err != nil {
+	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoVarClusterID, h.clusterID); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
 			return err
 		}
