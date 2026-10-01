@@ -56,7 +56,18 @@ export const handlerMap: Record<string, string> = {
   quarkus: 'src/main/java/functions/Function.java',
 };
 
-export function errorMessage(err: unknown): string {
+export function isSystemNamespace(namespace: string): boolean {
+  const SYSTEM_NAMESPACES = ['openshift', 'default'];
+  const SYSTEM_NAMESPACE_PREFIXES = ['openshift-', 'kube-', 'knative-'];
+  const name = namespace.trim();
+  if (!name) return false;
+  return (
+    SYSTEM_NAMESPACES.includes(name) ||
+    SYSTEM_NAMESPACE_PREFIXES.some((prefix) => name.startsWith(prefix))
+  );
+}
+
+export function handleErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'object' && err !== null && 'message' in err) {
     return String((err as { message: unknown }).message);

@@ -39,6 +39,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', async () => {
     InfoStatus: ({ title }: { title: string }) => `Info: ${title}`,
     StatusIconAndText: ({ title }: { title: string }) => `Warning: ${title}`,
     useDeleteModal: () => () => {},
+    useAccessReview: sdkTestDoubles.useAccessReviewStub,
     useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
     useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
     isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,

@@ -7,8 +7,8 @@ import {
 } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
 import { SetupGuide } from './SetupGuide';
+import { useNavigate } from 'react-router';
 
 interface FunctionsEmptyStateProps {
   isCreateDisabled?: boolean;
@@ -16,6 +16,7 @@ interface FunctionsEmptyStateProps {
 
 export function FunctionsEmptyState({ isCreateDisabled }: FunctionsEmptyStateProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
+  const navigate = useNavigate();
 
   return (
     <EmptyState headingLevel="h2" icon={CubesIcon} titleText={t('No functions found')}>
@@ -34,7 +35,7 @@ export function FunctionsEmptyState({ isCreateDisabled }: FunctionsEmptyStatePro
               {t('Create function')}
             </Button>
           ) : (
-            <Button variant="primary" component={(props) => <Link {...props} to="/faas/create" />}>
+            <Button variant="primary" onClick={() => navigate('/faas/create')}>
               {t('Create function')}
             </Button>
           )}

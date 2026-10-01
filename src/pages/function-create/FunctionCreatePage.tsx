@@ -1,15 +1,16 @@
 import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
 import { Alert, PageSection } from '@patternfly/react-core';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
+import { createFunction } from '../../common/clients/functionsClient';
+import { useCluster } from '../../common/clients/useCluster';
+import { useNamespaceOptions } from '../../common/clients/useNamespaceOptions';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { useCluster } from '../../common/clients/useCluster';
-import { createFunction } from '../../common/clients/functionsClient';
 import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/types';
-import { errorMessage } from '../../common/utils/utils';
+import { handleErrorMessage } from '../../common/utils/utils';
+import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 
 export default function FunctionCreatePage() {
   return (
@@ -29,7 +30,10 @@ function FunctionCreatePageContent() {
     isConnectedToForge,
     secrets,
     configMaps,
-    onNamespaceChange,
+    canCreateNamespaces,
+    namespaces,
+    setNamespaceWatchField,
+    namespacesLoaded,
   } = useFunctionCreatePage();
 
   return (
@@ -59,8 +63,11 @@ function FunctionCreatePageContent() {
             configMaps={configMaps}
             onSubmit={handleSubmit}
             onCancel={handleCancel}
-            onNamespaceChange={onNamespaceChange}
+            setNamespaceWatchField={setNamespaceWatchField}
             isSubmitting={isSubmitting}
+            canCreateNamespaces={canCreateNamespaces}
+            namespaces={namespaces}
+            namespacesLoaded={namespacesLoaded}
           />
         )}
       </PageSection>
@@ -74,18 +81,40 @@ function useFunctionCreatePage(): {
   isSubmitting: boolean;
   isConnectedToForge: boolean;
   error: string | null;
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  namespacesLoaded: boolean;
   handleSubmit: (data: CreateFunctionFormData) => Promise<void>;
   handleCancel: () => void;
-  onNamespaceChange: (namespace: string) => void;
+  setNamespaceWatchField: (namespace: string) => void;
 } {
+  const { t } = useTranslation('plugin__console-functions-plugin');
   const navigate = useNavigate();
   const isConnectedToForge = useContext(AuthContext).isAuthenticated;
-  const [namespace, setNamespace] = useState('');
-  const debouncedNamespace = useDebouncedValue(namespace, 300);
-  const { secrets, configMaps } = useCluster([], debouncedNamespace);
+
+  const {
+    canCreateNamespaces,
+    namespaces,
+    loaded: namespacesLoaded,
+    error: namespacesError,
+  } = useNamespaceOptions();
+
+  const [namespaceWatchField, setNamespaceWatchField] = useState('');
+
+  const {
+    secrets,
+    configMaps,
+    error: clusterResourcesError,
+  } = useCluster({
+    functionNames: [],
+    namespace: namespaceWatchField,
+  });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const clusterResourcesErrorMessage =
+    namespacesError || clusterResourcesError ? t('Error loading cluster resources') : null;
 
   const handleSubmit = async (data: CreateFunctionFormData) => {
     setIsSubmitting(true);
@@ -105,7 +134,7 @@ function useFunctionCreatePage(): {
 
       navigate('/faas');
     } catch (err) {
-      setError(errorMessage(err));
+      setError(handleErrorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -117,13 +146,16 @@ function useFunctionCreatePage(): {
 
   return {
     isSubmitting,
-    error,
+    error: error || clusterResourcesErrorMessage,
     handleSubmit,
     handleCancel,
+    setNamespaceWatchField,
     isConnectedToForge,
     secrets,
     configMaps,
-    onNamespaceChange: setNamespace,
+    canCreateNamespaces,
+    namespaces,
+    namespacesLoaded,
   };
 }
 
@@ -162,15 +194,4 @@ function toEnvVars(
       })),
   ];
   return result.length > 0 ? result : undefined;
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debounced;
 }

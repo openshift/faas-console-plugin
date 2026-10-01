@@ -1,6 +1,7 @@
-import { useContext, useState } from 'react';
 import {
   ActionGroup,
+  Alert,
+  Bullseye,
   Button,
   Flex,
   FlexItem,
@@ -14,6 +15,7 @@ import {
   GridItem,
   HelperText,
   HelperTextItem,
+  Spinner,
   Split,
   SplitItem,
   Stack,
@@ -21,15 +23,18 @@ import {
   TextInput,
   Title,
 } from '@patternfly/react-core';
+import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AuthContext } from '../../../common/context/AuthProvider';
 import {
   FunctionRuntime,
   K8sKeyedResource,
   PlainEnvVar,
   ResourceEnvVar,
 } from '../../../common/types';
-import { AuthContext } from '../../../common/context/AuthProvider';
-import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
+import { isSystemNamespace } from '../../../common/utils/utils';
+import { useActiveNamespace } from '@openshift-console/dynamic-plugin-sdk';
 
 const OCP_INTERNAL_REGISTRY = 'image-registry.openshift-image-registry.svc:5000/';
 
@@ -59,9 +64,12 @@ interface CreateFunctionFormProps {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
   isSubmitting: boolean;
+  canCreateNamespaces: boolean;
+  namespaces: string[];
   onSubmit: (data: CreateFunctionFormData) => void;
   onCancel: () => void;
-  onNamespaceChange: (namespace: string) => void;
+  setNamespaceWatchField: (namespace: string) => void;
+  namespacesLoaded: boolean;
 }
 
 export function CreateFunctionForm({
@@ -69,73 +77,39 @@ export function CreateFunctionForm({
   configMaps,
   onSubmit,
   onCancel,
-  onNamespaceChange,
+  setNamespaceWatchField,
   isSubmitting,
+  canCreateNamespaces,
+  namespaces,
+  namespacesLoaded,
 }: CreateFunctionFormProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { fields, setField, setEnvVars, isValid } = useCreateFunctionForm(onNamespaceChange);
+  const { fields, setField, setNamespaceFormField, setEnvVars, isValid } = useCreateFunctionForm();
+
+  if (!namespacesLoaded) {
+    return (
+      <Bullseye>
+        <Spinner aria-label={t('Loading')} size="lg" />
+      </Bullseye>
+    );
+  }
 
   return (
     <Form
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(fields);
+        onSubmit({ ...fields });
       }}
     >
-      <FormSection title={t('GitHub Settings')}>
-        <FormGroup label={t('Owner')} isRequired fieldId="owner">
-          <TextInput id="owner" isRequired isDisabled value={fields.owner} />
-        </FormGroup>
-        <FormGroup label={t('Repository')} isRequired fieldId="repo">
-          <TextInput
-            id="repo"
-            isRequired
-            value={fields.repo}
-            onChange={(_, val) => setField('repo', val)}
-          />
-        </FormGroup>
-        <FormGroup label={t('Branch')} isRequired fieldId="branch">
-          <TextInput
-            id="branch"
-            isRequired
-            value={fields.branch}
-            onChange={(_, val) => setField('branch', val)}
-          />
-        </FormGroup>
-      </FormSection>
-      <FormSection title={t('Function Settings')}>
-        <FormGroup label={t('Name')} isRequired fieldId="name">
-          <TextInput
-            id="name"
-            isRequired
-            value={fields.name}
-            onChange={(_, val) => setField('name', val)}
-          />
-        </FormGroup>
-        <FormGroup label={t('Language')} isRequired fieldId="runtime">
-          <FormSelect
-            id="runtime"
-            value={fields.runtime}
-            onChange={(_, val) => setField('runtime', val as FunctionRuntime)}
-            aria-label={t('Language')}
-          >
-            {runtimeOptions.map(({ value, label }) => (
-              <FormSelectOption key={value} value={value} label={label} />
-            ))}
-          </FormSelect>
-        </FormGroup>
-        <FormGroup label={t('Registry')} isRequired fieldId="registry">
-          <TextInput id="registry" isRequired isDisabled value={fields.registry} />
-        </FormGroup>
-        <FormGroup label={t('Namespace')} isRequired fieldId="namespace">
-          <TextInput
-            id="namespace"
-            isRequired
-            value={fields.namespace}
-            onChange={(_, val) => setField('namespace', val)}
-          />
-        </FormGroup>
-      </FormSection>
+      <GithubSettingsSection fields={fields} setField={setField} />
+      <FunctionSettingsSection
+        fields={fields}
+        setField={setField}
+        canCreateNamespaces={canCreateNamespaces}
+        namespaces={namespaces}
+        setNamespaceFormField={setNamespaceFormField}
+        setNamespaceWatchField={setNamespaceWatchField}
+      />
       <EnvVarSection
         secrets={secrets}
         configMaps={configMaps}
@@ -162,7 +136,7 @@ export function CreateFunctionForm({
   );
 }
 
-function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
+function useCreateFunctionForm() {
   const { user } = useContext(AuthContext);
   const [fields, setFields] = useState<CreateFunctionFormData>({
     owner: user?.name ?? '',
@@ -176,27 +150,25 @@ function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
     secretEnvVars: [],
     configMapEnvVars: [],
   });
+
   const setField = (key: keyof CreateFunctionFormData, value: string) => {
-    setFields((prev) => {
-      const next = { ...prev, [key]: value };
-      if (key === 'namespace') {
-        next.registry = OCP_INTERNAL_REGISTRY + value;
-        next.secretEnvVars = next.secretEnvVars.map((e) => ({
-          ...e,
-          resourceName: '',
-          resourceKey: '',
-        }));
-        next.configMapEnvVars = next.configMapEnvVars.map((e) => ({
-          ...e,
-          resourceName: '',
-          resourceKey: '',
-        }));
-      }
-      return next;
-    });
-    if (key === 'namespace') {
-      onNamespaceChange(value);
-    }
+    setFields((prev) => ({ ...prev, [key]: value }));
+  };
+
+  // Secrets and ConfigMaps are namespace scoped, so a namespace change invalidates every
+  // resource selection made against the previous one.
+  const setNamespace = (namespace: string) => {
+    setFields((prev) => ({
+      ...prev,
+      namespace,
+      registry: OCP_INTERNAL_REGISTRY + namespace,
+      secretEnvVars: prev.secretEnvVars.map((e) => ({ ...e, resourceName: '', resourceKey: '' })),
+      configMapEnvVars: prev.configMapEnvVars.map((e) => ({
+        ...e,
+        resourceName: '',
+        resourceKey: '',
+      })),
+    }));
   };
 
   const setEnvVars = (field: EnvVarField, vars: PlainEnvVar[] | ResourceEnvVar[]) => {
@@ -216,9 +188,264 @@ function useCreateFunctionForm(onNamespaceChange: (namespace: string) => void) {
   return {
     fields,
     setField,
+    setNamespaceFormField: setNamespace,
     setEnvVars,
     isValid,
   };
+}
+
+interface GithubSettingsSectionProps {
+  fields: CreateFunctionFormData;
+  setField: (key: keyof CreateFunctionFormData, value: string) => void;
+}
+
+const GithubSettingsSection = ({ fields, setField }: GithubSettingsSectionProps) => {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
+  return (
+    <FormSection title={t('GitHub Settings')}>
+      <FormGroup label={t('Owner')} isRequired fieldId="owner">
+        <TextInput id="owner" isRequired isDisabled value={fields.owner} />
+      </FormGroup>
+      <FormGroup label={t('Repository')} isRequired fieldId="repo">
+        <TextInput
+          id="repo"
+          isRequired
+          value={fields.repo}
+          onChange={(_, val) => setField('repo', val)}
+        />
+      </FormGroup>
+      <FormGroup label={t('Branch')} isRequired fieldId="branch">
+        <TextInput
+          id="branch"
+          isRequired
+          value={fields.branch}
+          onChange={(_, val) => setField('branch', val)}
+        />
+      </FormGroup>
+    </FormSection>
+  );
+};
+
+interface FunctionSettingsSectionProps {
+  fields: CreateFunctionFormData;
+  setField: (key: keyof CreateFunctionFormData, value: string) => void;
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  setNamespaceFormField: (namespace: string) => void;
+  setNamespaceWatchField: (namespace: string) => void;
+}
+
+const FunctionSettingsSection = ({
+  fields,
+  setField,
+  canCreateNamespaces,
+  namespaces,
+  setNamespaceFormField,
+  setNamespaceWatchField,
+}: FunctionSettingsSectionProps) => {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
+  return (
+    <FormSection title={t('Function Settings')}>
+      <FormGroup label={t('Name')} isRequired fieldId="name">
+        <TextInput
+          id="name"
+          isRequired
+          value={fields.name}
+          onChange={(_, val) => setField('name', val)}
+        />
+      </FormGroup>
+      <FormGroup label={t('Language')} isRequired fieldId="runtime">
+        <FormSelect
+          id="runtime"
+          value={fields.runtime}
+          onChange={(_, val) => setField('runtime', val as FunctionRuntime)}
+          aria-label={t('Language')}
+        >
+          {runtimeOptions.map(({ value, label }) => (
+            <FormSelectOption key={value} value={value} label={label} />
+          ))}
+        </FormSelect>
+      </FormGroup>
+      <FormGroup label={t('Registry')} isRequired fieldId="registry">
+        <TextInput id="registry" isRequired isDisabled value={fields.registry} />
+      </FormGroup>
+      <NamespaceInput
+        canCreateNamespaces={canCreateNamespaces}
+        namespaces={namespaces}
+        value={fields.namespace}
+        setNamespaceFormField={setNamespaceFormField}
+        setNamespaceWatchField={setNamespaceWatchField}
+      />
+    </FormSection>
+  );
+};
+
+interface NamespaceInputProps {
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  value: string;
+  setNamespaceFormField: (namespace: string) => void; // set the namespace field in the form
+  setNamespaceWatchField: (namespace: string) => void; // debounced namespace change handler to watch for secrets and configmaps
+}
+
+export function NamespaceInput({
+  canCreateNamespaces,
+  namespaces,
+  value,
+  setNamespaceFormField,
+  setNamespaceWatchField,
+}: NamespaceInputProps) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+  const { handleNamespaceChange, selectable, soleNamespace, namespaceMissing } = useNamespaceInput({
+    canCreateNamespaces,
+    namespaces,
+    value,
+    setNamespaceFormField,
+    setNamespaceWatchField,
+  });
+
+  if (!canCreateNamespaces && !selectable.length) {
+    return (
+      <FormGroup label={t('Namespace')}>
+        <NamespaceAlert
+          variant="info"
+          title={t('No namespaces available. You can create a new namespace in Home/Projects.')}
+        />
+      </FormGroup>
+    );
+  }
+
+  return (
+    <FormGroup label={t('Namespace')} isRequired fieldId="namespace">
+      {canCreateNamespaces ? (
+        <TextInput
+          id="namespace"
+          isRequired
+          value={value}
+          onChange={(_, val) => handleNamespaceChange(val)}
+          aria-label={t('Namespace')}
+        />
+      ) : soleNamespace ? (
+        <TextInput
+          id="namespace"
+          isRequired
+          isDisabled
+          value={soleNamespace}
+          aria-label={t('Namespace')}
+        />
+      ) : (
+        <FormSelect
+          id="namespace"
+          value={value}
+          onChange={(_, val) => handleNamespaceChange(val)}
+          aria-label={t('Namespace')}
+        >
+          <FormSelectOption value="" label={t('Select...')} isPlaceholder hidden />
+          {selectable.map((ns) => (
+            <FormSelectOption key={ns} value={ns} label={ns} />
+          ))}
+        </FormSelect>
+      )}
+      {canCreateNamespaces && isSystemNamespace(value) && (
+        <NamespaceAlert
+          title={t(
+            'Functions should not be deployed to a system namespace. Create a dedicated namespace for your functions instead.',
+          )}
+        />
+      )}
+      {canCreateNamespaces && namespaceMissing && (
+        <NamespaceAlert
+          title={t('Namespace "{{namespace}}" does not exist.', { namespace: value })}
+        />
+      )}
+    </FormGroup>
+  );
+}
+
+interface UseNamespaceInputProps {
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  value: string;
+  setNamespaceFormField: (namespace: string) => void;
+  setNamespaceWatchField: (namespace: string) => void;
+}
+
+const useNamespaceInput = ({
+  canCreateNamespaces,
+  namespaces,
+  value,
+  setNamespaceFormField,
+  setNamespaceWatchField,
+}: UseNamespaceInputProps) => {
+  const [activeNamespace] = useActiveNamespace();
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleNamespaceChange = (val: string) => {
+    setNamespaceFormField(val); // Instant UI update for the namespace field in the form
+
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    timerRef.current = setTimeout(() => {
+      setNamespaceWatchField(val); // Debounced parent call for watching secrets and configmaps
+    }, 500);
+  };
+
+  // A user who cannot create namespaces should never be offered a system namespace, so
+  // filter them out here regardless of what the caller passed in.
+  const selectable = useMemo(
+    () => (canCreateNamespaces ? namespaces : namespaces.filter((ns) => !isSystemNamespace(ns))),
+    [canCreateNamespaces, namespaces],
+  );
+
+  // With a single choice there is nothing to pick, so the field is rendered read-only. The
+  // owner still has to learn the value, otherwise the form would submit an empty namespace.
+  const soleNamespace = !canCreateNamespaces && selectable.length === 1 ? selectable[0] : null;
+
+  useEffect(() => {
+    if (activeNamespace && selectable.includes(activeNamespace)) {
+      setNamespaceFormField(activeNamespace);
+      setNamespaceWatchField(activeNamespace);
+    } else if (soleNamespace && value !== soleNamespace) {
+      setNamespaceWatchField(soleNamespace);
+      setNamespaceFormField(soleNamespace);
+    }
+  }, [
+    soleNamespace,
+    value,
+    setNamespaceWatchField,
+    setNamespaceFormField,
+    activeNamespace,
+    selectable,
+  ]);
+
+  const namespaceMissing =
+    canCreateNamespaces && !!value && namespaces.length > 0 && !namespaces.includes(value);
+
+  return {
+    handleNamespaceChange,
+    selectable,
+    soleNamespace,
+    namespaceMissing,
+  };
+};
+
+function NamespaceAlert({
+  title,
+  variant = 'warning',
+}: {
+  title: string;
+  variant?: 'warning' | 'info';
+}) {
+  return <Alert variant={variant} isInline title={title} className="pf-v6-u-mt-sm" />;
 }
 
 interface EnvVarSectionProps {
@@ -231,7 +458,7 @@ interface EnvVarSectionProps {
   onEnvVarChange: (field: EnvVarField, vars: PlainEnvVar[] | ResourceEnvVar[]) => void;
 }
 
-export function EnvVarSection({
+function EnvVarSection({
   plainEnvVars,
   secretEnvVars,
   configMapEnvVars,
