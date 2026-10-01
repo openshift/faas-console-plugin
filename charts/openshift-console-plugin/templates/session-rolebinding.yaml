@@ -1,0 +1,15 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ template "openshift-console-plugin.sessionName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openshift-console-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ template "openshift-console-plugin.sessionName" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshift-console-plugin.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

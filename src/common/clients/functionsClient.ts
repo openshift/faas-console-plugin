@@ -1,45 +1,27 @@
-import {
-  consoleFetch,
-  consoleFetchJSON,
-  isAllNamespacesKey,
-} from '@openshift-console/dynamic-plugin-sdk';
-import { CreateFunctionRequest, FileEntry, FunctionListItem, PAT_KEY, PROXY_BASE } from '../types';
+import { isAllNamespacesKey } from '@openshift-console/dynamic-plugin-sdk';
+import { sessionFetch, sessionFetchJSON } from './sessionClient';
+import { CreateFunctionRequest, FileEntry, FunctionListItem, PROXY_BASE } from '../types';
 
-/**
- * listFunctions returns a list of function metadata.
- *
- * Test doubles for this function are in src/common/testing/functionsClientStub.ts
- *
- */
 export async function listFunctions(namespace: string): Promise<FunctionListItem[]> {
   const query = isAllNamespacesKey(namespace)
     ? '?all=true'
     : `?namespace=${encodeURIComponent(namespace)}`;
 
-  return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`, 'GET', {
-    headers: scmHeaders(),
-  });
-}
-
-function scmHeaders(): HeadersInit {
-  const pat = sessionStorage.getItem(PAT_KEY);
-  return pat ? { 'X-SCM-Token': pat } : {};
+  return sessionFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`);
 }
 
 export async function createFunction(data: CreateFunctionRequest): Promise<void> {
-  await consoleFetch(`${PROXY_BASE}/api/v1/func/create`, {
+  await sessionFetch(`${PROXY_BASE}/api/v1/func/create`, {
     method: 'POST',
-    headers: { ...scmHeaders(), 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
 }
 
 export async function getFiles(owner: string, name: string, ref?: string): Promise<FileEntry[]> {
   const query = ref ? `?ref=${encodeURIComponent(ref)}` : '';
-  return consoleFetchJSON(
+  return sessionFetchJSON(
     `${PROXY_BASE}/api/v1/func/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/files${query}`,
-    'GET',
-    { headers: scmHeaders() },
   );
 }
 
@@ -50,11 +32,11 @@ export async function putFiles(
   message: string,
   branch: string,
 ): Promise<void> {
-  await consoleFetch(
+  await sessionFetch(
     `${PROXY_BASE}/api/v1/func/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/files`,
     {
       method: 'PUT',
-      headers: { ...scmHeaders(), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ files, message, branch }),
     },
   );

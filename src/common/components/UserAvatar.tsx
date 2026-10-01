@@ -1,7 +1,11 @@
 import {
   Alert,
+  Avatar,
   Button,
   Divider,
+  Dropdown,
+  DropdownItem,
+  DropdownList,
   Flex,
   FlexItem,
   Form,
@@ -9,6 +13,8 @@ import {
   FormHelperText,
   HelperText,
   HelperTextItem,
+  MenuToggle,
+  MenuToggleElement,
   Modal,
   ModalBody,
   ModalFooter,
@@ -16,12 +22,11 @@ import {
   TextInput,
   Tooltip,
 } from '@patternfly/react-core';
-import { GithubIcon, KeyIcon, UserIcon } from '@patternfly/react-icons';
-import { consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
+import { GithubIcon, UserIcon } from '@patternfly/react-icons';
+import { Ref, useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AuthUser, PAT_KEY, PROXY_BASE, USER_KEY } from '../types';
-import { useContext, useState } from 'react';
 import { AuthContext } from '../context/AuthProvider';
+import { isSessionActive, login as sessionLogin } from '../clients/sessionClient';
 import { errorMessage } from '../utils/utils';
 
 interface UserAvatarProps {
@@ -30,21 +35,23 @@ interface UserAvatarProps {
 
 export function UserAvatar({ enableReconnect }: UserAvatarProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { user, isModalOpen, openModal, closeModal, login } = useUserAvatar(enableReconnect);
+  const { user, isConnected, isModalOpen, openModal, closeModal, login, disconnect } =
+    useUserAvatar(enableReconnect);
 
-  const icon = user ? <UserIcon /> : <KeyIcon />;
-  const label = user ? user.name : t('Connect to GitHub');
+  if (isConnected) {
+    return <ConnectedMenu name={user.name} avatarUrl={user.avatarUrl} onDisconnect={disconnect} />;
+  }
 
   return (
     <>
       <Button
         variant="link"
-        icon={icon}
+        icon={<GithubIcon />}
         onClick={enableReconnect ? openModal : undefined}
         isDisabled={!enableReconnect}
         style={!enableReconnect ? { cursor: 'default' } : undefined}
       >
-        {label}
+        {t('Connect to GitHub')}
       </Button>
       <PatModal isOpen={isModalOpen} onClose={closeModal} onConnect={login} />
     </>
@@ -52,20 +59,11 @@ export function UserAvatar({ enableReconnect }: UserAvatarProps) {
 }
 
 function useUserAvatar(enableReconnect: boolean) {
-  const { onLogin } = useContext(AuthContext);
-  const [user, setUser] = useState<AuthUser | null>(() => readStoredUser());
-  const [isModalOpen, setIsModalOpen] = useState(
-    () => enableReconnect && !sessionStorage.getItem(PAT_KEY),
-  );
+  const { user, isAuthenticated, onLogin, onLogout } = useContext(AuthContext);
+  const [isModalOpen, setIsModalOpen] = useState(() => enableReconnect && !isSessionActive());
 
   const login = async (pat: string) => {
-    const resp = await consoleFetchJSON(`${PROXY_BASE}/api/v1/auth/user`, 'GET', {
-      headers: { 'X-SCM-Token': pat },
-    });
-    const authUser: AuthUser = { name: resp.login, avatarUrl: resp.avatarUrl };
-    sessionStorage.setItem(PAT_KEY, pat);
-    sessionStorage.setItem(USER_KEY, JSON.stringify(authUser));
-    setUser(authUser);
+    const authUser = await sessionLogin(pat);
     setIsModalOpen(false);
     onLogin(authUser);
   };
@@ -73,22 +71,65 @@ function useUserAvatar(enableReconnect: boolean) {
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
-  return { user, isModalOpen, openModal, closeModal, login };
+  return {
+    user,
+    isConnected: isAuthenticated && Boolean(user.name),
+    isModalOpen,
+    openModal,
+    closeModal,
+    login,
+    disconnect: onLogout,
+  };
 }
 
-function readStoredUser(): AuthUser | null {
-  const pat = sessionStorage.getItem(PAT_KEY);
-  const userJson = sessionStorage.getItem(USER_KEY);
+interface ConnectedMenuProps {
+  name: string;
+  avatarUrl: string;
+  onDisconnect: () => Promise<void>;
+}
 
-  if (!pat || !userJson) {
-    return null;
-  }
+function ConnectedMenu({ name, avatarUrl, onDisconnect }: ConnectedMenuProps) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+  const [isOpen, setIsOpen] = useState(false);
 
-  try {
-    return JSON.parse(userJson) as AuthUser;
-  } catch {
-    return null;
-  }
+  const toggleIcon = avatarUrl ? (
+    <Avatar src={avatarUrl} alt="" size="sm" data-test="user-avatar" />
+  ) : (
+    <UserIcon />
+  );
+
+  return (
+    <Dropdown
+      isOpen={isOpen}
+      onSelect={() => setIsOpen(false)}
+      onOpenChange={setIsOpen}
+      popperProps={{ position: 'right' }}
+      toggle={(toggleRef: Ref<MenuToggleElement>) => (
+        <MenuToggle
+          ref={toggleRef}
+          variant="plainText"
+          icon={toggleIcon}
+          isExpanded={isOpen}
+          onClick={() => setIsOpen((open) => !open)}
+          data-test="user-menu-toggle"
+        >
+          {name}
+        </MenuToggle>
+      )}
+    >
+      <DropdownList>
+        <DropdownItem
+          value="github"
+          onClick={() => window.open(`https://github.com/${name}?tab=repositories`, '_blank')}
+        >
+          {t('Go to GitHub')}
+        </DropdownItem>
+        <DropdownItem value="disconnect" onClick={onDisconnect} isDanger>
+          {t('Disconnect')}
+        </DropdownItem>
+      </DropdownList>
+    </Dropdown>
+  );
 }
 
 interface PatModalProps {

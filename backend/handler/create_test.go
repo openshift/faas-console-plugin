@@ -14,6 +14,7 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/functions"
+	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,10 +36,9 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 	doCreate := func(setup func()) *httptest.ResponseRecorder {
 		setup()
-		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
+		h := testHandlers(Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		authenticate(req)
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 		return w
@@ -89,11 +89,12 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				}, nil
 			},
 		})
-		h, err := New("", "", "https://api.test-cluster.example.com:6443", 7*24*60*60)
-		Expect(err).NotTo(HaveOccurred())
+		h := testHandlers(Handlers{
+			externalAPIServerURL: "https://api.test-cluster.example.com:6443",
+			saTokenExpiry:        7 * 24 * 60 * 60,
+		})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		authenticate(req)
 		w := httptest.NewRecorder()
 
 		h.HandleFuncCreate(w, req)
@@ -205,10 +206,11 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		}, http.StatusBadGateway),
 	)
 
-	It("rejects requests without an X-SCM-Token", func() {
-		h := &Handlers{}
+	It("rejects requests without a session header", func() {
+		h := testHandlers(Handlers{})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		authenticate(req)
+		req.Header.Del(sessionHeader)
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 
@@ -216,9 +218,24 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	})
 
 	It("rejects requests without an Authorization header", func() {
-		h := &Handlers{}
+		h := testHandlers(Handlers{})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-SCM-Token", "pat")
+		authenticate(req)
+		req.Header.Del("Authorization")
+		w := httptest.NewRecorder()
+		h.HandleFuncCreate(w, req)
+
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+	})
+
+	It("rejects a session belonging to a different OpenShift user", func() {
+		h := testHandlers(Handlers{identityResolver: &identity.ResolverStub{
+			OnResolve: func(context.Context, string) (identity.User, error) {
+				return identity.User{Username: "mallory", UID: "mallory-uid"}, nil
+			},
+		}})
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
+		authenticate(req)
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 
@@ -226,10 +243,9 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	})
 
 	It("returns 400 for a malformed request body", func() {
-		h := &Handlers{}
+		h := testHandlers(Handlers{})
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBufferString("not json"))
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		authenticate(req)
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 
@@ -238,11 +254,10 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 	DescribeTable("rejects invalid function configurations",
 		func(req createRequest) {
-			h := &Handlers{}
+			h := testHandlers(Handlers{})
 			body, _ := json.Marshal(req)
 			r := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(body))
-			r.Header.Set("X-SCM-Token", "pat")
-			r.Header.Set("Authorization", "Bearer ocp-token")
+			authenticate(r)
 			w := httptest.NewRecorder()
 			h.HandleFuncCreate(w, r)
 			Expect(w.Code).To(Equal(http.StatusBadRequest))

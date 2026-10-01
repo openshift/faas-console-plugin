@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import FunctionEditPage from './FunctionEditPage';
-import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { startSessionFake, endSessionFake } from '../../common/testing/sessionClientStub';
 import { BACKEND_API } from '../../common/testing/constants';
 import { server } from '../../common/testing/mswServer';
 
@@ -19,19 +19,6 @@ vi.mock('react-i18next', () => ({
 let mockOnChange: ((value: string) => void) | undefined;
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
-  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  };
-
-  const consoleFetch = async (url: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    if (!res.ok) throw await res.json();
-    return res;
-  };
-
   return {
     DocumentTitle: ({ children }: { children: string }) => children,
     ListPageHeader: ({ title }: { title: string }) => title,
@@ -56,8 +43,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
         </div>
       );
     },
-    consoleFetchJSON,
-    consoleFetch,
+    consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
+    consoleFetch: sdkTestDoubles.consoleFetchStub,
     useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
     isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
   };
@@ -76,12 +63,12 @@ function renderEditPage(name: string) {
 
 describe('FunctionEditPage', () => {
   beforeEach(() => {
-    logoutGithubFake();
-    authenticateGithubFake();
+    endSessionFake();
+    startSessionFake();
   });
 
   afterAll(() => {
-    logoutGithubFake();
+    endSessionFake();
   });
 
   it(

@@ -61,9 +61,9 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+	credential, err := h.extractCredentialFromSession(r)
+	if err != nil {
+		writeSessionError(w, err)
 		return
 	}
 	ocpToken, ok := extractOCPToken(r)
@@ -72,7 +72,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.createFunction(r.Context(), req, pat, ocpToken); err != nil {
+	if err := h.createFunction(r.Context(), req, credential.Secret, ocpToken); err != nil {
 		switch {
 		case errors.Is(err, scm.ErrUnauthorized):
 			writeError(w, http.StatusUnauthorized, "invalid SCM token")

@@ -20,7 +20,7 @@ export function deploymentApiPath(ns: string): string {
 // Auth
 // ---------------------------------------------------------------------------
 
-async function getCSRFToken(page: Page): Promise<string> {
+export async function getCSRFToken(page: Page): Promise<string> {
   const cookies = await page.context().cookies();
   const csrf = cookies.find((c) => c.name === 'csrf-token');
   return csrf?.value ?? '';
