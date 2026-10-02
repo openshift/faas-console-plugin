@@ -55,10 +55,10 @@
     "globals": "17.12.0",
     "husky": "9.1.7",
     "i18next": "25.10.10",
-    "i18next-cli": "1.74.1",
+    "i18next-cli": "1.74.2",
     "jsdom": "29.1.1",
     "msw": "2.15.0",
-    "prettier": "3.9.8",
+    "prettier": "3.9.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "~16.5.8",
@@ -68,7 +68,7 @@
     "stylelint-config-standard": "40.0.0",
     "ts-loader": "9.6.2",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.70.0",
+    "typescript-eslint": "8.71.0",
     "vitest": "4.1.11",
     "webpack": "5.111.1",
     "webpack-cli": "7.2.3",
@@ -101,5 +101,5 @@
     "ws": ">=8.21.1",
     "minimatch": ">=10.2.6"
   },
-  "packageManager": "yarn@4.18.0"
+  "packageManager": "yarn@4.18.1"
 }
