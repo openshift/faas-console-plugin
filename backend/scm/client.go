@@ -2,8 +2,10 @@ package scm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 )
 
 var (
@@ -51,6 +53,7 @@ type Client interface {
 	GetVariable(ctx context.Context, owner, repo, name string) (string, error)
 	StoreVariable(ctx context.Context, owner, repo, name, value string) error
 	DeleteRepo(ctx context.Context, owner, repo string) error
+	WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 type Repo struct {
@@ -59,6 +62,10 @@ type Repo struct {
 	URL           string `json:"url"`
 	DefaultBranch string `json:"defaultBranch"`
 }
+
+// FullName is the "owner/name" identifier, matching GitHub's full_name field.
+// Used to correlate a repo across cluster and build state.
+func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
 
 type User struct {
 	Login     string `json:"login"`
@@ -73,17 +80,79 @@ type FileEntry struct {
 	Deleted bool   `json:"deleted,omitempty"`
 }
 
+type WorkflowRunsOrErr struct {
+	Runs map[string]WorkflowRun `json:"statuses"`
+	Err  error                  `json:"error,omitempty"`
+}
+
+type WorkflowWatch interface {
+	ResultChan() <-chan WorkflowRunsOrErr
+	Stop()
+}
+
+type StubWatch struct {
+	C chan WorkflowRunsOrErr
+	o sync.Once
+}
+
+func (w *StubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.C }
+func (w *StubWatch) Stop() {
+	w.o.Do(func() {
+		close(w.C)
+	})
+}
+
+type BuildStatus int
+
+const (
+	None BuildStatus = iota
+	Building
+	Succeeded
+	Failed
+)
+
+func (b BuildStatus) String() string {
+	switch b {
+	case None:
+		return "None"
+	case Building:
+		return "Building"
+	case Succeeded:
+		return "Succeeded"
+	case Failed:
+		return "Failed"
+	}
+	return fmt.Sprintf("unknown BuildStatus: %d", b)
+}
+
+func (b BuildStatus) MarshalJSON() ([]byte, error) {
+	bs, err := json.Marshal(b.String())
+	if err != nil {
+		return nil, fmt.Errorf("cannot deserialize BuildStatus: %w", err)
+	}
+	return bs, nil
+}
+
+// WorkflowRun is the latest GitHub Actions run of a specific workflow file on a
+// repo branch. A nil *WorkflowRun means the workflow has no runs on that branch
+// (including when the workflow file does not exist in the repo).
+type WorkflowRun struct {
+	BuildStatus BuildStatus `json:"status"`
+	HTMLURL     string      `json:"url,omitempty"`
+}
+
 type ClientStub struct {
-	OnGetUser        func(ctx context.Context) (*User, error)
-	OnListRepos      func(ctx context.Context) ([]Repo, error)
-	OnGetFileContent func(ctx context.Context, owner, repo, ref, path string) (string, error)
-	OnGetFiles       func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
-	OnPushFiles      func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
-	OnInitRepo       func(ctx context.Context, owner, name, branch string, topics []string) error
-	OnStoreSecret    func(ctx context.Context, owner, repo, name, value string) error
-	OnGetVariable    func(ctx context.Context, owner, repo, name string) (string, error)
-	OnStoreVariable  func(ctx context.Context, owner, repo, name, value string) error
-	OnDeleteRepo     func(ctx context.Context, owner, repo string) error
+	OnGetUser           func(ctx context.Context) (*User, error)
+	OnListRepos         func(ctx context.Context) ([]Repo, error)
+	OnGetFileContent    func(ctx context.Context, owner, repo, ref, path string) (string, error)
+	OnGetFiles          func(ctx context.Context, owner, repo, ref string) ([]FileEntry, error)
+	OnPushFiles         func(ctx context.Context, owner, repo, branch, message string, files []FileEntry) error
+	OnInitRepo          func(ctx context.Context, owner, name, branch string, topics []string) error
+	OnStoreSecret       func(ctx context.Context, owner, repo, name, value string) error
+	OnGetVariable       func(ctx context.Context, owner, repo, name string) (string, error)
+	OnStoreVariable     func(ctx context.Context, owner, repo, name, value string) error
+	OnDeleteRepo        func(ctx context.Context, owner, repo string) error
+	OnWatchWorkflowRuns func(ctx context.Context, workflowFile string) (WorkflowWatch, error)
 }
 
 func (s *ClientStub) GetUser(ctx context.Context) (*User, error) {
@@ -154,4 +223,16 @@ func (s *ClientStub) DeleteRepo(ctx context.Context, owner, repo string) error {
 		return s.OnDeleteRepo(ctx, owner, repo)
 	}
 	return nil
+}
+
+func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, error) {
+	if s.OnWatchWorkflowRuns != nil {
+		return s.OnWatchWorkflowRuns(ctx, workflowFile)
+	}
+	// A closed channel ends the stream immediately. A nil one would block the
+	// caller's receive forever, so an unconfigured stub would hang rather than
+	// fail.
+	ch := make(chan WorkflowRunsOrErr)
+	close(ch)
+	return &StubWatch{C: ch}, nil
 }
