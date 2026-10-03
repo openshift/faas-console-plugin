@@ -85,7 +85,7 @@
       "FunctionEditPage": "./pages/function-edit/FunctionEditPage"
     },
     "dependencies": {
-      "@console/pluginAPI": ">=4.19.0"
+      "@console/pluginAPI": ">=4.22.0"
     }
   },
   "resolutions": {

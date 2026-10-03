@@ -11,7 +11,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
 
 LOG_DIR=".dev-logs"
-CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
 BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000
@@ -228,6 +227,11 @@ stop_dev() {
 }
 
 check_prerequisites() {
+  if [ -z "${OCP_VERSION:-}" ]; then
+    log::error "OCP_VERSION is not set. Run via 'make dev' or export OCP_VERSION first."
+    exit 1
+  fi
+
   if ! command -v oc &>/dev/null; then
     log::error "oc CLI not found. Install from https://console.redhat.com/openshift/downloads"
     exit 1
@@ -236,6 +240,15 @@ check_prerequisites() {
   if ! oc whoami &>/dev/null; then
     log::error "Not logged in to OpenShift. Run 'oc login' first."
     exit 1
+  fi
+
+  cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+  if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
+    if [ "$(printf '%s\n' "$cluster_version" "$OCP_VERSION" | sort -V | head -n1)" = "$cluster_version" ]; then
+      log::warn "Cluster version (${cluster_version}) is older than dev target (${OCP_VERSION}). The console image will be ${OCP_VERSION} so the plugin will load, but some cluster APIs may not be available."
+    else
+      log::warn "Cluster version (${cluster_version}) is newer than dev target (${OCP_VERSION}). The console image will be ${OCP_VERSION}."
+    fi
   fi
 }
 
