@@ -31,4 +31,5 @@ No em dashes (`—`). Use commas, periods, or parentheses instead.
 | `docs/plans/completed/` | Finished plans |
 | `.dev-env.json` | Dev server ports (backendPort, pluginPort, consolePort), written by hack/dev.sh |
 | `.dev-logs/` | Dev server log files (backend.log, webpack.log, console.log) |
+| `docs/AGILE.md` | Agile workflow, ceremonies, iteration process |
 | `docs/references/ocp-dynamic-plugin-reference.md` | OCP dynamic plugin mechanics, i18n, extension points |
