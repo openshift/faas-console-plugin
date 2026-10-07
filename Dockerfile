@@ -5,19 +5,13 @@ WORKDIR /usr/src/app
 
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/ .yarn/
-RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && \
-    YARN_RELEASE="$(sed -n 's/^yarnPath:[[:space:]]*//p' .yarnrc.yml)" && \
-    if [ -z "$YARN_RELEASE" ] || [ ! -f "$YARN_RELEASE" ]; then echo "ERROR: unable to resolve yarnPath ('$YARN_RELEASE') from .yarnrc.yml" >&2; exit 1; fi && \
-    CYPRESS_INSTALL_BINARY=0 node "$YARN_RELEASE" install --immutable
+RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 node .yarn/releases/yarn-*.cjs install --immutable
 
 COPY console-extensions.json tsconfig.json webpack.config.mts ./
 COPY src/ src/
 COPY locales/ locales/
 COPY config/ config/
-RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && \
-    YARN_RELEASE="$(sed -n 's/^yarnPath:[[:space:]]*//p' .yarnrc.yml)" && \
-    if [ -z "$YARN_RELEASE" ] || [ ! -f "$YARN_RELEASE" ]; then echo "ERROR: unable to resolve yarnPath ('$YARN_RELEASE') from .yarnrc.yml" >&2; exit 1; fi && \
-    node "$YARN_RELEASE" build
+RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node .yarn/releases/yarn-*.cjs build
 
 FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1790174511@sha256:0a4666f7a4eb0644c97a73cba198eb268691b270d97831822689e7a2088f87be AS gobuilder
 ARG TARGETOS TARGETARCH
