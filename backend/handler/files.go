@@ -18,9 +18,9 @@ import (
 var validGitRef = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9._/-]*[a-zA-Z0-9])?$`)
 
 func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+	credential, err := h.extractCredentialFromSession(r)
+	if err != nil {
+		writeSessionError(w, err)
 		return
 	}
 
@@ -41,11 +41,11 @@ func (h *Handlers) HandleGetFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, credential.Secret)
 	files, err := client.GetFiles(r.Context(), owner, name, ref)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			writeError(w, http.StatusUnauthorized, "invalid SCM token")
+			writeError(w, http.StatusForbidden, "invalid SCM token")
 			return
 		}
 		slog.Error("failed to get files", "owner", owner, "repo", name, "ref", ref, "err", err)
@@ -69,9 +69,9 @@ type putFilesTarget struct {
 }
 
 func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+	credential, err := h.extractCredentialFromSession(r)
+	if err != nil {
+		writeSessionError(w, err)
 		return
 	}
 
@@ -106,7 +106,7 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+	client := config.SCMRegistry.Client(scm.DefaultPlatform, credential.Secret)
 	target := putFilesTarget{owner: owner, repo: name, branch: req.Branch}
 	if err := h.refreshKubeconfig(r, client, target); err != nil {
 		if responseErr, ok := errors.AsType[*httpError](err); ok {
@@ -120,7 +120,7 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 
 	if err := client.PushFiles(r.Context(), target.owner, target.repo, target.branch, req.Message, req.Files); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			writeError(w, http.StatusUnauthorized, "invalid SCM token")
+			writeError(w, http.StatusForbidden, "invalid SCM token")
 			return
 		}
 		slog.Error("failed to push files", "owner", target.owner, "repo", target.repo, "err", err)
@@ -135,7 +135,7 @@ func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target 
 	expiration, err := client.GetVariable(r.Context(), target.owner, target.repo, repoKubeconfigExpireAt)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+			return newHTTPError(http.StatusForbidden, "invalid SCM token", err)
 		}
 		slog.Error("failed to read deployment credential expiration", "owner", target.owner, "repo", target.repo, "err", err)
 		return newHTTPError(http.StatusBadGateway, "failed to check deployment credentials", err)
@@ -153,7 +153,7 @@ func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target 
 	funcYaml, err := client.GetFileContent(r.Context(), target.owner, target.repo, target.branch, "func.yaml")
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+			return newHTTPError(http.StatusForbidden, "invalid SCM token", err)
 		}
 		slog.Error("failed to read func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch, "err", err)
 		return newHTTPError(http.StatusBadGateway, "failed to read function configuration", err)
@@ -187,14 +187,14 @@ func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target 
 	}
 	if err := client.StoreSecret(r.Context(), target.owner, target.repo, repoSecretKubeconfig, kubeconfig); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+			return newHTTPError(http.StatusForbidden, "invalid SCM token", err)
 		}
 		slog.Error("failed to update CI secret", "owner", target.owner, "repo", target.repo, "err", err)
 		return newHTTPError(http.StatusBadGateway, "failed to update deployment secret", err)
 	}
 	if err := client.StoreVariable(r.Context(), target.owner, target.repo, repoKubeconfigExpireAt, tokenStatus.ExpirationTimestamp.Time.UTC().Format(time.RFC3339)); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+			return newHTTPError(http.StatusForbidden, "invalid SCM token", err)
 		}
 		slog.Error("failed to update deployment credential expiration", "owner", target.owner, "repo", target.repo, "err", err)
 		return newHTTPError(http.StatusBadGateway, "failed to update deployment credentials", err)

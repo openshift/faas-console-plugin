@@ -49,9 +49,9 @@ type funcYamlFields struct {
 }
 
 func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
+	credential, err := h.extractCredentialFromSession(r)
+	if err != nil {
+		writeSessionError(w, err)
 		return
 	}
 	ocpToken, ok := extractOCPToken(r)
@@ -82,7 +82,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace, h.externalAPIServerURL)
+		repoFunctions, repoErr = listRepoFunctions(r.Context(), credential.Secret, namespace, h.externalAPIServerURL)
 	}()
 	go func() {
 		defer wg.Done()
@@ -92,7 +92,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 
 	// An invalid SCM token is a client error worth surfacing on its own.
 	if errors.Is(repoErr, scm.ErrUnauthorized) {
-		writeError(w, http.StatusUnauthorized, "invalid SCM token")
+		writeError(w, http.StatusForbidden, "invalid SCM token")
 		return
 	}
 	if repoErr != nil {

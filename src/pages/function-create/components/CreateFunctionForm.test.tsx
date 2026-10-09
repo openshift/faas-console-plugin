@@ -4,12 +4,17 @@ import { CreateFunctionForm } from './CreateFunctionForm';
 import { AuthContext } from '../../../common/context/AuthProvider';
 import { AuthUser, K8sKeyedResource } from '../../../common/types';
 
+const sdkTestDoubles = await vi.hoisted(
+  async () => import('../../../common/testing/sdkTestDoubles'),
+);
+
 const testUser: AuthUser = { name: 'testuser', avatarUrl: '' };
 const authContext = {
   isAuthenticated: true,
   user: testUser,
   connectionId: 0,
   onLogin: vi.fn(),
+  onLogout: vi.fn(),
 };
 
 function renderWithContext(ui: React.ReactElement) {
@@ -18,6 +23,11 @@ function renderWithContext(ui: React.ReactElement) {
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));
 
 const emptySecrets: K8sKeyedResource[] = [];

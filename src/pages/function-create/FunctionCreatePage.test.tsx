@@ -4,8 +4,10 @@ import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
 import { BACKEND_API } from '../../common/testing/constants';
-import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { startSessionFake, endSessionFake } from '../../common/testing/sessionClientStub';
 import { server } from '../../common/testing/mswServer';
+
+const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
 const mockNavigate = vi.fn();
 
@@ -13,49 +15,18 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
-  async function handleResponse(res: Response) {
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  }
-
-  const consoleFetchJSON = Object.assign(
-    async (url: string, _method?: string, options?: RequestInit) => {
-      const res = await fetch(new URL(url, 'http://localhost').href, options);
-      return handleResponse(res);
-    },
-    {
-      post: async (url: string, body: unknown) => {
-        const res = await fetch(new URL(url, 'http://localhost').href, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        return handleResponse(res);
-      },
-    },
-  );
-
-  const consoleFetch = async (url: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    if (!res.ok) throw await res.json();
-    return res;
-  };
-
-  return {
-    DocumentTitle: ({ children }: { children: string }) => children,
-    ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
-      <>
-        {title}
-        {children}
-      </>
-    ),
-    consoleFetchJSON,
-    consoleFetch,
-    useK8sWatchResource: vi.fn().mockReturnValue([[], true, null]),
-  };
-});
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  DocumentTitle: ({ children }: { children: string }) => children,
+  ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+    <>
+      {title}
+      {children}
+    </>
+  ),
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
+}));
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -90,8 +61,8 @@ const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
 
 describe('FunctionCreatePage', () => {
   beforeEach(() => {
-    logoutGithubFake();
-    authenticateGithubFake();
+    endSessionFake();
+    startSessionFake();
   });
 
   afterEach(() => {
@@ -99,7 +70,7 @@ describe('FunctionCreatePage', () => {
   });
 
   afterAll(() => {
-    logoutGithubFake();
+    endSessionFake();
   });
 
   it('renders CreateFunctionForm', () => {
@@ -143,14 +114,14 @@ describe('FunctionCreatePage', () => {
   });
 
   it('renders UserAvatar in header', () => {
-    logoutGithubFake();
+    endSessionFake();
     renderPage();
 
     expect(screen.getByTestId('user-avatar')).toBeInTheDocument();
   });
 
   it('shows warning and hides form when no PAT is set', () => {
-    logoutGithubFake();
+    endSessionFake();
     renderPage();
 
     expect(

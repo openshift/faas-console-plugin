@@ -22,7 +22,7 @@ Not every test double is a mock. Use the correct term:
 | Term | Purpose | Examples |
 |------|---------|----------|
 | **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub` (MSW handler returning configured responses), `useK8sWatchResourceStub` |
-| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewSimpleClientset` (in-memory K8s client). Frontend: `authenticateGithubFake` (populates sessionStorage instead of real OAuth) |
+| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewClientset` (in-memory K8s client). Frontend: `startSessionFake` (populates sessionStorage instead of exchanging a PAT) |
 | **Mock** | Asserts expectations inside the double | Use sparingly. Prefer stubs with assertions in the test body. |
 | **Spy** | Records calls for later assertion | Not currently used. Prefer asserting on observable output. |
 
@@ -59,17 +59,19 @@ Shared test infrastructure lives in `src/common/testing/`:
 
 | File | Purpose |
 | ------ | --------- |
-| `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
+| `sdkTestDoubles.tsx` | Stubs for the OCP SDK: `consoleFetchStub` and `consoleFetchJSONStub` (bridge the SDK fetch wrappers to real `fetch` so MSW can intercept), `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
 | `functionsClientStub.ts` | MSW handler that intercepts `listFunctions` requests with configurable responses, errors, and delays |
-| `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
-| `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
+| `sessionClientStub.ts` | Session fakes (`startSessionFake`, `endSessionFake`) plus MSW handlers for the auth endpoints (`loginStub`, `resumeSessionStub`, `logoutStub`) |
+| `mswServer.ts` | The MSW server. It starts with no handlers and rejects any unhandled request, so each test declares the endpoints it expects |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
 
 ### Frontend Test Double Strategy
 
 Tests replace external dependencies at two boundaries using test doubles:
 
-**Backend API (MSW).** `functionsClient.ts` calls the Go backend over HTTP. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, query params, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts`.
+**Backend API (MSW).** `functionsClient.ts` and `sessionClient.ts` call the Go backend over HTTP. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, headers, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts` and `src/common/testing/sessionClientStub.ts`.
+
+The clients reach the network through the SDK's `consoleFetch`/`consoleFetchJSON`, so MSW only sees the request if those are replaced with `consoleFetchStub`/`consoleFetchJSONStub`. Stubbing their return values with `vi.fn()` instead skips the client and tests the double.
 
 **OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks (e.g., `useCluster`) derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
 
@@ -314,7 +316,7 @@ e2e/
   auth.setup.ts                    # Playwright login setup (saves storageState)
   global-setup.ts                  # Global setup (operator install, namespace)
   fixtures/
-    authenticated-page.ts          # Custom test fixture: injects PAT into sessionStorage
+    authenticated-page.ts          # Custom test fixture: logs in for a session token, seeds it, revokes it after
   helpers/
     cluster.ts                     # K8s API helpers (namespace, operator, deploy)
     constants.ts                   # Shared constants (PRESEEDED_FUNC_NAME, E2E_USER, etc.)
@@ -351,7 +353,7 @@ test.describe('My feature', () => {
 
 ### E2E Test Doubles
 
-Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. The fixture injects a placeholder PAT and user into sessionStorage before each test.
+Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. Before each test the fixture posts the fake PAT to `/api/v1/auth/login`, which leaves the credential in a Secret on the cluster and returns a session token. The fixture seeds that token and the user into sessionStorage on every navigation, so a test that reloads stays connected, and posts to `/api/v1/auth/logout` afterwards so the Secret does not outlive the test.
 
 The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seeding, resetting, and deleting repos, reading a repo Actions variable (`getRepoVariable`), and building the standard Node function seed files (`nodeFunctionFiles`). Shared constants live in `e2e/helpers/constants.ts`:
 
@@ -360,7 +362,7 @@ The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seedin
 
 ### Helpers
 
-**Auth** - Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`. The authenticated-page fixture then injects the PAT and user into sessionStorage on top of that session.
+**Auth** - OpenShift login is handled by `e2e/auth.setup.ts`, which saves console session state via Playwright's `storageState`. The authenticated-page fixture then adds the plugin session on top of it. The two are separate: the console session identifies the OpenShift user, and the plugin session names the SCM credential the backend holds for them.
 
 **Navigation** (`e2e/helpers/navigation.ts`)
 

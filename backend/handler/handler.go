@@ -6,14 +6,18 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"strings"
+
+	"github.com/openshift/faas-console-plugin/backend/auth"
+	"github.com/openshift/faas-console-plugin/backend/auth/identity"
 )
 
 type Handlers struct {
-	caCert               []byte // cluster CA certificate, read once at startup
-	kubeHost             string // API server URL for dev/test; empty uses in-cluster config
-	externalAPIServerURL string // external URL embedded in generated kubeconfigs
-	saTokenExpiry        int64  // requested SA token lifetime in seconds
+	caCert               []byte            // cluster CA certificate, read once at startup
+	kubeHost             string            // API server URL for dev/test; empty uses in-cluster config
+	externalAPIServerURL string            // external URL embedded in generated kubeconfigs
+	saTokenExpiry        int64             // requested SA token lifetime in seconds
+	sessionStore         *auth.Store       // session token to PAT mapping
+	identityResolver     identity.Resolver // OCP user behind the console's bearer token
 }
 
 type httpError struct {
@@ -34,7 +38,7 @@ func newHTTPError(code int, message string, cause error) error {
 	return &httpError{code: code, message: message, cause: cause}
 }
 
-func New(caPath, kubeHost, externalAPIServerURL string, saTokenExpiry int64) (*Handlers, error) {
+func New(caPath, kubeHost, externalAPIServerURL string, saTokenExpiry int64, sessionStore *auth.Store) (*Handlers, error) {
 	var caCert []byte
 	if caPath != "" {
 		var err error
@@ -43,22 +47,14 @@ func New(caPath, kubeHost, externalAPIServerURL string, saTokenExpiry int64) (*H
 			return nil, fmt.Errorf("read CA certificate %q: %w", caPath, err)
 		}
 	}
-
-	return &Handlers{caCert: caCert, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL, saTokenExpiry: saTokenExpiry}, nil
-}
-
-func extractSCMToken(r *http.Request) (string, bool) {
-	v := r.Header.Get("X-SCM-Token")
-	return v, v != ""
-}
-
-func extractOCPToken(r *http.Request) (string, bool) {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return "", false
-	}
-	token := strings.TrimPrefix(auth, "Bearer ")
-	return token, token != ""
+	return &Handlers{
+		caCert:               caCert,
+		kubeHost:             kubeHost,
+		externalAPIServerURL: externalAPIServerURL,
+		saTokenExpiry:        saTokenExpiry,
+		sessionStore:         sessionStore,
+		identityResolver:     identity.NewResolver(kubeHost, caCert),
+	}, nil
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
