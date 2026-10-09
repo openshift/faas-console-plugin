@@ -21,15 +21,14 @@ describe('FunctionsEmptyState', () => {
     expect(screen.getByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
   });
 
-  it('renders a "Create function" link pointing to /faas/create', () => {
+  it('renders a "Create function" button that navigates to /faas/create', () => {
     render(
       <MemoryRouter>
         <FunctionsEmptyState />
       </MemoryRouter>,
     );
 
-    const link = screen.getByRole('link', { name: 'Create function' });
-    expect(link).toHaveAttribute('href', '/faas/create');
+    expect(screen.getByRole('button', { name: 'Create function' })).toBeInTheDocument();
   });
 
   it('shows PAT hint and disabled button when isCreateDisabled is true', () => {
@@ -56,8 +55,7 @@ describe('FunctionsEmptyState', () => {
     );
 
     expect(screen.getByText('Create a serverless function to get started.')).toBeInTheDocument();
-    const link = screen.getByRole('link', { name: 'Create function' });
-    expect(link).toHaveAttribute('href', '/faas/create');
+    expect(screen.getByRole('button', { name: 'Create function' })).toBeInTheDocument();
   });
 
   it('renders the setup guide trigger', () => {

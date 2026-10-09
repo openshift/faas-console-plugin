@@ -15,6 +15,8 @@
 - **No unnecessary boilerplate**: Only write code that directly helps pass tests or improves maintainability. Skip ceremonial code, unused helper functions, or defensive checks that tests don't require.
 - **Write minimal code**: Satisfy the requirements with the least code necessary. If a simple solution works, use it—don't add abstractions, helpers, or extra structure unless complexity demands it. When requirements force more code, that's fine, but always start with the simplest approach that could work.
 - **No `any` type**: Use proper TypeScript types.
+- **Avoid `unknown`**: Treat it like `any`, a last resort. Use it only where the value genuinely has no knowable type (for example a `catch` binding). Everywhere else, declare the real type.
+- **No `_` prefix on parameters**: Don't name a parameter `_foo` to mark it unused. Remove the parameter instead, or if the signature is fixed by a caller, use the real name.
 - **No `console.log`**: Use structured approach if logging needed.
 - **Use `consoleFetch`**: Use `consoleFetch` or `consoleFetchJSON` for HTTP requests, not raw `fetch`. Console injects auth headers automatically.
 - **Naming**: `use*` for hooks, `*Service` for services, PascalCase for components/types.
