@@ -74,15 +74,7 @@ export interface CreateFunctionRequest {
 }
 
 export type FunctionStatus =
-  | 'CreatingRepo'
-  | 'Pushing'
-  | 'PushedToGitHub'
-  | 'Deploying'
-  | 'Running'
-  | 'ScaledToZero'
-  | 'Error'
-  | 'Unknown'
-  | 'NotDeployed';
+  'Deploying' | 'Running' | 'ScaledToZero' | 'Error' | 'BuildFailed' | 'Unknown' | 'NotDeployed';
 
 export interface ClusterFunction {
   readonly name: string;
@@ -91,4 +83,10 @@ export interface ClusterFunction {
   readonly url: string;
   readonly replicas: number;
   readonly mainResource: K8sResourceCommon;
+}
+
+export interface BuildStatus {
+  buildStatus: 'Building' | 'Succeeded' | 'Failed' | 'None';
+  conclusion?: string;
+  runURL?: string;
 }

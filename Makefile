@@ -24,7 +24,7 @@ KUBE_API_SERVER ?= https://api.example.com:6443
 
 .PHONY: help install-frontend build-frontend lint-frontend unit-frontend type-check test-e2e verify \
         install-backend build-backend build-fakegithub unit-backend lint-backend fmt-backend \
-        image manifests deploy undeploy deploy-dev setup-serverless \
+        plugin plugin-registry fakegithub-registry manifests deploy undeploy deploy-dev setup-serverless \
         dev dev-% \
         build lint unit e2e
 
@@ -110,8 +110,14 @@ fmt-backend: ## Auto-fix lint issues (golangci-lint --fix)
 
 ##@ Image
 
-image: ## Build container image
+plugin: ## Build plugin image
 	$(CONTAINER_CMD) build --platform $(PLATFORM) -t $(IMAGE_TAG) .
+
+plugin-registry: ## Build and push plugin image to the cluster's internal registry (outputs pull spec)
+	hack/build-and-push-image.sh faas-console-plugin Dockerfile
+
+fakegithub-registry: ## Build and push fakegithub image to the cluster's internal registry (outputs pull spec)
+	hack/build-and-push-image.sh fakegithub Dockerfile.fakegithub
 
 ##@ Cluster
 

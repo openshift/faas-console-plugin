@@ -111,6 +111,36 @@ export async function resetFakeGithub(): Promise<void> {
   }
 }
 
+interface WorkflowRunResult {
+  conclusion: string;
+  logUrl: string;
+}
+
+export async function waitForWorkflowRun(
+  owner: string,
+  repo: string,
+  { timeout = 600_000, interval = 5_000 }: { timeout?: number; interval?: number } = {},
+): Promise<WorkflowRunResult> {
+  const url = `${fakeGithubUrl()}/repos/${owner}/${repo}/actions/workflows/func-deploy.yaml/runs`;
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const data = await fetch(url, {
+      headers: { Authorization: `token ${FAKE_GH_PAT}` },
+    }).then((r) => r.json());
+    const run = data.workflow_runs?.[0];
+    if (run?.status === 'completed') {
+      // The backend calls fakegithub via the in-cluster service URL, so r.Host in
+      // the fake server is the cluster-internal hostname. html_url therefore contains
+      // that hostname, which is unreachable from the test runner. Keep only the path
+      // and prepend the port-forward URL that the test runner can actually reach.
+      const logPath = new URL(run.html_url as string).pathname;
+      return { conclusion: run.conclusion as string, logUrl: `${fakeGithubUrl()}${logPath}` };
+    }
+    await new Promise((r) => setTimeout(r, interval));
+  }
+  throw new Error(`Workflow run for ${owner}/${repo} did not complete within ${timeout}ms`);
+}
+
 export async function deleteRepoOnFakeGithub(owner: string, name: string): Promise<void> {
   const url = fakeGithubUrl();
   const resp = await fetch(`${url}/repos/${owner}/${name}`, {
@@ -120,6 +150,38 @@ export async function deleteRepoOnFakeGithub(owner: string, name: string): Promi
   if (!resp.ok) {
     throw new Error(
       `Failed to delete repo ${owner}/${name} in fake GitHub: ${resp.status} ${await resp.text()}`,
+    );
+  }
+}
+
+interface WorkflowRunInput {
+  headSha?: string;
+  status: string; // queued | in_progress | completed
+  conclusion?: string; // success | failure | ...
+}
+
+export async function setWorkflowRun(
+  owner: string,
+  name: string,
+  branch: string,
+  run: WorkflowRunInput,
+): Promise<void> {
+  const url = fakeGithubUrl();
+  const resp = await fetch(`${url}/_admin/actions/runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      owner,
+      repo: name,
+      branch,
+      headSha: run.headSha ?? '',
+      status: run.status,
+      conclusion: run.conclusion ?? '',
+    }),
+  });
+  if (!resp.ok) {
+    throw new Error(
+      `Failed to set workflow run for ${owner}/${name} in fake GitHub: ${resp.status} ${await resp.text()}`,
     );
   }
 }

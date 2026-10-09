@@ -4,7 +4,7 @@ set -euo pipefail
 
 # Prow e2e test entrypoint: deploys plugin to ephemeral cluster and runs Playwright.
 # Called by: make e2e (CI only)
-# Prerequisites: ci-operator cluster with PLUGIN_PULL_SPEC injected
+# Prerequisites: ci-operator cluster with PLUGIN_PULL_SPEC and FAKEGITHUB_PULL_SPEC injected
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
@@ -31,7 +31,7 @@ function cleanup {
   if [ -n "$FAKE_GH_PF_PID" ]; then
     kill "$FAKE_GH_PF_PID" 2>/dev/null || true
   fi
-  oc delete deployment/fakegithub svc/fakegithub -n "${NAMESPACE}" 2>/dev/null || true
+  oc delete deployment/fakegithub svc/fakegithub sa/fakegithub --ignore-not-found -n "${NAMESPACE}" 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -48,13 +48,16 @@ if [[ -z "${PLUGIN_PULL_SPEC:-}" ]]; then
   exit 1
 fi
 
-# --- Deploy fake GitHub server ---
+if [[ -z "${FAKEGITHUB_PULL_SPEC:-}" ]]; then
+  log::error "FAKEGITHUB_PULL_SPEC is not set. It should be injected by ci-operator as a dependency."
+  exit 1
+fi
+
 log::step "Deploying fake GitHub server"
 
-FAKE_GH_URL=$(hack/deploy-fake-gh.sh | tail -1)
 # deploy.sh passes GH_API_URL to Helm as plugin.ghApiUrl,
 # which sets the --gh-api-url flag on the backend pod.
-export GH_API_URL="${FAKE_GH_URL}"
+export GH_API_URL=$(hack/deploy-fake-gh.sh | tail -1)
 
 # Port-forward fake GH for Playwright admin API access (Playwright runs outside cluster)
 oc port-forward svc/fakegithub 8090:8090 -n "${NAMESPACE}" &
@@ -62,12 +65,10 @@ FAKE_GH_PF_PID=$!
 sleep 3
 export FAKE_GITHUB_URL="http://localhost:8090"
 
-# --- Deploy plugin ---
 log::step "Deploying plugin to cluster"
 
 make deploy IMAGE="${PLUGIN_PULL_SPEC}"
 
-# --- Install deps and run tests ---
 log::step "Running e2e tests"
 
 log::info "Installing dependencies..."

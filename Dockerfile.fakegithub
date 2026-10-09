@@ -1,0 +1,72 @@
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.7-1788245275@sha256:8cf89835994846ca0dffb9078e3a5638c57ec6175750f0af02fbe9c9942696d3 AS go-builder
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
+WORKDIR /build
+COPY backend/ .
+USER root
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -buildvcs=false -trimpath -o /fakegithub ./cmd/fakegithub
+
+FROM registry.access.redhat.com/ubi9/ubi:1788245146@sha256:ae8730de9161f4e98dbe22fef5eba494b0bfe5886be8dc3c4ff687c2e954daf6 AS act-downloader
+ARG TARGETARCH=amd64
+ARG ACT_VERSION=v0.2.89
+ARG ACT_SHA256_amd64=0191d6f1f3b716b5c55820032605d05fc3c1cdbf581ebeff655019e5dd1524c0
+ARG ACT_SHA256_arm64=daa8679ba9615a74d2d0cec321dc593f21948a2a11bb65862b063d8b930f4bcb
+RUN ARCH=$([ "$TARGETARCH" = "amd64" ] && echo "x86_64" || echo "arm64") \
+  && eval "CHECKSUM=\${ACT_SHA256_${TARGETARCH}}" \
+  && curl -fsSL \
+  "https://github.com/nektos/act/releases/download/${ACT_VERSION}/act_Linux_${ARCH}.tar.gz" \
+  -o /tmp/act.tar.gz \
+  && echo "${CHECKSUM}  /tmp/act.tar.gz" | sha256sum -c - \
+  && tar -xz -C /tmp -f /tmp/act.tar.gz act \
+  && chmod +x /tmp/act
+
+# func: pre-installed so the runner can inject a no-op shim via act's
+# --local-repository flag, replacing the workflow's "Install func cli" step
+# with a stub that runs "true". This avoids downloading func from GitHub on
+# every test run. See backend/fakegithub/action/runner.go (writeSkipAction)
+# and nektos/act#6182 (the upstream fix that would make this unnecessary).
+FROM registry.access.redhat.com/ubi9/ubi:1788245146@sha256:ae8730de9161f4e98dbe22fef5eba494b0bfe5886be8dc3c4ff687c2e954daf6 AS func-downloader
+ARG TARGETARCH=amd64
+ARG FUNC_VERSION=knative-v1.23.0
+RUN curl -fsSL \
+  "https://github.com/knative/func/releases/download/${FUNC_VERSION}/func_linux_${TARGETARCH}" \
+  -o /tmp/func \
+  && chmod +x /tmp/func
+
+
+FROM registry.access.redhat.com/ubi9/ubi:1788245146@sha256:ae8730de9161f4e98dbe22fef5eba494b0bfe5886be8dc3c4ff687c2e954daf6
+
+# podman: provides the Docker-compatible HTTP API socket that func build --strategy=s2i
+#   requires. CRI-O (the node runtime) only speaks the Kubernetes CRI protocol, so the
+#   pod runs its own Podman daemon as the inner container runtime.
+# git/nodejs/python3.12/golang/java-21: runtimes needed by act steps and func tests.
+#
+# NOTE: func build --strategy=s2i pulls S2I builder images via Podman. This works on
+# ROSA and installer-provisioned clusters because the kernelsupports idmapped mounts for overlay, 
+# bypassing the reexec-based layer extraction.
+# On CRC (QEMU-backed) idmapped mounts are not available; 
+# Podman 5.x falls back to spawning a subprocess with argv[0]="storage-untar", but that handler 
+# is not registered in the Podman binary - the pull fails.
+# Adding fuse-overlayfs or switching storage drivers does not help - all drivers route
+# through the same broken reexec path for layer extraction on CRC.
+RUN dnf install -y \
+  git nodejs \
+  python3.12 \
+  golang \
+  java-21-openjdk-devel \
+  podman && \
+  dnf clean all && \
+  python3.12 -m ensurepip && \
+  ln -sf /usr/bin/python3.12 /usr/local/bin/python3 && \
+  ln -sf /usr/bin/pip3.12 /usr/local/bin/pip3
+
+COPY --from=go-builder      /fakegithub               /usr/local/bin/fakegithub
+COPY --from=act-downloader  /tmp/act                  /usr/local/bin/act
+COPY --from=func-downloader /tmp/func                 /usr/local/bin/func
+COPY hack/fakegithub-entrypoint.sh                    /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# catatonit (bundled with podman) is a minimal init: it reaps zombie child
+# processes left by the background Podman daemon and forwards signals to the
+# fakegithub process so the pod shuts down cleanly on SIGTERM.
+ENTRYPOINT ["/usr/libexec/podman/catatonit", "--", "/usr/local/bin/entrypoint.sh"]

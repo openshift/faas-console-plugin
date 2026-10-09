@@ -183,7 +183,60 @@ start_backend_watcher() {
   echo $! > "$PID_DIR/backend-watcher.pid"
 }
 
+setup_act_deps() {
+  # func build --strategy=s2i builds for the host arch. Although func build
+  # accepts --platform, it is not part of WorkflowConfig and is therefore not
+  # emitted into the generated GitHub Actions workflow that act runs. The
+  # generated workflow calls "func deploy" with no platform flag, so the built
+  # image always targets the host arch regardless of how act is invoked.
+  local host_arch cluster_arch
+  case "$(uname -m)" in
+    arm64|aarch64) host_arch="arm64" ;;
+    x86_64)        host_arch="amd64" ;;
+    *)             host_arch="$(uname -m)" ;;
+  esac
+  cluster_arch=$(oc get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}' 2>/dev/null || true)
+  if [ -n "$cluster_arch" ] && [ "$host_arch" != "$cluster_arch" ]; then
+    log::error "Host arch (${host_arch}) differs from cluster node arch (${cluster_arch})."
+    log::error "func deploy would build a ${host_arch} image that cannot run on ${cluster_arch} nodes."
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      log::error "Use CRC or another other tool which provisions a cluster with arm64 nodes."
+    fi
+    exit 1
+  fi
+
+  if [ ! -S /var/run/docker.sock ]; then
+    local sock
+    sock=$(podman machine inspect --format '{{.ConnectionInfo.PodmanSocket.Path}}' 2>/dev/null | head -1)
+    if [ -n "$sock" ] && [ -S "$sock" ]; then
+      export DOCKER_HOST="unix://${sock}"
+    else
+      log::error "Podman machine is not running. Start it with: podman machine start"
+      exit 1
+    fi
+  fi
+
+  # Python runtime: pip3 (or pip) must be present so act can run 'pip install'.
+  if ! command -v pip3 &>/dev/null && ! command -v pip &>/dev/null; then
+    log::warn "pip/pip3 not found. Python func ci workflow (test step) will fail."
+    log::warn "Install Python 3 and ensure pip3 is available in your PATH."
+  fi
+
+  # Quarkus runtime: a real JDK must be present so act can run ./mvnw test.
+  # Check java -version rather than just command -v java because some OSes
+  # (macOS) have a shim at /usr/bin/java that reports "not found" at runtime.
+  if ! java -version &>/dev/null 2>&1; then
+    log::warn "java not found or not working. Quarkus func ci workflow (test step) will fail."
+    log::warn "Install a Java JDK and ensure 'java' is available in your PATH."
+  fi
+}
+
 start_fakegithub() {
+  if ! command -v act &>/dev/null; then
+    log::error "'act' not found in PATH. Install with: brew install act (macOS) or https://nektosact.com/installation"
+    exit 1
+  fi
+  setup_act_deps
   log::info "Building fake GitHub server..."
   make build-fakegithub
   log::info "Starting fake GitHub server..."
@@ -219,7 +272,18 @@ stop_console() {
   rm -f "$cidfile"
 }
 
+start_serverless_setup() {
+  log::info "Running Serverless operator setup in background..."
+  hack/setup-serverless.sh >>"$LOG_DIR/serverless.log" 2>&1 &
+  echo $! > "$PID_DIR/serverless-setup.pid"
+}
+
+stop_serverless_setup() {
+  stop_pid "serverless-setup.pid" "Serverless setup"
+}
+
 stop_dev() {
+  stop_serverless_setup
   stop_fakegithub
   stop_backend
   stop_plugin
@@ -265,14 +329,14 @@ start_console() {
 
 print_status() {
   log::step "Dev environment started"
+  log::link "Console" "http://localhost:$CONSOLE_PORT"
   log::link "Backend" "http://localhost:$BACKEND_PORT/api/v1/..."
   if $FAKE_GH; then
     log::link "Fake GitHub" "http://localhost:$FAKE_GH_PORT"
+    log::link "Fake Github PAT" "placeholder-pat"
   fi
-  log::link "Console" "http://localhost:$CONSOLE_PORT"
   log::link "Logs" "$LOG_DIR/"
   log::hint "To stop: make dev-stop"
-  log::hint "For full Knative integration: make setup-serverless"
 }
 
 main() {
@@ -285,6 +349,7 @@ main() {
   write_dev_env
   extract_cluster_ca
   trap 'stop_dev' EXIT INT TERM
+  start_serverless_setup
   if $FAKE_GH; then
     start_fakegithub
     wait_for_port "$FAKE_GH_PORT" "Fake GitHub server" "$PID_DIR/fakegithub.pid"
@@ -310,6 +375,7 @@ for arg in "$@"; do
       ;;
     --fake-gh)
       FAKE_GH=true
+      BACKEND_PORT=9080 # change default backend port to avoid conflict with act workflow tests
       ;;
     --randomize-ports)
       RANDOMIZE_PORTS=true

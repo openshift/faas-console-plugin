@@ -104,6 +104,7 @@ oc patch consoles.operator.openshift.io cluster --type=json \
 - An [OpenShift cluster](https://console.redhat.com/openshift/create)
 - Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
 - [gh](https://cli.github.com/) CLI (optional, enables your agent to create/update PRs)
+- [act](https://nektosact.com/installation) (required for `make dev-fake-gh`, runs GitHub Actions workflows locally)
 - [fswatch](https://github.com/emcrisostomo/fswatch) (optional, enables Go backend auto-recompile on file changes)
 - [Superpowers](https://github.com/obra/superpowers) (optional, enables your coding agents to brainstorm, write plans, use tdd, etc.)
 - [Jira CLI](https://github.com/ankitpokhrel/jira-cli/wiki/Installation) (optional, enables your coding agent to read Jira tickets)

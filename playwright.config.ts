@@ -18,6 +18,7 @@ const baseURL = resolveBaseURL();
 
 export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   testDir: './e2e',
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
