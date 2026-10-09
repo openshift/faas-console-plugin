@@ -253,6 +253,7 @@ function newItem(item: FunctionListItem): FunctionTableItem {
     url: '',
     replicas: 0,
     source: item.source,
+    err: item.err,
   };
 }
 

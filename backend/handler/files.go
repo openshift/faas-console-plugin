@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
@@ -108,7 +107,7 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 	target := putFilesTarget{owner: owner, repo: name, branch: req.Branch}
-	if err := h.refreshKubeconfig(r, client, target); err != nil {
+	if err := h.refreshKubeconfig(r, client, target, req.Files); err != nil {
 		if responseErr, ok := errors.AsType[*httpError](err); ok {
 			slog.Error("failed to refresh kubeconfig", "err", err)
 			writeError(w, responseErr.code, responseErr.message)
@@ -131,18 +130,25 @@ func (h *Handlers) HandlePutFiles(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target putFilesTarget) error {
-	expiration, err := client.GetVariable(r.Context(), target.owner, target.repo, repoKubeconfigExpireAt)
-	if err != nil {
-		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target putFilesTarget, files []scm.FileEntry) error {
+	// Read namespace from the incoming func.yaml if present (preferred over the committed
+	// version so that a namespace fix in the same push is honoured immediately).
+	var namespace string
+	for _, f := range files {
+		if f.Path != "func.yaml" || f.Deleted {
+			continue
 		}
-		slog.Error("failed to read deployment credential expiration", "owner", target.owner, "repo", target.repo, "err", err)
-		return newHTTPError(http.StatusBadGateway, "failed to check deployment credentials", err)
-	}
-
-	if !tokenNeedsRefresh(expiration, time.Now(), config.RefreshWindow(h.saTokenExpiry)) {
-		return nil
+		_, ns, _, err := parseFuncYaml(f.Content)
+		if err != nil {
+			slog.Error("failed to parse func.yaml", "owner", target.owner, "repo", target.repo, "err", err)
+			return newHTTPError(http.StatusUnprocessableEntity, "func.yaml: invalid configuration", err)
+		}
+		if errs := k8svalidation.IsDNS1123Label(ns); len(errs) > 0 {
+			slog.Error("invalid namespace in func.yaml", "owner", target.owner, "repo", target.repo)
+			return newHTTPError(http.StatusUnprocessableEntity, "func.yaml: invalid namespace", errors.New(errs[0]))
+		}
+		namespace = ns
+		break
 	}
 
 	ocpToken, ok := extractOCPToken(r)
@@ -150,28 +156,48 @@ func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target 
 		return newHTTPError(http.StatusUnauthorized, "Authorization header is required", nil)
 	}
 
-	funcYaml, err := client.GetFileContent(r.Context(), target.owner, target.repo, target.branch, "func.yaml")
-	if err != nil {
-		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+	// If func.yaml was not in the incoming files, read it from the repo now.
+	if namespace == "" {
+		funcYaml, err := client.GetFileContent(r.Context(), target.owner, target.repo, target.branch, "func.yaml")
+		if err != nil {
+			if errors.Is(err, scm.ErrUnauthorized) {
+				return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
+			}
+			slog.Error("failed to read func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch, "err", err)
+			return newHTTPError(http.StatusBadGateway, "failed to read function configuration", err)
 		}
-		slog.Error("failed to read func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch, "err", err)
-		return newHTTPError(http.StatusBadGateway, "failed to read function configuration", err)
-	}
-	_, namespace, _, err := parseFuncYaml(funcYaml)
-	if err != nil {
-		slog.Error("failed to parse func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch, "err", err)
-		return newHTTPError(http.StatusUnprocessableEntity, "invalid function configuration", err)
-	}
-	if errs := k8svalidation.IsDNS1123Label(namespace); len(errs) > 0 {
-		slog.Error("invalid namespace in func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch)
-		return newHTTPError(http.StatusUnprocessableEntity, "invalid namespace in function configuration", errors.New(errs[0]))
+		_, ns, _, err := parseFuncYaml(funcYaml)
+		if err != nil {
+			slog.Error("failed to parse func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch, "err", err)
+			return newHTTPError(http.StatusUnprocessableEntity, "invalid existing function configuration", err)
+		}
+		if errs := k8svalidation.IsDNS1123Label(ns); len(errs) > 0 {
+			slog.Error("invalid namespace in func.yaml", "owner", target.owner, "repo", target.repo, "branch", target.branch)
+			return newHTTPError(http.StatusUnprocessableEntity, "invalid namespace in function configuration", errors.New(errs[0]))
+		}
+		namespace = ns
 	}
 
 	clusterClient, err := newClusterClient(h.kubeHost, ocpToken, h.caCert)
 	if err != nil {
 		slog.Error("failed to connect to cluster", "namespace", namespace, "err", err)
 		return newHTTPError(http.StatusBadGateway, "failed to refresh deployment credentials", err)
+	}
+
+	switch nsErr := clusterClient.CheckNamespace(r.Context(), namespace); {
+	case errors.Is(nsErr, cluster.ErrNamespaceForbidden):
+		return newHTTPError(http.StatusForbidden, "func.yaml: no access to cluster namespace", nsErr)
+	case errors.Is(nsErr, cluster.ErrNamespaceNotFound):
+		return newHTTPError(http.StatusUnprocessableEntity, "func.yaml: cluster namespace does not exist", nsErr)
+	}
+
+	// Always provision RBAC and issue a fresh token on every push. ProvisionRBAC is
+	// idempotent, so this is safe when resources already exist. Refreshing every time
+	// ensures credentials invalidated by namespace recreation, manual SA deletion, or
+	// any other out-of-band change are corrected before the next CI run.
+	if _, err := cluster.ProvisionRBAC(r.Context(), clusterClient, namespace); err != nil {
+		slog.Error("failed to provision RBAC", "namespace", namespace, "err", err)
+		return newHTTPError(http.StatusBadGateway, "failed to provision deployment resources", err)
 	}
 
 	tokenStatus, err := clusterClient.RequestToken(r.Context(), namespace, h.saTokenExpiry)
@@ -192,25 +218,5 @@ func (h *Handlers) refreshKubeconfig(r *http.Request, client scm.Client, target 
 		slog.Error("failed to update CI secret", "owner", target.owner, "repo", target.repo, "err", err)
 		return newHTTPError(http.StatusBadGateway, "failed to update deployment secret", err)
 	}
-	if err := client.StoreVariable(r.Context(), target.owner, target.repo, repoKubeconfigExpireAt, tokenStatus.ExpirationTimestamp.Time.UTC().Format(time.RFC3339)); err != nil {
-		if errors.Is(err, scm.ErrUnauthorized) {
-			return newHTTPError(http.StatusUnauthorized, "invalid SCM token", err)
-		}
-		slog.Error("failed to update deployment credential expiration", "owner", target.owner, "repo", target.repo, "err", err)
-		return newHTTPError(http.StatusBadGateway, "failed to update deployment credentials", err)
-	}
-
 	return nil
-}
-
-func tokenNeedsRefresh(expiration string, now time.Time, refreshWindow time.Duration) bool {
-	if expiration == "" {
-		return true
-	}
-
-	expiresAt, err := time.Parse(time.RFC3339, expiration)
-	if err != nil {
-		return true
-	}
-	return expiresAt.Sub(now) <= refreshWindow
 }

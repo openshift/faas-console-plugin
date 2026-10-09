@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"sigs.k8s.io/yaml"
 
+	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
@@ -82,7 +83,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace, h.externalAPIServerURL)
+		repoFunctions, repoErr = h.listRepoFunctions(r.Context(), pat, ocpToken, namespace)
 	}()
 	go func() {
 		defer wg.Done()
@@ -125,7 +126,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string) ([]listItem, error) {
+func (h *Handlers) listRepoFunctions(ctx context.Context, pat, ocpToken, namespace string) ([]listItem, error) {
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 
 	repos, err := client.ListRepos(ctx)
@@ -135,6 +136,8 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 
 	items := make([]listItem, len(repos))
 	excluded := make([]bool, len(repos))
+
+	clusterClient, _ := newClusterClient(h.kubeHost, ocpToken, h.caCert)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -152,7 +155,7 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 			if err != nil {
 				slog.Warn("failed to read variable", "variable", repoVarClusterAPIURL, "repo", repo.Owner+"/"+repo.Name, "err", err)
 				// keep the repo on transient errors rather than hiding it
-			} else if repoClusterURL != clusterAPIURL {
+			} else if repoClusterURL != h.externalAPIServerURL {
 				// Filter out repos whose CLUSTER_API_URL variable does not match this cluster. The variable is written alongside
 				// the KUBECONFIG secret at repo creation, so a mismatch means the secret points to a different cluster
 				// (from where it was created) and deploying from this console would target the wrong cluster.
@@ -163,21 +166,15 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 			content, err := client.GetFileContent(gctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
 			if err != nil {
 				slog.Warn("failed to read func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", err)
-				if namespace != "" {
-					excluded[i] = true
-				} else {
-					items[i].Err = "failed to read func.yaml"
-				}
+				items[i].Err = "failed to read func.yaml"
 				return nil
 			}
 			name, funcNamespace, runtime, parseErr := parseFuncYaml(content)
 			if parseErr != nil {
 				slog.Warn("failed to parse func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", parseErr)
-				if namespace != "" {
-					excluded[i] = true
-				} else {
-					items[i].Err = "invalid func.yaml"
-				}
+				// IMPORTANT: if function is deployed this will appear as a duplicate item (cant deduplicate as we dont know the namespace)
+				// function cannot be filtered as the namespace is unknown
+				items[i].Err = "invalid func.yaml"
 				return nil
 			}
 			items[i].Name = name
@@ -186,6 +183,21 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 
 			if namespace != "" && funcNamespace != namespace {
 				excluded[i] = true
+				return nil
+			}
+
+			if clusterClient == nil {
+				items[i].Err = "func.yaml: unable to verify cluster namespace"
+			} else {
+				switch nsErr := clusterClient.CheckNamespace(gctx, funcNamespace); {
+				case errors.Is(nsErr, cluster.ErrNamespaceForbidden):
+					items[i].Err = "func.yaml: no access to cluster namespace"
+				case errors.Is(nsErr, cluster.ErrNamespaceNotFound):
+					items[i].Err = "func.yaml: cluster namespace does not exist"
+				case nsErr != nil:
+					slog.Warn("failed to check namespace existence", "namespace", funcNamespace, "err", nsErr)
+					items[i].Err = "func.yaml: unable to verify cluster namespace"
+				}
 			}
 			return nil
 		})

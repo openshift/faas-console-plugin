@@ -301,6 +301,26 @@ describe('FunctionsListPage', () => {
     expect(await screen.findByText('Error: Error')).toBeInTheDocument();
   });
 
+  it('shows the error message as a tooltip on the Error status for repo functions with a non-existent namespace', async () => {
+    const user = userEvent.setup();
+    const errMsg = 'namespace does not exist';
+    const errItem: FunctionListItem = {
+      ...repoListItem('deleted-func', 'deleted-func', 'demo', 'go'),
+      err: errMsg,
+    };
+    listFunctionsStub({ responses: [errItem] });
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Error: Error')).toBeInTheDocument();
+    await user.hover(screen.getByText('Error: Error'));
+    expect(await screen.findByText(errMsg)).toBeInTheDocument();
+  });
+
   it('uses func.yaml name instead of repo name for cluster matching', async () => {
     listFunctionsStub({ responses: [repoListItem('my-repo', funcName, 'demo', 'node')] });
     sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));

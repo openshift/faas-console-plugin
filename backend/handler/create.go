@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
@@ -19,9 +18,8 @@ import (
 )
 
 const (
-	repoSecretKubeconfig   = "KUBECONFIG"
-	repoKubeconfigExpireAt = "KUBECONFIG_EXPIRE_AT"
-	repoVarClusterAPIURL   = "CLUSTER_API_URL"
+	repoSecretKubeconfig = "KUBECONFIG"
+	repoVarClusterAPIURL = "CLUSTER_API_URL"
 )
 
 var (
@@ -78,6 +76,10 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid SCM token")
 		case errors.Is(err, scm.ErrRepoExists):
 			writeError(w, http.StatusConflict, "repository already exists")
+		case errors.Is(err, cluster.ErrNamespaceNotFound):
+			writeError(w, http.StatusUnprocessableEntity, "namespace does not exist")
+		case errors.Is(err, cluster.ErrNamespaceForbidden):
+			writeError(w, http.StatusForbidden, "no access to namespace")
 		case errors.Is(err, errUpstream):
 			slog.Error("upstream service error", "err", err)
 			writeError(w, http.StatusBadGateway, "failed to reach upstream service")
@@ -109,6 +111,13 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 	cl, err := newClusterClient(h.kubeHost, ocpToken, h.caCert)
 	if err != nil {
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("connect to cluster: %w", err))
+	}
+
+	switch err := cl.CheckNamespace(ctx, req.Namespace); {
+	case errors.Is(err, cluster.ErrNamespaceForbidden), errors.Is(err, cluster.ErrNamespaceNotFound):
+		return err
+	case err != nil:
+		return fmt.Errorf("%w: check namespace: %w", errUpstream, err)
 	}
 
 	provisioned, err := cluster.ProvisionRBAC(ctx, cl, req.Namespace)
@@ -153,13 +162,6 @@ func (h *Handlers) createFunction(ctx context.Context, req createRequest, pat, o
 		}
 		slog.Error("failed to store CI secret", "owner", req.Owner, "repo", req.Repo, "err", err)
 		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store secret: %w", err))
-	}
-	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoKubeconfigExpireAt, tokenStatus.ExpirationTimestamp.Time.UTC().Format(time.RFC3339)); err != nil {
-		if errors.Is(err, scm.ErrUnauthorized) {
-			return err
-		}
-		slog.Error("failed to store EXPIRE_AT variable", "owner", req.Owner, "repo", req.Repo, "err", err)
-		return fmt.Errorf("%w: %w", errUpstream, fmt.Errorf("store variable: %w", err))
 	}
 	if err := client.StoreVariable(ctx, req.Owner, req.Repo, repoVarClusterAPIURL, h.externalAPIServerURL); err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
