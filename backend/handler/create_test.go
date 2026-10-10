@@ -35,7 +35,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 	doCreate := func(setup func()) *httptest.ResponseRecorder {
 		setup()
-		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
+		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443", clusterID: "test-cluster-id-abc123"}
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		req.Header.Set("X-SCM-Token", "test-pat")
 		req.Header.Set("Authorization", "Bearer ocp-token")
@@ -89,7 +89,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				}, nil
 			},
 		})
-		h, err := New("", "", "https://api.test-cluster.example.com:6443", 7*24*60*60)
+		h, err := New("", "", "https://api.test-cluster.example.com:6443", "test-cluster-id-abc123", 7*24*60*60)
 		Expect(err).NotTo(HaveOccurred())
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
 		req.Header.Set("X-SCM-Token", "test-pat")
