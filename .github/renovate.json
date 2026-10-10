@@ -7,7 +7,7 @@
   "enabledManagers": ["tekton", "gomod", "npm", "dockerfile"],
   "timezone": "UTC",
   "schedule": ["before 7am"],
-  "minimumReleaseAge": "7 days",
+  "minimumReleaseAge": "90 days",
   "lockFileMaintenance": {
     "enabled": true
   },
@@ -22,6 +22,12 @@
         "matchManagers": ["gomod"],
         "matchPackageNames": ["k8s.io/*", "sigs.k8s.io/*", "knative.dev/*"],
         "matchUpdateTypes": ["major", "minor"],
+        "enabled": false
+      },
+      {
+        "matchManagers": ["gomod"],
+        "matchPackageNames": ["knative.dev/*"],
+        "matchUpdateTypes": ["digest"],
         "enabled": false
       }
     ]
