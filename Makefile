@@ -73,11 +73,17 @@ test-e2e: install-frontend ## Run Playwright e2e tests (ARGS="--headed")
 	yarn test:e2e $(ARGS)
 
 verify: install-frontend ## Verify i18n freshness and yarn deduplication
+# After regenerating, check if locale files in the working tree differ from
+# what is staged (index). Uses git-diff (unstaged changes) + ls-files
+# (untracked new files). Staged locale files that match yarn i18n output
+# produce no diff, so commits with correctly staged locales pass.
 	yarn i18n
-	@GIT_STATUS="$$(git status --short --untracked-files -- locales)"; \
-	if [ -n "$$GIT_STATUS" ]; then \
-		echo "i18n files are not up to date. Run 'yarn i18n' then commit changes."; \
-		git --no-pager diff; \
+	@CHANGED="$$(git diff --name-only -- locales)"; \
+	UNTRACKED="$$(git ls-files --others --exclude-standard -- locales)"; \
+	if [ -n "$$CHANGED" ] || [ -n "$$UNTRACKED" ]; then \
+		echo "i18n files are not up to date. Run 'yarn i18n' then stage the locale changes."; \
+		if [ -n "$$CHANGED" ]; then git --no-pager diff -- locales; fi; \
+		if [ -n "$$UNTRACKED" ]; then echo "Untracked locale files:"; echo "$$UNTRACKED"; fi; \
 		exit 1; \
 	fi
 	@if ! yarn dedupe --strategy highest --check; then \

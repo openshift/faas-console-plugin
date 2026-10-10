@@ -234,3 +234,21 @@ export function setActiveNamespace(ns: string) {
 // START: isAllNamespaceKeyFake ------------------------------------------------
 export const isAllNamespaceKeyFake = (ns: string) => ns === '#ALL_NS#';
 // END: isAllNamespaceKeyFake --------------------------------------------------
+
+// START: consoleFetchJSONFake ------------------------------------------------
+export const consoleFetchJSONFake = async (
+  url: string,
+  _method?: string,
+  options?: RequestInit,
+) => {
+  const res = await fetch(new URL(url, 'http://localhost').href, options);
+  const json = await res.json();
+  if (!res.ok) throw json;
+  return json;
+};
+// END: consoleFetchJSONFake --------------------------------------------------
+
+// START: consoleFetchFake ------------------------------------------------
+export const consoleFetchFake = async (url: string, options?: RequestInit) =>
+  fetch(new URL(url, 'http://localhost').href, options);
+// END: consoleFetchFake --------------------------------------------------

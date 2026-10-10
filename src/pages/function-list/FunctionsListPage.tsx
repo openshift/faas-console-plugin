@@ -20,15 +20,16 @@ import { SyncAltIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
+import { listFunctions } from '../../common/clients/functionsClient';
+import { useBuildStatus } from '../../common/clients/useBuildStatus';
+import { useCluster } from '../../common/clients/useCluster';
+import { UserAvatar } from '../../common/components/UserAvatar';
+import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
+import { ClusterFunction, WorkflowRun } from '../../common/types';
+import { errorMessage } from '../../common/utils/utils';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';
-import { UserAvatar } from '../../common/components/UserAvatar';
-import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { ClusterFunction, FunctionListItem } from '../../common/types';
-import { useCluster } from '../../common/clients/useCluster';
-import { listFunctions } from '../../common/clients/functionsClient';
-import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionsListPage() {
   return (
@@ -48,6 +49,7 @@ function FunctionsListPageContent() {
     onRefresh,
     isAuthenticated,
     error,
+    buildWatchError,
     showNamespace,
   } = useFunctionListPage();
 
@@ -62,6 +64,11 @@ function FunctionsListPageContent() {
         {error && (
           <Alert variant="danger" title={t('Error listing functions')} isInline>
             {error}
+          </Alert>
+        )}
+        {buildWatchError && (
+          <Alert variant="danger" title={t('Error watching build statuses')} isInline>
+            {buildWatchError}
           </Alert>
         )}
         {!loaded && (
@@ -124,6 +131,7 @@ function useFunctionListPage(): {
   onRefresh: () => void;
   isAuthenticated: boolean;
   error: string;
+  buildWatchError?: string;
   showNamespace: boolean;
 } {
   const { isAuthenticated, connectionId } = useContext(AuthContext);
@@ -210,15 +218,20 @@ function useFunctionListPage(): {
     // to 'get resources from all namespaces'
     isAllNamespacesKey(namespace) ? undefined : namespace,
   );
+  const { statuses: buildStatuses, error: buildWatchError } = useBuildStatus(
+    isAuthenticated ? connectionId : undefined,
+  );
 
   const functions = useMemo(
     () =>
       functionItems.map((item) => {
         // keyed by namespace/name - the same function name can exist in multiple namespaces
         const cf = clusterFunctions.get(`${item.namespace}/${item.name}`);
-        return cf ? enrichItem(item, cf) : item;
+        const enriched = cf ? enrichItem(item, cf) : item;
+        const build = buildStatuses[`${item.owner}/${item.repoName}`];
+        return build ? mergeBuildStatusWith(enriched, build, Boolean(cf)) : enriched;
       }),
-    [functionItems, clusterFunctions],
+    [functionItems, clusterFunctions, buildStatuses],
   );
 
   const reposLoaded = !isAuthenticated || (namespaceLoaded && prevNamespace === namespace);
@@ -234,26 +247,24 @@ function useFunctionListPage(): {
     onRefresh,
     isAuthenticated,
     error,
+    buildWatchError,
     showNamespace: isAllNamespacesKey(namespace),
   };
 }
 
 async function loadFunctionTableItems(namespace: string): Promise<FunctionTableItem[]> {
-  const items = await listFunctions(namespace);
-  return items.map((item) => newItem(item));
-}
-
-function newItem(item: FunctionListItem): FunctionTableItem {
-  return {
+  const list = await listFunctions(namespace);
+  return list.map((item) => ({
     name: item.name || item.repoName,
     repoName: item.repoName,
+    owner: item.owner,
     namespace: item.namespace,
     runtime: item.runtime,
     status: item.err ? 'Error' : 'NotDeployed',
     url: '',
     replicas: 0,
     source: item.source,
-  };
+  }));
 }
 
 function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTableItem {
@@ -264,4 +275,28 @@ function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTable
     replicas: cf.replicas,
     mainResource: cf.mainResource,
   };
+}
+
+function mergeBuildStatusWith(
+  item: FunctionTableItem,
+  build: WorkflowRun,
+  inCluster: boolean,
+): FunctionTableItem {
+  if (inCluster) {
+    if (build.status === 'Building') {
+      return { ...item, buildActivity: 'Building' };
+    }
+    if (build.status === 'Failed') {
+      return { ...item, buildActivity: 'Failed', buildRunURL: build.url };
+    }
+    return item;
+  }
+  // Not in the cluster at all: surface building as a secondary indicator alongside NotDeployed.
+  if (build.status === 'Building') {
+    return { ...item, buildActivity: 'Building' };
+  }
+  if (build.status === 'Failed') {
+    return { ...item, status: 'BuildFailed', buildRunURL: build.url };
+  }
+  return item;
 }

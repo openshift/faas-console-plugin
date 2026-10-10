@@ -2,7 +2,6 @@ import {
   ErrorStatus,
   InfoStatus,
   K8sResourceCommon,
-  StatusIconAndText,
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
@@ -15,29 +14,14 @@ import {
 } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
-import { FunctionSource, FunctionStatus } from '../../../common/types';
+import { Function, FunctionSource, FunctionStatusV2 } from '../../../common/types';
 
-export interface FunctionTableItem {
-  name: string;
-  repoName: string;
-  owner: string;
-  runtime: string;
-  status: FunctionStatus;
-  url: string;
-  replicas: number;
-  namespace: string;
-  source: FunctionSource;
-  mainResource?: K8sResourceCommon;
-  buildRunURL?: string;
-  buildActivity?: 'Building' | 'Failed';
-}
-
-export function FunctionTable({
+export function FunctionTableV2({
   functions,
   onEdit,
   showNamespace,
 }: {
-  functions: FunctionTableItem[];
+  functions: Function[];
   onEdit: (name: string) => void;
   showNamespace: boolean;
 }) {
@@ -75,16 +59,12 @@ export function FunctionTable({
               <TextOrDash value={fn.runtime} />
             </Td>
             <Td dataLabel={t('Status')}>
-              <StatusCell
-                status={fn.status}
-                buildRunURL={fn.buildRunURL}
-                buildActivity={fn.buildActivity}
-              />
+              <StatusCell functionStatus={fn.status} />
             </Td>
             <Td dataLabel={t('URL')}>
-              <UrlCell url={fn.url} />
+              <UrlCell url={fn.routeURL} />
             </Td>
-            <Td dataLabel={t('Replicas')}>{fn.replicas}</Td>
+            <Td dataLabel={t('Replicas')}>{fn.replicas ?? '—'}</Td>
             <Td dataLabel={t('Actions')} isActionCell>
               <ActionList isIconList>
                 <ActionListItem>
@@ -106,35 +86,79 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({
-  status,
-  buildRunURL,
-  buildActivity,
-}: {
-  status: FunctionStatus;
-  buildRunURL?: string;
-  buildActivity?: 'Building' | 'Failed';
-}) {
+function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
-  switch (status) {
-    case 'Running':
-      return withBuildActivity(<SuccessStatus title={t(status)} />, buildActivity, buildRunURL);
-    case 'ScaledToZero':
-      return withBuildActivity(<InfoStatus title={t(status)} />, buildActivity, buildRunURL);
-    case 'Deploying':
-      return withBuildActivity(<InfoStatus title={t(status)} />, buildActivity, buildRunURL);
-    case 'Error':
-      return withBuildActivity(<ErrorStatus title={t(status)} />, buildActivity, buildRunURL);
-    case 'BuildFailed': {
-      const badge = <ErrorStatus title={t(status)} className="pf-v6-u-display-inline-flex" />;
-      return buildRunURL ? <RunLink url={buildRunURL}>{badge}</RunLink> : badge;
+  const cluster = (() => {
+    switch (functionStatus.cluster.status) {
+      case 'None':
+        return null;
+      case 'Running':
+        return <SuccessStatus title={t('Running')} />;
+      case 'ScaledToZero':
+        return <InfoStatus title={t('ScaledToZero')} />;
+      case 'Deploying':
+        return <InfoStatus title={t('Deploying')} />;
+      case 'Undeploying':
+        return <InfoStatus title={t('Undeploying')} />;
+      case 'NotDeployed':
+        return <InfoStatus title={t('NotDeployed')} />;
+      case 'Error': {
+        const badge = <ErrorStatus title={t('Error')} />;
+        return functionStatus.cluster.errorMessage ? (
+          <Tooltip content={functionStatus.cluster.errorMessage}>{badge}</Tooltip>
+        ) : (
+          badge
+        );
+      }
     }
-    case 'NotDeployed':
-      return withBuildActivity(<InfoStatus title={t(status)} />, buildActivity, buildRunURL);
-    case 'Unknown':
-      return <StatusIconAndText title={t(status)} icon={<ExclamationTriangleIcon />} />;
-  }
+  })();
+
+  const workflow = (() => {
+    switch (functionStatus.workflow.status) {
+      case 'None':
+      case 'Succeeded':
+        return null;
+      case 'Building':
+        return (
+          <Tooltip content={t('Build in progress')}>
+            <Icon role="img" aria-label={t('Build in progress')}>
+              <RhUiSyncIcon className="co-spin" />
+            </Icon>
+          </Tooltip>
+        );
+      case 'Failed': {
+        const icon = (
+          <Icon status="danger">
+            <ExclamationTriangleIcon />
+          </Icon>
+        );
+        return functionStatus.workflow.url ? (
+          <Tooltip content={t('Latest build failed')}>
+            <RunLink url={functionStatus.workflow.url} ariaLabel={t('Latest build failed')}>
+              {icon}
+            </RunLink>
+          </Tooltip>
+        ) : (
+          <Tooltip content={t('Latest build failed')}>{icon}</Tooltip>
+        );
+      }
+    }
+  })();
+
+  return (
+    <>
+      {!cluster && !workflow && <TextOrDash />}
+      {!cluster && workflow}
+      {cluster && !workflow && cluster}
+      {cluster && workflow && (
+        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+          {cluster}
+          {workflow}
+        </Flex>
+      )}
+    </>
+  );
 }
 
 function RunLink({
@@ -151,56 +175,6 @@ function RunLink({
       {children}
     </a>
   );
-}
-
-function withBuildActivity(
-  badge: React.ReactNode,
-  buildActivity?: 'Building' | 'Failed',
-  buildRunURL?: string,
-) {
-  if (!buildActivity) return <>{badge}</>;
-  return (
-    <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
-      {badge}
-      <BuildActivityIndicator buildActivity={buildActivity} buildRunURL={buildRunURL} />
-    </Flex>
-  );
-}
-
-function BuildActivityIndicator({
-  buildActivity,
-  buildRunURL,
-}: {
-  buildActivity?: 'Building' | 'Failed';
-  buildRunURL?: string;
-}) {
-  const { t } = useTranslation('plugin__console-functions-plugin');
-
-  if (buildActivity === 'Building') {
-    return (
-      <Tooltip content={t('Build in progress')}>
-        <Icon role="img" aria-label={t('Build in progress')}>
-          <RhUiSyncIcon className="co-spin" />
-        </Icon>
-      </Tooltip>
-    );
-  }
-  if (buildActivity === 'Failed') {
-    const icon = (
-      <Icon status="danger">
-        <ExclamationTriangleIcon />
-      </Icon>
-    );
-    const withLink = buildRunURL ? (
-      <RunLink url={buildRunURL} ariaLabel={t('Latest build failed')}>
-        {icon}
-      </RunLink>
-    ) : (
-      icon
-    );
-    return <Tooltip content={t('Latest build failed')}>{withLink}</Tooltip>;
-  }
-  return null;
 }
 
 function UrlCell({ url }: { url?: string }) {

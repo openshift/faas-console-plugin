@@ -74,15 +74,7 @@ export interface CreateFunctionRequest {
 }
 
 export type FunctionStatus =
-  | 'CreatingRepo'
-  | 'Pushing'
-  | 'PushedToGitHub'
-  | 'Deploying'
-  | 'Running'
-  | 'ScaledToZero'
-  | 'Error'
-  | 'Unknown'
-  | 'NotDeployed';
+  'Deploying' | 'Running' | 'ScaledToZero' | 'Error' | 'BuildFailed' | 'Unknown' | 'NotDeployed';
 
 export interface ClusterFunction {
   readonly name: string;
@@ -92,3 +84,40 @@ export interface ClusterFunction {
   readonly replicas: number;
   readonly mainResource: K8sResourceCommon;
 }
+
+export interface Function {
+  readonly owner: string;
+  readonly repoName: string;
+  readonly runtime: string;
+  readonly source: FunctionSource;
+  readonly name: string;
+  readonly namespace: string;
+  readonly status: FunctionStatusV2;
+  readonly repoURL: string;
+  readonly routeURL: string;
+  readonly replicas?: number;
+  readonly mainResource?: K8sResourceCommon;
+  readonly error?: Error;
+}
+
+export interface FunctionStatusV2 {
+  cluster: ClusterStatus;
+  workflow: WorkflowRun;
+}
+
+export interface ClusterStatus {
+  status:
+    'None' | 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying' | 'Error';
+  errorMessage?: string;
+}
+
+export interface WorkflowRun {
+  status: 'None' | 'Building' | 'Succeeded' | 'Failed';
+  url?: string;
+  error?: string;
+}
+
+/**
+ * Record of workflow runs, keyed by repository full name (e.g., "owner/repo")
+ */
+export type WorkflowRunRecord = Record<string, WorkflowRun>;

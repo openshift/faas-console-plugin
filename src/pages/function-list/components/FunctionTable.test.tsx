@@ -12,7 +12,6 @@ const mockUseDeleteModal = vi.fn().mockReturnValue(vi.fn());
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   SuccessStatus: ({ title }: { title: string }) => `Success: ${title}`,
-  ProgressStatus: ({ title }: { title: string }) => `Progress: ${title}`,
   ErrorStatus: ({ title }: { title: string }) => `Error: ${title}`,
   InfoStatus: ({ title }: { title: string }) => `Info: ${title}`,
   StatusIconAndText: ({ title }: { title: string }) => `Warning: ${title}`,
@@ -22,6 +21,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 vi.mock('@patternfly/react-icons', () => ({
   ExclamationTriangleIcon: () => 'WarningIcon',
   PencilAltIcon: () => 'EditIcon',
+  RhUiSyncIcon: () => 'SyncIcon',
   TrashIcon: () => 'DeleteIcon',
 }));
 
@@ -39,6 +39,7 @@ const mockFunctions: FunctionTableItem[] = [
   {
     name: 'my-func',
     repoName: 'my-func',
+    owner: 'twoGiants',
     runtime: 'go',
     status: 'Running',
     url: 'http://my-func.demo.svc',
@@ -50,6 +51,7 @@ const mockFunctions: FunctionTableItem[] = [
   {
     name: 'idle-func',
     repoName: 'idle-func',
+    owner: 'twoGiants',
     runtime: 'node',
     status: 'NotDeployed',
     url: '',
@@ -62,6 +64,7 @@ const mockFunctions: FunctionTableItem[] = [
 const clusterOnlyFunction: FunctionTableItem = {
   name: 'cluster-only',
   repoName: '',
+  owner: '',
   runtime: 'node',
   status: 'Running',
   url: 'http://cluster-only.demo.svc',
@@ -91,6 +94,7 @@ describe('FunctionTable', () => {
     const noRuntime: FunctionTableItem = {
       name: 'cluster-only',
       repoName: '',
+      owner: '',
       runtime: '',
       status: 'Running',
       url: 'http://cluster-only.demo.svc',
@@ -143,6 +147,134 @@ describe('FunctionTable', () => {
     expect(screen.getByText('Success: Running')).toBeInTheDocument();
   });
 
+  it('keeps Running and shows a build-in-progress spinner when buildActivity is Building', () => {
+    const rebuilding: FunctionTableItem = { ...mockFunctions[0], buildActivity: 'Building' };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[rebuilding]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Success: Running')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+  });
+
+  it('keeps Running and shows a warning icon linking to the run when buildActivity is Failed', () => {
+    const failedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      buildActivity: 'Failed',
+      buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[failedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Success: Running')).toBeInTheDocument();
+    expect(screen.getByText('WarningIcon')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('shows a fixed tooltip on the secondary build indicator', async () => {
+    const user = userEvent.setup();
+    const failedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      buildActivity: 'Failed',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[failedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    await user.hover(screen.getByText('WarningIcon'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(/^Latest build failed$/);
+  });
+
+  it('keeps ScaledToZero and shows a build-in-progress spinner when buildActivity is Building', () => {
+    const idleRebuilding: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'ScaledToZero',
+      buildActivity: 'Building',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[idleRebuilding]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+  });
+
+  it('keeps ScaledToZero and shows a warning icon linking to the run when buildActivity is Failed', () => {
+    const idleFailedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'ScaledToZero',
+      buildActivity: 'Failed',
+      buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[idleFailedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Info: ScaledToZero')).toBeInTheDocument();
+    expect(screen.getByText('WarningIcon')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
+  it('keeps Deploying and shows a build-in-progress spinner when buildActivity is Building', () => {
+    const rollingOut: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'Deploying',
+      buildActivity: 'Building',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[rollingOut]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Info: Deploying')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
+  });
+
+  it('keeps Error and shows a warning icon linking to the run when buildActivity is Failed', () => {
+    const brokenWithFailedRebuild: FunctionTableItem = {
+      ...mockFunctions[0],
+      status: 'Error',
+      buildActivity: 'Failed',
+      buildRunURL: 'https://github.com/twoGiants/my-func/actions/runs/1',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[brokenWithFailedRebuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Error: Error')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Latest build failed' })).toHaveAttribute(
+      'href',
+      'https://github.com/twoGiants/my-func/actions/runs/1',
+    );
+  });
+
   it('renders InfoStatus for NotDeployed functions', () => {
     render(
       <MemoryRouter>
@@ -151,6 +283,23 @@ describe('FunctionTable', () => {
     );
 
     expect(screen.getByText('Info: NotDeployed')).toBeInTheDocument();
+  });
+
+  it('keeps NotDeployed and shows a build-in-progress indicator when buildActivity is Building', () => {
+    const firstTimeBuild: FunctionTableItem = {
+      ...mockFunctions[1],
+      status: 'NotDeployed',
+      buildActivity: 'Building',
+    };
+
+    render(
+      <MemoryRouter>
+        <FunctionTable functions={[firstTimeBuild]} onEdit={vi.fn()} showNamespace />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Info: NotDeployed')).toBeInTheDocument();
+    expect(screen.getByLabelText('Build in progress')).toBeInTheDocument();
   });
 
   it('displays hostname-only link for URL', () => {
@@ -185,6 +334,7 @@ describe('FunctionTable', () => {
     const fn: FunctionTableItem = {
       name: 'my-function',
       repoName: 'my-repo',
+      owner: 'twoGiants',
       runtime: 'node',
       status: 'Running',
       url: '',
