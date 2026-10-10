@@ -1,4 +1,5 @@
 import {
+  ErrorStatus,
   InfoStatus,
   K8sResourceCommon,
   SuccessStatus,
@@ -61,9 +62,9 @@ export function FunctionTableV2({
               <StatusCell functionStatus={fn.status} />
             </Td>
             <Td dataLabel={t('URL')}>
-              <UrlCell url={fn.url} />
+              <UrlCell url={fn.routeURL} />
             </Td>
-            <Td dataLabel={t('Replicas')}>{fn.replicas}</Td>
+            <Td dataLabel={t('Replicas')}>{fn.replicas ?? '—'}</Td>
             <Td dataLabel={t('Actions')} isActionCell>
               <ActionList isIconList>
                 <ActionListItem>
@@ -102,6 +103,14 @@ function StatusCell({ functionStatus }: { functionStatus: FunctionStatusV2 }) {
         return <InfoStatus title={t('Undeploying')} />;
       case 'NotDeployed':
         return <InfoStatus title={t('NotDeployed')} />;
+      case 'Error': {
+        const badge = <ErrorStatus title={t('Error')} />;
+        return functionStatus.cluster.errorMessage ? (
+          <Tooltip content={functionStatus.cluster.errorMessage}>{badge}</Tooltip>
+        ) : (
+          badge
+        );
+      }
     }
   })();
 

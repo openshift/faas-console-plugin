@@ -93,7 +93,8 @@ export interface Function {
   readonly name: string;
   readonly namespace: string;
   readonly status: FunctionStatusV2;
-  readonly url?: string;
+  readonly repoURL: string;
+  readonly routeURL: string;
   readonly replicas?: number;
   readonly mainResource?: K8sResourceCommon;
   readonly error?: Error;
@@ -105,8 +106,9 @@ export interface FunctionStatusV2 {
 }
 
 export interface ClusterStatus {
-  status: 'None' | 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying';
-  error?: Error;
+  status:
+    'None' | 'NotDeployed' | 'Deploying' | 'Running' | 'ScaledToZero' | 'Undeploying' | 'Error';
+  errorMessage?: string;
 }
 
 export interface WorkflowRun {
