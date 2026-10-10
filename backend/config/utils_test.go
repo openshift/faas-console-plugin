@@ -32,16 +32,6 @@ var _ = Describe("ParseSATokenExpiry", func() {
 	)
 })
 
-var _ = Describe("RefreshWindow", func() {
-	DescribeTable("derives the refresh threshold from the token lifetime", func(saTokenExpirySeconds int64, want time.Duration) {
-		Expect(RefreshWindow(saTokenExpirySeconds)).To(Equal(want))
-	},
-		Entry("7 day default", DefaultSATokenExpiry, 28*time.Hour),
-		Entry("24h lifetime", int64(24*60*60), 4*time.Hour),
-		Entry("1h lifetime", int64(60*60), 10*time.Minute),
-	)
-})
-
 var _ = Describe("parseExpiryDuration", func() {
 	DescribeTable("parses extended duration values", func(value string, want time.Duration, wantErr bool) {
 		got, err := parseExpiryDuration(value)

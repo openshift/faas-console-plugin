@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -20,6 +21,11 @@ const (
 	roleName = "func-scm-deployer"
 )
 
+var (
+	ErrNamespaceForbidden = errors.New("namespace access denied")
+	ErrNamespaceNotFound  = errors.New("namespace not found")
+)
+
 type Client interface {
 	CreateServiceAccount(ctx context.Context, namespace string) (bool, error)
 	DeleteServiceAccount(ctx context.Context, namespace string) error
@@ -30,6 +36,7 @@ type Client interface {
 	CreateImageBuilderBinding(ctx context.Context, namespace string) (bool, error)
 	DeleteImageBuilderBinding(ctx context.Context, namespace string) error
 	RequestToken(ctx context.Context, namespace string, saTokenExpirty int64) (*authenticationv1.TokenRequestStatus, error)
+	CheckNamespace(ctx context.Context, namespace string) error
 }
 
 // New creates a cluster client authenticated with token.
@@ -189,12 +196,27 @@ func (c *k8sClient) RequestToken(ctx context.Context, namespace string, saTokenE
 	return &result.Status, nil
 }
 
+func (c *k8sClient) CheckNamespace(ctx context.Context, namespace string) error {
+	_, err := c.clientset.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		return ErrNamespaceNotFound
+	}
+	if k8serrors.IsForbidden(err) {
+		return ErrNamespaceForbidden
+	}
+	if err != nil {
+		return fmt.Errorf("get namespace %s: %w", namespace, err)
+	}
+	return nil
+}
+
 type ClientStub struct {
 	OnCreateServiceAccount      func(ctx context.Context, namespace string) (bool, error)
 	OnApplyRole                 func(ctx context.Context, namespace string) (bool, error)
 	OnCreateRoleBinding         func(ctx context.Context, namespace string) (bool, error)
 	OnCreateImageBuilderBinding func(ctx context.Context, namespace string) (bool, error)
 	OnRequestToken              func(ctx context.Context, namespace string, saTokenExpiry int64) (*authenticationv1.TokenRequestStatus, error)
+	OnCheckNamespace           func(ctx context.Context, namespace string) error
 	OnDeleteServiceAccount      func(ctx context.Context, namespace string) error
 	OnDeleteRole                func(ctx context.Context, namespace string) error
 	OnDeleteRoleBinding         func(ctx context.Context, namespace string) error
@@ -237,6 +259,13 @@ func (s *ClientStub) RequestToken(ctx context.Context, namespace string, saToken
 		Token:               "stub-token",
 		ExpirationTimestamp: metav1.NewTime(time.Now().Add(time.Duration(saTokenExpiry) * time.Second)),
 	}, nil
+}
+
+func (s *ClientStub) CheckNamespace(ctx context.Context, namespace string) error {
+	if s.OnCheckNamespace != nil {
+		return s.OnCheckNamespace(ctx, namespace)
+	}
+	return nil
 }
 
 func (s *ClientStub) DeleteServiceAccount(ctx context.Context, namespace string) error {
