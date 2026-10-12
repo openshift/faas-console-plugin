@@ -9,8 +9,10 @@ import (
 	"sync"
 
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/singleflight"
 	"sigs.k8s.io/yaml"
 
+	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
@@ -82,7 +84,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace, h.externalAPIServerURL)
+		repoFunctions, repoErr = h.listRepoFunctions(r.Context(), pat, ocpToken, namespace)
 	}()
 	go func() {
 		defer wg.Done()
@@ -125,16 +127,39 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string) ([]listItem, error) {
-	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
+func (h *Handlers) listRepoFunctions(ctx context.Context, pat, ocpToken, namespace string) ([]listItem, error) {
+	scmClient := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 
-	repos, err := client.ListRepos(ctx)
+	repos, err := scmClient.ListRepos(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	items := make([]listItem, len(repos))
 	excluded := make([]bool, len(repos))
+
+	clusterClient, err := newClusterClient(h.kubeHost, ocpToken, h.caCert)
+	if err != nil {
+		slog.Error("failed to create cluster client for namespace validation", "err", err)
+		return nil, err
+	}
+
+	type nsResult struct{ err error }
+	var sfGroup singleflight.Group
+	var nsCache sync.Map
+	// checkNamespaceCached caches namespace check results and coalesces concurrent
+	// calls for the same key so at most one cluster API call is in flight per namespace.
+	checkNamespaceCached := func(ctx context.Context, ns string) error {
+		if v, ok := nsCache.Load(ns); ok {
+			return v.(nsResult).err
+		}
+		_, err, _ := sfGroup.Do(ns, func() (any, error) {
+			e := clusterClient.CheckNamespace(ctx, ns)
+			nsCache.Store(ns, nsResult{err: e})
+			return nil, e
+		})
+		return err //nolint:wrapcheck // sentinel errors from CheckNamespace carry full context
+	}
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(10)
@@ -148,11 +173,11 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 				Source:        sourceRepo,
 			}
 
-			repoClusterURL, err := client.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterAPIURL)
+			repoClusterURL, err := scmClient.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterAPIURL)
 			if err != nil {
 				slog.Warn("failed to read variable", "variable", repoVarClusterAPIURL, "repo", repo.Owner+"/"+repo.Name, "err", err)
 				// keep the repo on transient errors rather than hiding it
-			} else if repoClusterURL != clusterAPIURL {
+			} else if repoClusterURL != h.externalAPIServerURL {
 				// Filter out repos whose CLUSTER_API_URL variable does not match this cluster. The variable is written alongside
 				// the KUBECONFIG secret at repo creation, so a mismatch means the secret points to a different cluster
 				// (from where it was created) and deploying from this console would target the wrong cluster.
@@ -160,24 +185,19 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 				return nil
 			}
 
-			content, err := client.GetFileContent(gctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
+			content, err := scmClient.GetFileContent(gctx, repo.Owner, repo.Name, repo.DefaultBranch, "func.yaml")
 			if err != nil {
 				slog.Warn("failed to read func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", err)
-				if namespace != "" {
-					excluded[i] = true
-				} else {
-					items[i].Err = "failed to read func.yaml"
-				}
+				items[i].Err = "func.yaml: failed to read"
 				return nil
 			}
 			name, funcNamespace, runtime, parseErr := parseFuncYaml(content)
 			if parseErr != nil {
 				slog.Warn("failed to parse func.yaml", "repo", repo.Owner+"/"+repo.Name, "err", parseErr)
-				if namespace != "" {
-					excluded[i] = true
-				} else {
-					items[i].Err = "invalid func.yaml"
-				}
+				// If the function is already deployed it will appear as a duplicate entry
+				// because deduplication requires a namespace key and parsing failed here.
+				// See SRVOCF-1138.
+				items[i].Err = "func.yaml: invalid"
 				return nil
 			}
 			items[i].Name = name
@@ -186,6 +206,20 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 
 			if namespace != "" && funcNamespace != namespace {
 				excluded[i] = true
+				return nil
+			}
+
+			switch nsErr := checkNamespaceCached(gctx, funcNamespace); {
+			case errors.Is(nsErr, cluster.ErrNamespaceForbidden):
+				items[i].Err = "func.yaml: namespace access denied"
+			case errors.Is(nsErr, cluster.ErrNamespaceNotFound):
+				// Note: even after recreating the namespace the stored KUBECONFIG
+				// will be stale because the original ServiceAccount no longer exists.
+				// Recovery requires re-creating the function. See SRVOCF-1137.
+				items[i].Err = "func.yaml: namespace does not exist"
+			case nsErr != nil:
+				slog.Warn("failed to check namespace existence", "namespace", funcNamespace, "err", nsErr)
+				items[i].Err = "func.yaml: namespace check failed"
 			}
 			return nil
 		})

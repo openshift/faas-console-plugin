@@ -109,7 +109,7 @@ Go + `net/http` standard library. Key dependencies:
 | Package | Responsibility |
 |---|---|
 | `kube` | Shared Kubernetes connection: builds a `*rest.Config` from host/token/caCert (or in-cluster), including the JSON content config and the default request timeout |
-| `cluster` | Kubernetes provisioning: service account, RBAC provisioning, TokenRequest, kubeconfig generation |
+| `cluster` | Kubernetes provisioning: service account, RBAC provisioning, TokenRequest, kubeconfig generation; per-namespace existence checks |
 | `functions` | Function lifecycle via knative/func: cluster queries behind the growable `functions.Client` facade (lists today), plus source/CI scaffold generation (`Generate`) |
 | `handler` | HTTP handlers: input validation, orchestration, error mapping |
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
@@ -122,15 +122,15 @@ Go + `net/http` standard library. Key dependencies:
 - `handler` imports `cluster`, `functions`, `scm`, `config` — never the reverse
 - `cluster` and `functions` both import `kube` for connection setup, and have no knowledge of each other
 - `kube` imports only `k8s.io/client-go/rest`; it depends on no other backend package
-- `cluster` is for provisioning (write RBAC/SA, request tokens); `functions` is for the function lifecycle (list and scaffold generation). Both talk to the cluster but answer different questions, so they stay separate rather than sharing one client interface
+- `cluster` is for provisioning and cluster introspection (write RBAC/SA, request tokens, check namespace existence); `functions` is for the function lifecycle (list and scaffold generation). Both talk to the cluster but answer different questions, so they stay separate rather than sharing one client interface
 - `scm` has no knowledge of cluster or functions
 - `functions` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
 - `config` is imported by `handler`, `functions`, and `main` only; it owns runtime configuration and package-level wiring
 
 ### Key Decisions
 
-**Cluster access is split by intent: `cluster` (provisioning) vs `functions` (function lifecycle)**
-Both talk to the same API server but answer different questions, so they are separate packages rather than one god-client. `cluster` writes RBAC/service accounts and mints tokens; `functions` owns the function lifecycle via knative/func. The shared connection logic lives in `kube.RESTConfig`, which both call, so host resolution, TLS, JSON content config, and the default request timeout are defined once. `kube` is a leaf (depends only on `client-go/rest`), which keeps it importable by any domain package without cycles — unlike `config`, the wiring layer, which is off-limits to domain packages.
+**Cluster access is split by intent: `cluster` (provisioning and introspection) vs `functions` (function lifecycle)**
+Both talk to the same API server but answer different questions, so they are separate packages rather than one god-client. `cluster` writes RBAC/service accounts, mints tokens, and checks namespace existence for repo function validation; `functions` owns the function lifecycle via knative/func. The shared connection logic lives in `kube.RESTConfig`, which both call, so host resolution, TLS, JSON content config, and the default request timeout are defined once. `kube` is a leaf (depends only on `client-go/rest`), which keeps it importable by any domain package without cycles — unlike `config`, the wiring layer, which is off-limits to domain packages.
 
 **`functions` is the single knative/func facade, but splits offline scaffolding from cluster operations**
 Everything that wraps `knative.dev/func` lives in this one package, so there is a single boundary around that dependency. Within it, two responsibilities are kept apart because they have different needs:
@@ -154,6 +154,15 @@ The OCP service CA operator rotates the serving cert/key automatically. `tlsrelo
 
 **SCM is abstracted behind a registry**
 `scm.Registry` maps `scm.Platform` → `scm.ClientFactory`. The active registry lives at `config.SCMRegistry`, a package-level var that tests swap out via `withSCMMock`. Handlers never reference a concrete SCM client type. The platform is currently resolved statically (`scm.DefaultPlatform = GitHub`), but the registry is designed to support dynamic platform selection — the handler can later derive the platform from the request body or header without changes to the registry or client implementations.
+
+**Repo function namespace validation uses `Get` per namespace, not `List` all namespaces**
+When `listRepoFunctions` collects repo-backed functions, it validates each function's namespace against the cluster using `cluster.Client.CheckNamespace`, which calls `CoreV1().Namespaces().Get(ctx, namespace, ...)`. Three outcomes are possible:
+
+- **404 Not Found** (`cluster.ErrNamespaceNotFound`): namespace is confirmed absent. The function is shown with `err: "func.yaml: namespace does not exist"`.
+- **403 Forbidden** (`cluster.ErrNamespaceForbidden`): namespace exists but the caller's OCP token cannot access it. The function is shown with `err: "func.yaml: namespace access denied"` so the user can see it and request access.
+- **Other error** (transient network or API failure): the function is shown with `err: "func.yaml: namespace check failed"` rather than being silently hidden or shown as NotDeployed.
+
+Using `List` all namespaces and then checking membership was rejected: `Namespaces().List(...)` returns only namespaces visible to the caller's token, and regular OCP users typically lack the cluster-wide `list` verb. `Get` per namespace is used instead: it requires only the `get` verb scoped to the target namespace, and disambiguates 404 (genuinely absent) from 403 (exists, no access) — a distinction that `List` cannot make.
 
 **Handler error mapping**
 `createFunction` wraps upstream failures explicitly:
