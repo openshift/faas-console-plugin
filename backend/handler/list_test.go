@@ -11,6 +11,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	fn "knative.dev/func/pkg/functions"
@@ -43,6 +44,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}).HandleListFunctions(w, listRequest())
@@ -101,6 +103,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return []fn.ListItem{{Name: "my-func", Namespace: "demo"}}, nil
 			},
 		})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, listRequest())
@@ -129,6 +132,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return []fn.ListItem{{Name: "my-func", Namespace: "prod"}}, nil
 			},
 		})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, listRequest())
@@ -161,6 +165,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return nil, errors.New("knative not installed")
 			},
 		})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, listRequest())
@@ -185,6 +190,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClientError(errors.New("cannot reach cluster"))
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, listRequest())
@@ -209,6 +215,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, listRequest())
@@ -221,7 +228,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items[0].Name).To(BeEmpty())
 		Expect(items[0].Namespace).To(BeEmpty())
 		Expect(items[0].Runtime).To(BeEmpty())
-		Expect(items[0].Err).To(Equal("failed to read func.yaml"))
+		Expect(items[0].Err).To(Equal("func.yaml: failed to read"))
 	})
 
 	It("returns error when func.yaml contains invalid YAML", func() {
@@ -236,6 +243,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, listRequest())
@@ -246,7 +254,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items).To(HaveLen(1))
 		Expect(items[0].RepoName).To(Equal("bad-yaml"))
 		Expect(items[0].Name).To(BeEmpty())
-		Expect(items[0].Err).To(Equal("invalid func.yaml"))
+		Expect(items[0].Err).To(Equal("func.yaml: invalid"))
 	})
 
 	It("returns 502 when both repo and cluster listing fail", func() {
@@ -255,6 +263,26 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return nil, errors.New("connection refused")
 			},
 		})
+		withFunctionsClientError(errors.New("cannot reach cluster"))
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusBadGateway))
+	})
+
+	It("returns 502 when cluster client creation fails and Knative also fails", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "my-func", URL: "https://github.com/alice/my-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: my-func\nnamespace: demo\nruntime: go\n", nil
+			},
+		})
+		withClusterClientError(errors.New("not in cluster"))
 		withFunctionsClientError(errors.New("cannot reach cluster"))
 
 		w := httptest.NewRecorder()
@@ -317,6 +345,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
@@ -344,6 +373,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
@@ -439,6 +469,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return []fn.ListItem{{Name: "cluster-in-demo", Namespace: "demo", Runtime: "node"}}, nil
 			},
 		})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace=demo"))
@@ -452,7 +483,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(names).To(ConsistOf("in-demo", "cluster-in-demo"))
 	})
 
-	It("drops repo functions whose func.yaml cannot be attributed to the namespace when scoped", func() {
+	It("includes repo functions with a func.yaml error even when a namespace filter is active", func() {
 		withSCMStub(&scm.ClientStub{
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{
@@ -464,6 +495,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 		})
 		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace=demo"))
@@ -471,7 +503,38 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
 		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
-		Expect(items).To(BeEmpty())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("broken"))
+		Expect(items[0].Err).To(Equal("func.yaml: failed to read"))
+	})
+
+	It("marks a scoped repo function as errored when its namespace matches the filter but does not exist on the cluster", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "deleted-ns-func", URL: "https://github.com/alice/deleted-ns-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: deleted-ns-func\nnamespace: demo\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{
+			OnCheckNamespace: func(ctx context.Context, namespace string) error {
+				return cluster.ErrNamespaceNotFound
+			},
+		})
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace=demo"))
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("deleted-ns-func"))
+		Expect(items[0].Err).To(Equal("func.yaml: namespace does not exist"))
 	})
 
 	It("returns all functions unfiltered and cluster-wide when all=true", func() {
@@ -496,6 +559,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return []fn.ListItem{{Name: "cluster-only", Namespace: "prod", Runtime: "node"}}, nil
 			},
 		})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?all=true"))
@@ -525,6 +589,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				return nil, nil
 			},
 		})
+		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
 		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?all=true&namespace=demo"))
@@ -535,6 +600,121 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
 		Expect(items).To(HaveLen(1))
 		Expect(items[0].Name).To(Equal("in-other"))
+	})
+
+	It("marks a repo function as errored when its namespace does not exist on the cluster", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "deleted-ns-func", URL: "https://github.com/alice/deleted-ns-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: deleted-ns-func\nnamespace: deleted-ns\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{
+			OnCheckNamespace: func(ctx context.Context, namespace string) error {
+				return cluster.ErrNamespaceNotFound
+			},
+		})
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("deleted-ns-func"))
+		Expect(items[0].Namespace).To(Equal("deleted-ns"))
+		Expect(items[0].Err).To(Equal("func.yaml: namespace does not exist"))
+	})
+
+	It("does not mark a repo function as errored when its namespace exists on the cluster", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "my-func", URL: "https://github.com/alice/my-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: my-func\nnamespace: existing-ns\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{
+			OnCheckNamespace: func(ctx context.Context, namespace string) error {
+				return nil
+			},
+		})
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].RepoName).To(Equal("my-func"))
+		Expect(items[0].Err).To(BeEmpty())
+	})
+
+	It("shows a repo function with an error when its namespace returns 403 Forbidden", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "my-func", URL: "https://github.com/alice/my-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: my-func\nnamespace: some-ns\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{
+			OnCheckNamespace: func(ctx context.Context, namespace string) error {
+				return cluster.ErrNamespaceForbidden
+			},
+		})
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].Err).To(Equal("func.yaml: namespace access denied"))
+	})
+
+	It("shows a repo function with an error when namespace existence check fails with a transient error", func() {
+		withSCMStub(&scm.ClientStub{
+			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
+				return []scm.Repo{
+					{Owner: "alice", Name: "my-func", URL: "https://github.com/alice/my-func", DefaultBranch: "main"},
+				}, nil
+			},
+			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
+				return "name: my-func\nnamespace: some-ns\nruntime: go\n", nil
+			},
+		})
+		withFunctionsClient(&functions.ClientStub{})
+		withClusterStub(&cluster.ClientStub{
+			OnCheckNamespace: func(ctx context.Context, namespace string) error {
+				return errors.New("connection timeout")
+			},
+		})
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListFunctions(w, listRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		var items []listItem
+		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
+		Expect(items).To(HaveLen(1))
+		Expect(items[0].Err).To(Equal("func.yaml: namespace check failed"))
 	})
 
 	It("falls back to cluster-only results when the SCM API is unavailable", func() {

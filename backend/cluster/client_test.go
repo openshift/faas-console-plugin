@@ -2,11 +2,13 @@ package cluster
 
 import (
 	"context"
+	"errors"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
+	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -404,6 +406,56 @@ var _ = Describe("Kubernetes cluster client", func() {
 			_, err := cl.RequestToken(context.Background(), "default", 30*24*60*60)
 
 			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	Describe("CheckNamespace", func() {
+		It("returns nil when the namespace exists", func() {
+			ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "demo"}}
+			cs := fake.NewSimpleClientset(ns)
+			cl := &k8sClient{clientset: cs}
+
+			err := cl.CheckNamespace(context.Background(), "demo")
+
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("returns ErrNamespaceNotFound when the namespace does not exist", func() {
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("get", "namespaces", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, k8serrors.NewNotFound(schema.GroupResource{Resource: "namespaces"}, "missing-ns")
+			})
+			cl := &k8sClient{clientset: cs}
+
+			err := cl.CheckNamespace(context.Background(), "missing-ns")
+
+			Expect(errors.Is(err, ErrNamespaceNotFound)).To(BeTrue())
+		})
+
+		It("returns ErrNamespaceForbidden when the namespace is not accessible", func() {
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("get", "namespaces", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, forbiddenFor("namespaces")
+			})
+			cl := &k8sClient{clientset: cs}
+
+			err := cl.CheckNamespace(context.Background(), "restricted-ns")
+
+			Expect(errors.Is(err, ErrNamespaceForbidden)).To(BeTrue())
+		})
+
+		It("returns a wrapped error for other failures", func() {
+			cs := fake.NewSimpleClientset()
+			cs.PrependReactor("get", "namespaces", func(action k8stesting.Action) (bool, runtime.Object, error) {
+				return true, nil, k8serrors.NewInternalError(errors.New("etcd unavailable"))
+			})
+			cl := &k8sClient{clientset: cs}
+
+			err := cl.CheckNamespace(context.Background(), "demo")
+
+			Expect(err).To(HaveOccurred())
+			Expect(errors.Is(err, ErrNamespaceNotFound)).To(BeFalse())
+			Expect(errors.Is(err, ErrNamespaceForbidden)).To(BeFalse())
 		})
 	})
 })

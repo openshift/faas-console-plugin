@@ -40,3 +40,11 @@ func withFunctionsClientError(err error) {
 	}
 	DeferCleanup(func() { newFunctionsClient = orig })
 }
+
+func withClusterClientError(err error) {
+	orig := newClusterClient
+	newClusterClient = func(host, token string, caCert []byte) (cluster.Client, error) {
+		return nil, err
+	}
+	DeferCleanup(func() { newClusterClient = orig })
+}

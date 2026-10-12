@@ -23,6 +23,7 @@ export interface FunctionTableItem {
   namespace: string;
   source: FunctionSource;
   mainResource?: K8sResourceCommon;
+  err?: string;
 }
 
 export function FunctionTable({
@@ -68,7 +69,7 @@ export function FunctionTable({
               <TextOrDash value={fn.runtime} />
             </Td>
             <Td dataLabel={t('Status')}>
-              <StatusCell status={fn.status} />
+              <StatusCell status={fn.status} err={fn.err} />
             </Td>
             <Td dataLabel={t('URL')}>
               <UrlCell url={fn.url} />
@@ -95,7 +96,7 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({ status }: { status: FunctionStatus }) {
+function StatusCell({ status, err }: { status: FunctionStatus; err?: string }) {
   switch (status) {
     case 'Running':
       return <SuccessStatus title={status} />;
@@ -105,7 +106,15 @@ function StatusCell({ status }: { status: FunctionStatus }) {
     case 'PushedToGitHub':
       return <ProgressStatus title={status} />;
     case 'Error':
-      return <ErrorStatus title={status} />;
+      return err ? (
+        <Tooltip content={err}>
+          <span className="pf-v6-u-display-inline-flex">
+            <ErrorStatus title={status} />
+          </span>
+        </Tooltip>
+      ) : (
+        <ErrorStatus title={status} />
+      );
     case 'ScaledToZero':
     case 'NotDeployed':
       return <InfoStatus title={status} />;

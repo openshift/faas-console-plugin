@@ -253,13 +253,21 @@ function newItem(item: FunctionListItem): FunctionTableItem {
     url: '',
     replicas: 0,
     source: item.source,
+    err: item.err,
   };
 }
 
+// enrichItem merges cluster state into a repo item. If the item already has an
+// error (e.g. namespace check failed), the Error status is preserved so the
+// tooltip remains visible, but url/replicas/mainResource are still filled in
+// from the cluster.
+// Note: a repo item with a func.yaml parse error cannot be enriched
+// (empty namespace prevents a cluster match) and will appear as a duplicate
+// alongside its deployed counterpart until SRVOCF-1138 is resolved.
 function enrichItem(item: FunctionTableItem, cf: ClusterFunction): FunctionTableItem {
   return {
     ...item,
-    status: cf.status,
+    status: item.err ? item.status : cf.status,
     url: cf.url,
     replicas: cf.replicas,
     mainResource: cf.mainResource,
