@@ -1,12 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
 import {
   getFilesStub,
   listFunctionsStub,
   putFilesStub,
 } from '../../common/testing/functionsClientStub';
+import { connectionStub } from '../../common/testing/authClientStub';
 import { repoListItem } from '../../common/testing/testData';
 import { FileEntry } from '../../common/types';
 import FunctionEditPage from './FunctionEditPage';
@@ -23,19 +23,6 @@ vi.mock('react-i18next', () => ({
 let mockOnChange: ((value: string) => void) | undefined;
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
-  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  };
-
-  const consoleFetch = async (url: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    if (!res.ok) throw await res.json();
-    return res;
-  };
-
   return {
     DocumentTitle: ({ children }: { children: string }) => children,
     ListPageHeader: ({ title }: { title: string }) => title,
@@ -60,8 +47,8 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
         </div>
       );
     },
-    consoleFetchJSON,
-    consoleFetch,
+    consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
+    consoleFetch: sdkTestDoubles.consoleFetchStub,
     useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
     isAllNamespacesKey: sdkTestDoubles.isAllNamespaceKeyFake,
   };
@@ -80,12 +67,7 @@ function renderEditPage(name: string) {
 
 describe('FunctionEditPage', () => {
   beforeEach(() => {
-    logoutGithubFake();
-    authenticateGithubFake();
-  });
-
-  afterAll(() => {
-    logoutGithubFake();
+    connectionStub();
   });
 
   it('shows loading state in tree while fetching files', async () => {
@@ -99,7 +81,9 @@ describe('FunctionEditPage', () => {
 
     renderEditPage('my-func');
 
-    expect(screen.getByText('Loading source...')).toBeInTheDocument();
+    // AuthProvider holds its children back until the backend says whether a
+    // credential is stored, so the tree mounts a tick after render.
+    expect(await screen.findByText('Loading source...')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Save & Deploy/ })).toBeDisabled();
 
     continueWithRequest();

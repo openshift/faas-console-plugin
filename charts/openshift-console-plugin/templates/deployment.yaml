@@ -24,6 +24,9 @@ spec:
       labels:
             {{- include "openshift-console-plugin.labels" . | nindent 8 }}
     spec:
+      # Needed for the session Role below; without it the pod runs as "default"
+      # and cannot write session Secrets.
+      serviceAccountName: {{ include "openshift-console-plugin.serviceAccountName" . }}
       {{- with .Values.plugin.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -43,11 +46,17 @@ spec:
             {{- if .Values.plugin.saTokenExpiry }}
             - "--sa-token-expiry={{ .Values.plugin.saTokenExpiry }}"
             {{- end }}
-          {{- if .Values.plugin.funcCliVersion }}
           env:
+            # The backend stores session credentials as Secrets in its own
+            # namespace, the only one its Role covers.
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            {{- if .Values.plugin.funcCliVersion }}
             - name: FUNC_CLI_VERSION
               value: {{ .Values.plugin.funcCliVersion | quote }}
-          {{- end }}
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /healthz

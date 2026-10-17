@@ -1,7 +1,9 @@
 import { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
 
-export const PAT_KEY = 'func-console-pat';
-export const USER_KEY = 'func-console-user';
+// Fired when the backend reports it has no usable credential for the caller.
+// Nothing about the connection lives in the browser, so this is how the UI
+// learns the stored credential went away while the tab was open.
+export const AUTH_EXPIRED_EVENT = 'auth-expired';
 export const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
 export const FUNCTION_NAME_LABEL = 'function.knative.dev/name';
