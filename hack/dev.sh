@@ -3,9 +3,25 @@
 set -euo pipefail
 
 # Start local dev environment: Go backend + webpack dev server + console container.
+#
 # Prerequisites: oc login
 # Optional: make setup-serverless (for full Knative/Serverless functionality)
-# Usage: make dev | make dev-stop | make dev-randomize-ports | make dev-fake-gh
+#
+# Usage:
+#   hack/dev.sh                             Start dev environment
+#   hack/dev.sh --fake-gh                   Start with fake GitHub server
+#   hack/dev.sh --randomize-ports           Start with randomized ports
+#   hack/dev.sh --randomize-ports --fake-gh Start with both (most common for local dev)
+#   hack/dev.sh --stop                      Stop all dev processes
+#   hack/dev.sh --stop-backend              Stop only the backend
+#   hack/dev.sh --restart-backend           Rebuild and restart the backend
+#
+# Via Make:
+#   make dev                                Start dev environment
+#   make dev-fake-gh                        Start with fake GitHub server
+#   make dev-stop                           Stop all dev processes
+#   make dev-stop-backend                   Stop only the backend
+#   make dev-restart-backend                Rebuild and restart the backend
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
@@ -130,6 +146,27 @@ start_backend() {
   log::info "Starting Go backend..."
   ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
+}
+
+restart_backend() {
+  local dev_env=".dev-env.json"
+  if [[ ! -f "$dev_env" ]]; then
+    log::error "$dev_env not found. Is the dev environment running?"
+    exit 1
+  fi
+  BACKEND_PORT=$(jq -r '.backendPort' "$dev_env")
+  FAKE_GH_PORT=$(jq -r '.fakeGithubPort // empty' "$dev_env")
+  if [[ -n "$FAKE_GH_PORT" ]]; then
+    FAKE_GH=true
+  fi
+
+  log::step "Restarting backend"
+  stop_backend
+  extract_cluster_ca
+  resolve_kube_api_server
+  start_backend
+  wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"
+  log::info "Backend restarted on port $BACKEND_PORT."
 }
 
 start_backend_watcher() {
@@ -308,6 +345,15 @@ for arg in "$@"; do
       stop_dev
       exit 0
       ;;
+    --stop-backend)
+      stop_backend
+      log::info "Backend stopped."
+      exit 0
+      ;;
+    --restart-backend)
+      restart_backend
+      exit 0
+      ;;
     --fake-gh)
       FAKE_GH=true
       ;;
@@ -315,7 +361,7 @@ for arg in "$@"; do
       RANDOMIZE_PORTS=true
       ;;
     *)
-      echo "Usage: $0 [--stop] [--randomize-ports] [--fake-gh]"
+      echo "Usage: $0 [--stop] [--stop-backend] [--restart-backend] [--randomize-ports] [--fake-gh]"
       exit 1
       ;;
   esac

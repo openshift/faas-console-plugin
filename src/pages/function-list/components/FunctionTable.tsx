@@ -2,35 +2,27 @@ import {
   ErrorStatus,
   InfoStatus,
   K8sResourceCommon,
-  ProgressStatus,
-  StatusIconAndText,
   SuccessStatus,
   useDeleteModal,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { ActionList, ActionListItem, Button, Tooltip } from '@patternfly/react-core';
-import { ExclamationTriangleIcon, PencilAltIcon, TrashIcon } from '@patternfly/react-icons';
+import { ActionList, ActionListItem, Button, Flex, Icon, Tooltip } from '@patternfly/react-core';
+import {
+  ExclamationTriangleIcon,
+  PencilAltIcon,
+  RhUiSyncIcon,
+  TrashIcon,
+} from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
-import { FunctionSource, FunctionStatus } from '../../../common/types';
-
-export interface FunctionTableItem {
-  name: string;
-  repoName: string;
-  runtime: string;
-  status: FunctionStatus;
-  url: string;
-  replicas: number;
-  namespace: string;
-  source: FunctionSource;
-  mainResource?: K8sResourceCommon;
-}
+import { FunctionSource } from '../../../common/types';
+import { Function, FunctionStatus } from '../types';
 
 export function FunctionTable({
   functions,
   onEdit,
   showNamespace,
 }: {
-  functions: FunctionTableItem[];
+  functions: Function[];
   onEdit: (name: string) => void;
   showNamespace: boolean;
 }) {
@@ -68,12 +60,12 @@ export function FunctionTable({
               <TextOrDash value={fn.runtime} />
             </Td>
             <Td dataLabel={t('Status')}>
-              <StatusCell status={fn.status} />
+              <StatusCell functionStatus={fn.status} />
             </Td>
             <Td dataLabel={t('URL')}>
-              <UrlCell url={fn.url} />
+              <UrlCell url={fn.routeURL} />
             </Td>
-            <Td dataLabel={t('Replicas')}>{fn.replicas}</Td>
+            <Td dataLabel={t('Replicas')}>{fn.replicas ?? '—'}</Td>
             <Td dataLabel={t('Actions')} isActionCell>
               <ActionList isIconList>
                 <ActionListItem>
@@ -95,23 +87,118 @@ function TextOrDash({ value }: { value?: string }) {
   return <>{value || '—'}</>;
 }
 
-function StatusCell({ status }: { status: FunctionStatus }) {
-  switch (status) {
-    case 'Running':
-      return <SuccessStatus title={status} />;
-    case 'Deploying':
-    case 'CreatingRepo':
-    case 'Pushing':
-    case 'PushedToGitHub':
-      return <ProgressStatus title={status} />;
-    case 'Error':
-      return <ErrorStatus title={status} />;
-    case 'ScaledToZero':
-    case 'NotDeployed':
-      return <InfoStatus title={status} />;
-    case 'Unknown':
-      return <StatusIconAndText title={status} icon={<ExclamationTriangleIcon />} />;
+function StatusCell({ functionStatus }: { functionStatus: FunctionStatus }) {
+  const { t } = useTranslation('plugin__console-functions-plugin');
+
+  const inProgress = (
+    <Tooltip content={t('Workflow run in progress')}>
+      <Icon role="img" aria-label={t('Workflow run in progress')}>
+        <RhUiSyncIcon className="co-spin" />
+      </Icon>
+    </Tooltip>
+  );
+
+  // When not deployed, workflow status is the primary display
+  if (functionStatus.cluster.status === 'NotDeployed') {
+    switch (functionStatus.workflow.status) {
+      case 'Building':
+        return (
+          <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+            <InfoStatus title={t('Building')} />
+            {inProgress}
+          </Flex>
+        );
+      case 'Succeeded':
+        return <InfoStatus title={t('Deploying')} />;
+      case 'Failed': {
+        const badge = <ErrorStatus title={t('BuildFailed')} />;
+        return functionStatus.workflow.url ? (
+          <RunLink url={functionStatus.workflow.url}>{badge}</RunLink>
+        ) : (
+          badge
+        );
+      }
+      default:
+        return <InfoStatus title={t('NotDeployed')} />;
+    }
   }
+
+  const cluster = (() => {
+    switch (functionStatus.cluster.status) {
+      case 'Running':
+        return <SuccessStatus title={t('Running')} />;
+      case 'ScaledToZero':
+        return <InfoStatus title={t('ScaledToZero')} />;
+      case 'Deploying':
+        return <InfoStatus title={t('Deploying')} />;
+      case 'Undeploying':
+        return <InfoStatus title={t('Undeploying')} />;
+      case 'Error': {
+        const badge = <ErrorStatus title={t('Error')} />;
+        return functionStatus.cluster.error ? (
+          <Tooltip content={functionStatus.cluster.error.message}>{badge}</Tooltip>
+        ) : (
+          badge
+        );
+      }
+    }
+  })();
+
+  const workflow = (() => {
+    switch (functionStatus.workflow.status) {
+      case 'None':
+      case 'Succeeded':
+        return null;
+      case 'Building':
+        return inProgress;
+      case 'Failed': {
+        const icon = (
+          <Icon status="danger">
+            <ExclamationTriangleIcon />
+          </Icon>
+        );
+        return functionStatus.workflow.url ? (
+          <Tooltip content={t('Latest workflow run failed')}>
+            <RunLink url={functionStatus.workflow.url} ariaLabel={t('Latest workflow run failed')}>
+              {icon}
+            </RunLink>
+          </Tooltip>
+        ) : (
+          <Tooltip content={t('Latest workflow run failed')}>{icon}</Tooltip>
+        );
+      }
+    }
+  })();
+
+  return (
+    <>
+      {!cluster && !workflow && <TextOrDash />}
+      {!cluster && workflow}
+      {cluster && !workflow && cluster}
+      {cluster && workflow && (
+        <Flex alignItems={{ default: 'alignItemsCenter' }} gap={{ default: 'gapSm' }}>
+          {cluster}
+          {workflow}
+        </Flex>
+      )}
+    </>
+  );
+}
+
+function RunLink({
+  url,
+  ariaLabel,
+  children,
+}: {
+  url: string;
+  ariaLabel?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" aria-label={ariaLabel}>
+      {children}
+    </a>
+  );
 }
 
 function UrlCell({ url }: { url?: string }) {
@@ -142,6 +229,9 @@ function EditActionButton({
       variant="plain"
       aria-label={t('Edit')}
       icon={<PencilAltIcon />}
+      // must use isAriaDisabled instead of isDisabled or the tooltip won't
+      // show because for natively disabled buttons no mouse event on hover
+      // is dispatched
       isAriaDisabled={isDisabled}
       onClick={() => {
         if (!isDisabled) onEdit(repoName);

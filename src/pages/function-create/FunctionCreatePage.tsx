@@ -1,14 +1,21 @@
-import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
+import {
+  DocumentTitle,
+  K8sResourceKind,
+  ListPageHeader,
+  useK8sWatchResource,
+  WatchK8sResource,
+} from '@openshift-console/dynamic-plugin-sdk';
 import { Alert, PageSection } from '@patternfly/react-core';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { useCluster } from '../../common/clients/useCluster';
+import { CreateFunctionForm, CreateFunctionFormData } from './components/CreateFunctionForm';
+
 import { createFunction } from '../../common/clients/functionsClient';
-import { EnvVar, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from '../../common/types';
+import { EnvVar } from '../../common/types';
+import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from './types';
 import { errorMessage } from '../../common/utils/utils';
 
 export default function FunctionCreatePage() {
@@ -82,7 +89,7 @@ function useFunctionCreatePage(): {
   const isConnectedToForge = useContext(AuthContext).isAuthenticated;
   const [namespace, setNamespace] = useState('');
   const debouncedNamespace = useDebouncedValue(namespace, 300);
-  const { secrets, configMaps } = useCluster([], debouncedNamespace);
+  const { secrets, configMaps } = useSecretsAndConfigMaps(debouncedNamespace);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,4 +180,33 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   }, [value, delayMs]);
 
   return debounced;
+}
+
+function useSecretsAndConfigMaps(namespace?: string): {
+  secrets: K8sKeyedResource[];
+  configMaps: K8sKeyedResource[];
+} {
+  const secretConfig = useMemo(() => newDataWatchConfig('Secret', namespace), [namespace]);
+  const configMapConfig = useMemo(() => newDataWatchConfig('ConfigMap', namespace), [namespace]);
+
+  const [rawSecrets] = useK8sWatchResource<K8sResourceKind[]>(secretConfig);
+  const [rawConfigMaps] = useK8sWatchResource<K8sResourceKind[]>(configMapConfig);
+
+  const secrets = useMemo(() => toKeyedResources(rawSecrets), [rawSecrets]);
+  const configMaps = useMemo(() => toKeyedResources(rawConfigMaps), [rawConfigMaps]);
+
+  return { secrets, configMaps };
+}
+
+function newDataWatchConfig(kind: string, namespace?: string): WatchK8sResource | null {
+  return namespace ? { groupVersionKind: { version: 'v1', kind }, namespace, isList: true } : null;
+}
+
+function toKeyedResources(resources: K8sResourceKind[]): K8sKeyedResource[] {
+  return (resources ?? [])
+    .filter((r) => r.metadata?.name)
+    .map((r) => ({
+      name: r.metadata!.name!,
+      keys: r.data ? Object.keys(r.data) : [],
+    }));
 }

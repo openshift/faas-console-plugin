@@ -24,11 +24,11 @@ Arrows mean "imports / depends on."
 
 | Layer | Maps to | Depends on |
 |-------|---------|------------|
-| **Types** | `common/types.ts` | nothing |
-| **Clients** | `common/clients/` (plain async functions and hooks that wrap SDK calls) | Types, Utils |
-| **Hooks** | `common/clients/use*.ts`, `common/hooks/`, `pages/<name>/hooks/` | Clients, Types, Utils |
+| **Types** | `common/types.ts`, `pages/<name>/types.ts` | nothing |
+| **Clients** | `common/clients/` (plain async functions) | Types, Utils |
+| **Hooks** | Inlined in page/component files. Extract to `pages/<name>/hooks/` or `common/hooks/` only when reused. | Clients, Types, Utils |
 | **Components** | `common/components/` (shared), `pages/<name>/components/` (page-specific) | Hooks, Types, Utils |
-| **Pages** | `pages/<name>/` | Components, Hooks, Utils |
+| **Pages** | `pages/<name>/` | Components, Hooks, Utils, Types |
 | **Utils** | `common/utils/` | nothing (cross-cutting) |
 
 ### Dependency Rules
@@ -44,13 +44,14 @@ Arrows mean "imports / depends on."
 - `src/pages/<name>/` contains the page component, its test, and a `components/` subdir
 - `src/pages/<name>/components/` contains components used only by that page
 - `src/common/` contains everything shared across pages (components, clients, utils, context)
-- **Ownership rule:** if a component is imported by only one page (test imports don't count), it lives in `pages/<name>/components/`. If imported by multiple pages, it lives in `common/components/`.
+- `src/pages/<name>/types.ts` contains types used only within that page's directory
+- **Ownership rule:** pages are divided into sections which are extracted into components in `pages/<name>/components/`. Components that have sub-components keep them in the same file unless they can be reused, in which case they are extracted to their own file. Components shared across multiple pages live in `common/components/`. The same rule applies to types: page-specific domain types live in `pages/<name>/types.ts`, shared wire/DTO types live in `common/types.ts`.
 
 ## React
 
 ### Pages
 
-- **Smart for page-specific data** -- pages use hooks (their co-located page hook, `useCluster`) to fetch, prepare, and transform all data needed for downstream components.
+- **Smart for page-specific data** -- pages use clients in their page hooks to fetch, prepare, and transform all data needed for downstream components. If multiple pages need the same data, extract a shared hook into `common/hooks/` or `common/clients/`.
 
 ### Components
 
@@ -60,14 +61,13 @@ Arrows mean "imports / depends on."
 
 ### Clients
 
-`common/clients/` contains thin wrappers around external APIs. Two forms:
+`common/clients/` contains thin wrappers around external APIs:
 
-- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that hooks call.
-- **Hooks** (e.g., `useCluster.ts`) -- when the client wraps a React-aware SDK call such as `useK8sWatchResource`, it stays as a hook.
+- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers and SSE stream consumers that page hooks call.
 
 ### Hooks
 
-- **Extract logic into hooks** — if a page or component has any logic (state management, data transformation, side effects), extract it into a custom hook. If the hook is only used by one component, keep it in the same file, do not export it. If the hook is reused by multiple components within one page, put it in `src/pages/<name>/hooks/`. If reused across pages, put it in `src/common/hooks/`. If there is no logic, no hook is needed.
+- **Extract logic into hooks** — if a page or component has non-trivial logic (state management, data transformation, side effects), extract it into a custom hook. One-liner logic stays inlined in the component, no hook needed. If the hook is only used by one component, keep it in the same file, do not export it. If the hook is reused by multiple components within one page, put it in `src/pages/<name>/hooks/`. If reused across pages, put it in `src/common/hooks/`. Keep the translation hook (`useTranslation`) at the top of the page component, not inside custom hooks.
 
 ### Utility Functions
 

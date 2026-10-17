@@ -1,6 +1,6 @@
 import { K8sResourceKind, WatchK8sResource } from '@openshift-console/dynamic-plugin-sdk';
+import { ReactNode, useSyncExternalStore } from 'react';
 import { FUNCTION_NAME_LABEL, REVISION_LABEL } from '../types';
-import { useSyncExternalStore } from 'react';
 
 // START: global helpers -------------------------------------------------------
 export function reset() {
@@ -234,3 +234,37 @@ export function setActiveNamespace(ns: string) {
 // START: isAllNamespaceKeyFake ------------------------------------------------
 export const isAllNamespaceKeyFake = (ns: string) => ns === '#ALL_NS#';
 // END: isAllNamespaceKeyFake --------------------------------------------------
+
+// START: useDeleteModalStub ---------------------------------------------------
+export const useDeleteModalStub = (
+  _resource: K8sResourceKind,
+  _redirectTo?: string,
+  _message?: JSX.Element,
+  btnText?: ReactNode,
+) => {
+  return () => {
+    const modal = document.createElement('div');
+    modal.setAttribute('role', 'dialog');
+    modal.textContent = String(btnText ?? 'Delete');
+    document.body.appendChild(modal);
+  };
+};
+// END: useDeleteModalStub -----------------------------------------------------
+
+// START: consoleFetchJSONFake ------------------------------------------------
+export const consoleFetchJSONFake = async (
+  url: string,
+  _method?: string,
+  options?: RequestInit,
+) => {
+  const res = await fetch(new URL(url, 'http://localhost').href, options);
+  const json = await res.json();
+  if (!res.ok) throw json;
+  return json;
+};
+// END: consoleFetchJSONFake --------------------------------------------------
+
+// START: consoleFetchFake ------------------------------------------------
+export const consoleFetchFake = async (url: string, options?: RequestInit) =>
+  fetch(new URL(url, 'http://localhost').href, options);
+// END: consoleFetchFake --------------------------------------------------

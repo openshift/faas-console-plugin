@@ -37,7 +37,7 @@ test.describe('Functions list', () => {
       const grid = page.getByRole('grid', { name: 'Functions' });
       const row = grid.locator(`tbody tr:has(td:text-is("${PRESEEDED_FUNC_NAME}"))`);
       await expect(row).toBeVisible();
-      await expect(row.getByText('NotDeployed')).toBeVisible();
+      await expect(row.getByText('Not Deployed')).toBeVisible();
       await expect(row.getByRole('button', { name: 'Edit' })).toBeEnabled();
       await expect(row.getByRole('button', { name: 'Delete' })).toBeDisabled();
     });

@@ -60,8 +60,10 @@ Shared test infrastructure lives in `src/common/testing/`:
 | File | Purpose |
 | ------ | --------- |
 | `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
-| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`) |
-| `testData.ts` | Test data factories for shared test fixtures (`repoListItem`) |
+| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`, `receiveWorkflowRunEventsStub`) |
+| `testData.ts` | Test data factories for shared test fixtures (`functionMetadata`) |
+| `timerFake.ts` | Disposable fake timer wrapper with `advance()` for controlled time progression |
+| `AsyncQueue.ts` | Async iterable queue for streaming test stubs (SSE event sequences) |
 | `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
 | `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
@@ -72,7 +74,7 @@ Tests replace external dependencies at two boundaries using test doubles:
 
 **Backend API (MSW).** `functionsClient.ts` calls the Go backend over HTTP. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, query params, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts`.
 
-**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks (e.g., `useCluster`) derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
+**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks derive cluster status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
 
 `vi.mock` is also used for framework internals that have no external service and cannot run outside their host environment:
 
@@ -98,7 +100,7 @@ Tests replace external dependencies at two boundaries using test doubles:
    ```typescript
    it('shows NotDeployed status for repos without cluster deployment', async () => {
      // Arrange
-     listFunctionsStub({ responses: [repoListItem({ repoName: 'orphan-func', name: 'orphan-func', namespace: 'demo', runtime: 'node' })] });
+     listFunctionsStub({ responses: [functionMetadata({ repoName: 'orphan-func', name: 'orphan-func', namespace: 'demo', runtime: 'node' })] });
 
      // Act
      render(
@@ -117,10 +119,10 @@ Tests replace external dependencies at two boundaries using test doubles:
 7. **Hook tests use `renderHook`** — Test hooks directly with `renderHook` from `@testing-library/react`. Assert on `result.current` instead of rendering a consumer component and querying the DOM.
 
    ```typescript
-   const { result } = renderHook(() => useCluster([funcName], namespace));
+   const { result } = renderHook(() => usePagination(items, pageSize));
 
-   expect(result.current.loaded).toBe(true);
-   expect(result.current.functions.size).toBe(0);
+   expect(result.current.page).toBe(1);
+   expect(result.current.visibleItems).toHaveLength(pageSize);
    ```
 
 8. **`server.boundary()` for infinite delays** — When a test uses `delay('infinite')` to verify loading states, wrap the test in `server.boundary()`. This scopes MSW handlers to the test and prevents in-flight requests from leaking across test boundaries (`resetHandlers()` alone does not abort in-flight requests).
@@ -276,6 +278,43 @@ The cert-reload test deletes the serving-cert secret (the service-ca operator
 recreates it), then asserts the served leaf certificate changes while the pod's
 UID and restart count stay the same. The fixed 30-second poll fallback and the
 5-minute test timeout also cover kubelet's secret propagation delay.
+
+---
+
+## Manual Testing
+
+### Seeding Test Data
+
+`hack/seed-testdata.sh` seeds fakegithub and/or the cluster with function test
+data for manual testing against the local dev environment.
+
+Prerequisites: dev environment running with fakegithub
+(`hack/dev.sh --randomize-ports --fake-gh`) and `oc login` to the target cluster.
+
+```bash
+make seed                          # repo only (NotDeployed)
+make seed-cluster                  # repo + cluster ksvc (Running)
+make seed-build-in_progress        # repo + Building status
+make seed-build-failure            # repo + BuildFailed status
+make seed-build-success            # repo + Succeeded status
+make seed-cleanup                  # delete seeded repo + cluster ksvc
+make seed-cleanup-all              # reset all fakegithub repos + delete all func ksvc's
+```
+
+With custom options:
+
+```bash
+hack/seed-testdata.sh --name hello --ns prod --runtime go
+hack/seed-testdata.sh --cluster --build in_progress    # Running + Building (rebuild)
+hack/seed-testdata.sh --cluster --build failure        # Running + BuildFailed
+hack/seed-testdata.sh --cluster-only                   # cluster ksvc only (no fakegithub)
+hack/seed-testdata.sh --cleanup                        # delete repo from fakegithub
+hack/seed-testdata.sh --cleanup --cluster              # delete repo + cluster ksvc
+hack/seed-testdata.sh --cleanup --cluster-only         # delete cluster ksvc only
+hack/seed-testdata.sh --cleanup-all                    # reset all + delete all func ksvc's
+```
+
+Run `hack/seed-testdata.sh --help` for all options.
 
 ---
 

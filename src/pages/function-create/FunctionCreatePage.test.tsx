@@ -9,6 +9,8 @@ import { server } from '../../common/testing/mswServer';
 
 const mockNavigate = vi.fn();
 
+const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -53,7 +55,7 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
     ),
     consoleFetchJSON,
     consoleFetch,
-    useK8sWatchResource: vi.fn().mockReturnValue([[], true, null]),
+    useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
   };
 });
 

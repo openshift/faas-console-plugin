@@ -1,8 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { CreateFunctionForm } from './CreateFunctionForm';
 import { AuthContext } from '../../../common/context/AuthProvider';
-import { AuthUser, K8sKeyedResource } from '../../../common/types';
+import { AuthUser } from '../../../common/types';
+import { CreateFunctionForm } from './CreateFunctionForm';
+import { K8sKeyedResource } from '../types';
 
 const testUser: AuthUser = { name: 'testuser', avatarUrl: '' };
 const authContext = {

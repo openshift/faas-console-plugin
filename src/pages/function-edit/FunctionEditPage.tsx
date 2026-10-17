@@ -24,7 +24,7 @@ import { useParams } from 'react-router';
 import { getFiles, listFunctions, putFiles } from '../../common/clients/functionsClient';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthProvider } from '../../common/context/AuthProvider';
-import { FileEntry, FunctionListItem } from '../../common/types';
+import { FileEntry, FunctionMetadata } from '../../common/types';
 import { handlerMap } from '../../common/utils/utils';
 import { EditToolbar } from './components/EditToolbar';
 import { FileTreeView } from './components/FileTreeView';
@@ -122,7 +122,7 @@ interface FunctionEditPageState {
   dirtyPaths: Set<string>;
   hasChanges: boolean;
   isLoading: boolean;
-  repoInfo: FunctionListItem | undefined;
+  repoInfo: FunctionMetadata | undefined;
   onFileSelect: (path: string) => void;
   onFileChange: (content: string) => void;
   onFileDelete: (path: string) => void;
@@ -134,7 +134,7 @@ function useFunctionEditPage(): FunctionEditPageState {
 
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [originalFiles, setOriginalFiles] = useState<FileEntry[]>([]);
-  const [repoInfo, setRepoInfo] = useState<FunctionListItem>();
+  const [repoInfo, setRepoInfo] = useState<FunctionMetadata>();
   const [selectedPath, setSelectedPath] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -163,7 +163,7 @@ function useFunctionEditPage(): FunctionEditPageState {
     let ignore = false;
 
     async function loadFiles() {
-      let repo: { content: FileEntry[]; info: FunctionListItem };
+      let repo: { content: FileEntry[]; info: FunctionMetadata };
       try {
         repo = await resolveRepoContent(repoName!, namespace);
       } catch {
@@ -276,7 +276,7 @@ function getLanguageFromPath(path: string): Language {
 async function resolveRepoContent(
   repoName: string,
   namespace: string,
-): Promise<{ content: FileEntry[]; info: FunctionListItem }> {
+): Promise<{ content: FileEntry[]; info: FunctionMetadata }> {
   const items = await listFunctions(namespace);
   const item = items.find((r) => r.repoName === repoName);
   if (!item) throw new Error(`repository ${repoName} not found`);

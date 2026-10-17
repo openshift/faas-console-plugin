@@ -2,12 +2,13 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { timerFake } from '../../common/testing/timerFake';
 import {
   getFilesStub,
   listFunctionsStub,
   putFilesStub,
 } from '../../common/testing/functionsClientStub';
-import { repoListItem } from '../../common/testing/testData';
+import { functionMetadata } from '../../common/testing/testData';
 import { FileEntry } from '../../common/types';
 import FunctionEditPage from './FunctionEditPage';
 
@@ -89,7 +90,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows loading state in tree while fetching files', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     let continueWithRequest = () => {};
     getFilesStub({
       wait: new Promise<void>((r) => {
@@ -109,7 +110,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('loads files from backend', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -131,7 +132,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows info bar with function name and repo link after loading', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -145,7 +146,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('auto-selects handler file based on runtime from func.yaml', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -157,7 +158,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('navigates back without modal when no changes made', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -173,7 +174,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows selected file content in editor when tree item is clicked', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -190,7 +191,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('marks hasChanges true after editing a file', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -207,7 +208,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('resets hasChanges after save', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub();
 
@@ -228,7 +229,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('persists edited content when switching files and back', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -255,7 +256,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('updates editor language when selecting a different file type', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -286,7 +287,7 @@ describe('FunctionEditPage', () => {
     ['.gitignore', 'node_modules/', 'plaintext'],
     ['Makefile', 'build:\n\tgo build .', 'plaintext'],
   ])('shows correct editor language for %s', async (path, content, expected) => {
-    listFunctionsStub({ responses: [repoListItem()] });
+    listFunctionsStub({ responses: [functionMetadata()] });
     getFilesStub({ responses: [fileEntry(path, content)] });
 
     renderEditPage('my-func');
@@ -302,7 +303,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows a success message after clicking Save & Deploy', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub();
 
@@ -324,7 +325,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows danger alert when save fails', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub({ errorResponse: { message: 'Server Error', status: 500 } });
 
@@ -344,7 +345,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('disables save button while saving is in progress', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub({ wait: new Promise(() => {}) });
 
@@ -364,7 +365,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('clears error alert when next save succeeds', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub({ errorResponse: { message: 'Server Error', status: 500 } });
 
@@ -409,8 +410,8 @@ describe('FunctionEditPage', () => {
   });
 
   it('shows success message after save and hides it after 2 seconds', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    using timer = timerFake();
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub();
 
@@ -430,19 +431,15 @@ describe('FunctionEditPage', () => {
       ).toBeInTheDocument();
     });
 
-    await act(async () => {
-      vi.advanceTimersByTime(3000);
-    });
+    await act(() => timer.advance(3000));
 
     expect(
       screen.queryByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
     ).not.toBeInTheDocument();
-
-    vi.useRealTimers();
   });
 
   it('deletes a file from the tree when Delete File is clicked', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -460,7 +457,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('enables save button after deleting a file', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -478,7 +475,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('clears the editor when the selected file is deleted', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
 
     renderEditPage('my-func');
@@ -502,7 +499,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('saves successfully after deleting a file', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub();
 
@@ -525,7 +522,7 @@ describe('FunctionEditPage', () => {
   });
 
   it('resets deleted files after a successful save', async () => {
-    listFunctionsStub({ responses: [repoListItem({ runtime: 'node' })] });
+    listFunctionsStub({ responses: [functionMetadata({ runtime: 'node' })] });
     getFilesStub({ responses: fileEntries() });
     putFilesStub();
 

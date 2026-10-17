@@ -11,6 +11,14 @@ const defaultHandlers = [
 
   // GET /api/v1/func/list - list function repos
   http.get(`${BACKEND_API}/api/v1/func/list`, () => HttpResponse.json([])),
+
+  // GET /api/v1/func/build/watch - server-sent events stream
+  // Default: empty stream (tests override with setWatchResponse)
+  http.get(`${BACKEND_API}/api/v1/func/build/watch`, () =>
+    HttpResponse.text('', {
+      headers: { 'Content-Type': 'text/event-stream' },
+    }),
+  ),
 ];
 
 export const server = setupServer(...defaultHandlers);

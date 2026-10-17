@@ -25,7 +25,7 @@ test.describe('Delete function', () => {
     await expect(grid).toBeVisible({ timeout: 30_000 });
 
     const row = grid.locator('tbody tr').filter({ hasText: PRESEEDED_FUNC_NAME });
-    await expect(row.getByText('NotDeployed')).toBeVisible();
+    await expect(row.getByText('Not Deployed')).toBeVisible();
     await expect(row.getByRole('button', { name: 'Delete' })).toBeDisabled();
   });
 
@@ -98,7 +98,7 @@ test.describe('Delete function', () => {
     await test.step('verify function shows as not deployed in the UI', async () => {
       const grid = page.getByRole('grid', { name: 'Functions' });
       const row = grid.locator(`tbody tr:has(td:text-is("${PRESEEDED_FUNC_NAME}"))`);
-      await expect(row.getByText('NotDeployed')).toBeVisible({ timeout: 30_000 });
+      await expect(row.getByText('Not Deployed')).toBeVisible({ timeout: 30_000 });
     });
   });
 });

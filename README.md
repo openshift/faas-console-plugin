@@ -121,6 +121,7 @@ make setup-serverless # install Serverless operator + Knative Serving (optional)
 make dev                 # build + start webpack + console container
 make dev-stop            # stop dev environment
 make dev-randomize-ports # start with random ports (when defaults are in use)
+make dev-fake-gh         # start with fake github server
 ```
 
 Navigate to <http://localhost:9000> to see the running plugin.

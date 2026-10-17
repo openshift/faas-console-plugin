@@ -1,5 +1,6 @@
 import { render, screen, act, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { timerFake } from '../../../common/testing/timerFake';
 import { EditToolbar } from './EditToolbar';
 
 const mockNavigate = vi.fn();
@@ -37,7 +38,7 @@ describe('EditToolbar', () => {
   });
 
   it('shows success alert after save and auto-dismisses after 3s', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    using timer = timerFake();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<EditToolbar hasChanges={true} onSave={onSave} />);
@@ -48,17 +49,13 @@ describe('EditToolbar', () => {
       screen.getByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
     ).toBeInTheDocument();
 
-    act(() => {
-      vi.advanceTimersByTime(3000);
-    });
+    await act(() => timer.advance(3000));
 
     await waitFor(() => {
       expect(
         screen.queryByText('Pushed to GitHub. Build and deploy workflow run initiated.'),
       ).not.toBeInTheDocument();
     });
-
-    vi.useRealTimers();
   });
 
   it('shows danger alert when save fails', async () => {

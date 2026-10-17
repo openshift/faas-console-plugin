@@ -1,6 +1,6 @@
-import { FunctionListItem } from '../types';
+import { FunctionMetadata } from '../types';
 
-export function repoListItem({
+export function functionMetadata({
   repoName = 'my-func',
   name = repoName,
   namespace = 'demo',
@@ -10,7 +10,7 @@ export function repoListItem({
   name?: string;
   namespace?: string;
   runtime?: string;
-} = {}): FunctionListItem {
+} = {}): FunctionMetadata {
   return {
     owner: 'twoGiants',
     repoName,
