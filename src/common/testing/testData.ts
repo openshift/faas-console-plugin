@@ -5,11 +5,13 @@ export function repoListItem({
   name = repoName,
   namespace = 'demo',
   runtime = 'go',
+  err,
 }: {
   repoName?: string;
   name?: string;
   namespace?: string;
   runtime?: string;
+  err?: string;
 } = {}): FunctionListItem {
   return {
     owner: 'twoGiants',
@@ -20,5 +22,6 @@ export function repoListItem({
     namespace,
     runtime,
     source: 'repo',
+    err,
   };
 }
