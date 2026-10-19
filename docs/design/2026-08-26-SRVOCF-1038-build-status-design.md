@@ -4,8 +4,9 @@ Status: Implemented prototype, as implemented at the snapshot below.
 Original design date: 2026-08-26.
 Implementation snapshot: `80ced39a8886b9081c8c2b1753a52fd8b6fba589`.
 
-All source references are repository-relative and refer to that commit, not to
-the current default branch. This document describes existing behavior, including
+Source references are repository-relative and refer to that commit, not to the
+current default branch, except explicitly marked historical references at the
+comparison base. This document describes existing behavior, including
 limitations. It is not an implementation plan or a claim that every test passes.
 
 ## Purpose and architecture
@@ -206,6 +207,64 @@ Sources: `backend/scm/github/client.go:145`, `backend/handler/build.go:100`,
 
 ## Frontend transport and data flow
 
+### What changed in the frontend
+
+The frontend comparison is from
+`375493f796d1e162bd4d012eff93399fc10c3688` to the implementation snapshot.
+Previously, the list page fetched repository metadata, delegated Kubernetes
+state to the shared `useCluster` hook, and enriched table items from that
+result. Its page-loaded flag waited for both metadata and cluster loading.
+The shared hook is deleted in this comparison. The list now owns a local
+`useFunctions` that joins metadata, Kubernetes watches, and the new workflow
+stream; it exposes metadata loading separately from ongoing live updates.
+
+The model changes with that ownership: page-local `FunctionStatus` contains
+independent `cluster: ClusterStatus` and `workflow: WorkflowRun` values, rather
+than one flat status value. The metadata type is renamed from `FunctionListItem`
+to `FunctionMetadata`; it and the new workflow wire types are defined in
+`src/common/types.ts`. The list's joined `Function` and cluster
+types live in `src/pages/function-list/types.ts`. `ClusterError` carries cluster
+condition details, `AppError` represents protocol application errors, and
+`HttpError` represents transport HTTP failures. These are not interchangeable
+build-failure reasons.
+
+Kubernetes watches, namespace/name row identity, and source/resource-based row
+actions are retained, not introduced by the workflow stream. `AuthProvider`
+is unchanged across this comparison: its existing `onLogin` increments
+`connectionId`. The page already consumed that counter for metadata reloads;
+the new receiver lifecycle also uses it to acquire current SCM headers.
+
+Historical sources at the comparison base:
+`375493f796d1e162bd4d012eff93399fc10c3688:src/pages/function-list/FunctionsListPage.tsx`
+(`useFunctionListPage`, `useCluster`, and the combined loaded flag),
+`375493f796d1e162bd4d012eff93399fc10c3688:src/common/clients/useCluster.ts`.
+Snapshot sources: `src/pages/function-list/FunctionsListPage.tsx:172`,
+`src/pages/function-list/types.ts:5`, `src/common/types.ts:42`,
+`src/common/errors.ts:1`, `src/common/context/AuthProvider.tsx:25`.
+
+### Ownership boundaries
+
+| Layer | Owns | Outside its responsibility |
+| --- | --- | --- |
+| `createSSEEventSource` | Fetch, framing, named-event dispatch, transport errors, reconnect delay, and cancellation | Workflow JSON interpretation and terminal application-error policy |
+| `receiveWorkflowRunEvents` | Console fetch/SCM headers, workflow JSON decoding, error messages, and closing on top-level `app-error` code 401 | React effects, namespace scope, row joins, and rendered state |
+| Page-local `useFunctions` | Metadata request lifecycle, K8s watches, workflow snapshots, joins, and page errors | Status precedence, links, icons, and row-action presentation |
+| `FunctionTable` / `StatusCell` | Presentation of the joined cluster/workflow state and row actions | Fetching, parsing, and subscription lifecycle |
+
+This separation is visible in the interfaces: transport events contain raw
+`data` strings, the receiver emits `WorkflowRunRecord` and returns a close
+function, and the hook passes joined `Function` values to the table. The
+transport does not know repository keys or React state. In particular, retrying
+HTTP errors belongs to transport while deciding that an application 401 is
+terminal belongs to the receiver. The custom fetch requirement below explains
+why native EventSource cannot replace the transport as it stands.
+
+Sources: `src/common/transport/sseEventSource.ts:9`,
+`src/common/transport/sseEventSource.ts:21`,
+`src/common/clients/functionsClient.ts:83`,
+`src/pages/function-list/FunctionsListPage.tsx:275`,
+`src/pages/function-list/components/FunctionTable.tsx:22`.
+
 ### Generic fetch-based transport
 
 `createSSEEventSource` uses an injected fetch function and headers rather than
@@ -260,6 +319,17 @@ The page-local `useFunctions` in `FunctionsListPage.tsx`:
    K8s watch errors, and receiver errors appear as page-level danger alerts.
    A received snapshot clears the receiver error; an `open` event alone does not.
 
+`loaded` is exactly `listLoaded`, not an aggregate readiness signal. Metadata
+success or failure ends initial loading; the unauthenticated path marks it
+loaded without fetching. The page does not wait for either Kubernetes watch or
+the first workflow snapshot before rendering the list. Until each K8s watch is
+loaded, its data is treated as empty. Metadata rows start with cluster
+`NotDeployed`, workflow `None`, an empty route URL, and no replicas or main
+resource. Available K8s data and any retained workflow snapshot can immediately
+override those defaults. Thus an initial status is not proof that all three
+sources have completed. Once a Knative Service is available but no Deployment
+is found, cluster derivation yields `Deploying`.
+
 Repository metadata `err` and per-repository workflow `error` are not rendered
 as dedicated row errors by this page. The latter remains in workflow state;
 rendering uses status and URL. Neither is a job/step build failure reason.
@@ -269,7 +339,9 @@ handling; the receiver closes only for a top-level `app-error` with code 401.
 Sources: `src/common/types.ts:59`, `src/common/clients/functionsClient.ts:83`,
 `src/pages/function-list/FunctionsListPage.tsx:205`,
 `src/pages/function-list/FunctionsListPage.tsx:236`,
+`src/pages/function-list/FunctionsListPage.tsx:263`,
 `src/pages/function-list/FunctionsListPage.tsx:272`,
+`src/pages/function-list/FunctionsListPage.tsx:304`,
 `src/pages/function-list/FunctionsListPage.tsx:402`,
 `src/pages/function-list/types.ts:18`.
 
@@ -304,25 +376,55 @@ Ready=False means `Error` only after a Deployment has been found. Deployment
 matching uses namespace and the latest ready revision label when available,
 otherwise the function-name label.
 
+The table's service URL is `routeURL` from the Knative Service's `status.url`,
+not the GitHub workflow URL. Workflow links are confined to status presentation.
+Rows without cluster enrichment have absent replicas and display a dash
+placeholder; enrichment uses Deployment `readyReplicas`, defaulting to zero if
+unavailable. The Knative Service becomes `mainResource`, enabling the existing
+Undeploy action. Without that resource the action is disabled. Edit still uses
+`repoName` and is unavailable for cluster-sourced rows. The Edit button retains
+`isAriaDisabled` rather than native disabling so its explanatory tooltip can
+receive hover events; the click handler also checks the disabled condition.
+The comparison adds the explanatory comment, not this disabling behavior.
+
 Sources: `src/pages/function-list/components/FunctionTable.tsx:90`,
 `src/pages/function-list/components/FunctionTable.tsx:126`,
 `src/pages/function-list/components/FunctionTable.tsx:188`,
+`src/pages/function-list/components/FunctionTable.tsx:66`,
+`src/pages/function-list/components/FunctionTable.tsx:215`,
+`src/pages/function-list/components/FunctionTable.tsx:247`,
 `src/pages/function-list/FunctionsListPage.tsx:336`,
 `src/common/errors.ts:15`, `locales/en/plugin__console-functions-plugin.json`.
 
 ## Lifecycle and prototype limitations
 
-- `AuthProvider.onLogin` increments `connectionId`. The page closes the previous
-  stream and starts a receiver with current headers on a connection change.
-  Unmount also closes it. An unauthenticated page does not open a receiver.
-- Manual Refresh re-fetches metadata and restarts the workflow receiver through
-  `refreshKey`. Existing rows remain visible while the refresh button spins.
-  Namespace changes re-fetch metadata and change K8s watches, but do not by
-  themselves restart the user-wide workflow stream.
-- Workflow snapshots are retained while the stream reconnects or reports an
-  error. They are also not explicitly cleared on connection changes or manual
-  refresh; the next snapshot replaces them. This retention can temporarily
-  expose stale workflow state, including across an account switch.
+The metadata effect depends on `[connectionId, namespace, refreshKey]`; the
+workflow receiver effect depends only on `[connectionId, refreshKey]`. The page
+passes `undefined` as the connection ID when unauthenticated. Metadata effect
+cleanup sets an `ignore` flag so an obsolete request cannot update its state;
+it does not abort that HTTP request. Receiver cleanup calls its close function,
+which aborts the active stream and pending reconnect delay.
+
+| Event | Metadata, loading, and K8s state | Workflow snapshot and receiver state |
+| --- | --- | --- |
+| Mount | Metadata starts empty and `listLoaded` false; an authenticated page fetches metadata and configures K8s watches from its function names and active namespace. An unauthenticated metadata effect marks loading complete without a request. | Starts with an empty workflow record and no receiver error. Only an authenticated page opens a receiver. |
+| Metadata request completes | Success replaces metadata and clears `listError`; failure sets `listError` without replacing current metadata. Both set `listLoaded` true and `refreshing` false. Neither waits for K8s watches. | Does not wait for, replace, or clear workflow state. |
+| K8s watch updates | Each watch's loaded flag gates use of its data; the cluster join recalculates status, route, replicas, and resource. Watch errors are read from the SDK and included in page alerts. | Does not restart the receiver or alter its snapshot. |
+| Workflow snapshot or error | Does not refetch metadata or change its loading flag. | A snapshot replaces the whole record and clears `receiveError`. An error sets `receiveError` and preserves the record; top-level application 401 also closes the receiver. |
+| Manual Refresh | When authenticated, increments `refreshKey`, sets `listLoaded` false and `refreshing` true, and fetches metadata again. Preserves current rows and `listError` until completion; the page keeps the table visible with the button spinner. | Closes the old receiver and starts a new one. Preserves the workflow record and receiver error until a snapshot or subsequent error changes them. |
+| Namespace changes | Clears metadata and `listError`, resets loading and refreshing, and refetches metadata; watch configuration follows the namespace and new function names. The page hides stale rows behind initial loading. | Does not itself restart the user-wide stream or clear workflow state/error. |
+| Connection/account changes | The existing login counter changes `connectionId`, clearing metadata and `listError` and resetting loading/refreshing before refetch. Obsolete metadata completions are ignored. | Closes the previous receiver and, if authenticated, opens one with current headers. Does not explicitly clear the workflow record or receiver error. |
+| Transport reconnect or `open` | Does not refetch metadata or change loading. | Transport retries without rerunning the React effect. Retains the last snapshot and error; `open` alone does not clear the error. A later snapshot does. |
+| Unmount | Metadata cleanup ignores late completions; SDK hooks own K8s subscriptions. | Receiver cleanup closes the stream and pending retry. A later mount starts with fresh hook state. |
+
+Workflow retention applies while this hook remains mounted, including manual
+refresh and connection changes. It can temporarily expose stale workflow state
+across an account switch when the newly loaded rows match retained repository
+keys. Neither stream cleanup nor metadata's obsolete-response guard clears
+that workflow state. There is no account-keyed snapshot reset guarantee.
+
+Other limits:
+
 - The watch has no namespace/cluster filtering, whereas the metadata endpoint
   filters repositories by cluster and namespace. Extra workflow entries do not
   create rows. Latest-run status is not correlated to a cluster revision or a
@@ -336,7 +438,11 @@ Sources: `src/pages/function-list/components/FunctionTable.tsx:90`,
 Sources: `src/common/context/AuthProvider.tsx:17`,
 `src/pages/function-list/FunctionsListPage.tsx:142`,
 `src/pages/function-list/FunctionsListPage.tsx:190`,
+`src/pages/function-list/FunctionsListPage.tsx:205`,
+`src/pages/function-list/FunctionsListPage.tsx:263`,
 `src/pages/function-list/FunctionsListPage.tsx:275`,
+`src/pages/function-list/FunctionsListPage.tsx:304`,
+`src/common/transport/sseEventSource.ts:80`,
 `backend/handler/list.go:126`,
 `src/pages/function-list/components/FunctionTable.tsx:111`.
 
@@ -371,10 +477,29 @@ Coverage present in this snapshot:
 | `src/common/clients/functionsClient.test.ts` | Parsed snapshots, terminal 401 app-error, other app-errors, HTTP/network error messages |
 | `src/pages/function-list/FunctionsListPage.test.tsx` | Real page/hooks/client with MSW and SDK boundary doubles; status composition, links, stream errors/recovery, retained workflow status after application errors, refresh behavior, namespace scoping |
 
+Relative to the comparison base, testing moves with the frontend ownership:
+the shared `useCluster.test.tsx` and standalone `FunctionTable.test.tsx` files
+are deleted, while `FunctionsListPage.test.tsx` is expanded to exercise cluster
+derivation and table presentation through the real page. New transport tests
+exercise framing, retry, and cancellation independently of workflow semantics;
+new client tests exercise decoding and protocol-error policy. The page tests
+then cover their composition using MSW for HTTP/SSE and SDK doubles for cluster
+watches, consistent with `docs/TESTING.md`. This describes a redistribution of
+test responsibilities, not proof that every deleted assertion has an exact
+replacement or that live Console integration passes.
+
+Historical test sources:
+`375493f796d1e162bd4d012eff93399fc10c3688:src/common/clients/useCluster.test.tsx`,
+`375493f796d1e162bd4d012eff93399fc10c3688:src/pages/function-list/components/FunctionTable.test.tsx`.
+Snapshot sources: `src/common/transport/sseEventSource.test.ts`,
+`src/common/clients/functionsClient.test.ts`,
+`src/pages/function-list/FunctionsListPage.test.tsx:1146`,
+`src/pages/function-list/FunctionsListPage.test.tsx:1310`.
+
 Shared streaming test infrastructure includes
 `src/common/testing/functionsClientStub.ts`, `src/common/testing/AsyncQueue.ts`,
 and `src/common/testing/timerFake.ts`.
-It does not require mocking a removed `useBuildStatus` hook. Repository test
+There is no `useBuildStatus` hook to mock at this snapshot. Repository test
 commands are `make unit-frontend`, `make unit-backend`, and `make test-e2e`;
 the latter needs the configured Console/cluster environment described in
 `docs/TESTING.md` and `hack/test-prow-e2e.sh`.
