@@ -1,12 +1,6 @@
 # SRVOCF-1038: Build status in the functions list
 
-Status: Implemented prototype, as implemented at the snapshot below.
-Original design date: 2026-08-26.
-Implementation snapshot: `80ced39a8886b9081c8c2b1753a52fd8b6fba589`.
-
-This document describes existing behavior, including limitations, at that commit
-rather than the current default branch. It is not an implementation plan or a
-claim that every test passes.
+Design date: 2026-08-26.
 
 ## Purpose and architecture
 
@@ -180,32 +174,26 @@ a general security guarantee for all backend endpoints.
 
 ## Frontend transport and data flow
 
-### What changed in the frontend
+### Page state and domain model
 
-The frontend comparison is from
-`375493f796d1e162bd4d012eff93399fc10c3688` to the implementation snapshot.
-Previously, the list page fetched repository metadata, delegated Kubernetes
-state to the shared `useCluster` hook, and enriched table items from that
-result. Its page-loaded flag waited for both metadata and cluster loading.
-The shared hook is deleted in this comparison. The list now owns a local
-`useFunctions` that joins metadata, Kubernetes watches, and the new workflow
-stream; it exposes metadata loading separately from ongoing live updates.
+The list page owns a local `useFunctions` that joins repository metadata,
+Kubernetes watches, and the workflow stream. It exposes metadata loading
+separately from ongoing live updates, so the page can render rows without
+waiting for either Kubernetes watch loading or the first workflow event.
 
-The model changes with that ownership: page-local `FunctionStatus` contains
-independent `cluster: ClusterStatus` and `workflow: WorkflowRun` values, rather
-than one flat status value. The metadata type is renamed from `FunctionListItem`
-to `FunctionMetadata`; it and the new workflow wire types are defined in
+Page-local `FunctionStatus` contains independent `cluster: ClusterStatus` and
+`workflow: WorkflowRun` values, keeping deployment state separate from workflow
+activity. `FunctionMetadata` and the workflow wire types are defined in
 `src/common/types.ts`. The list's joined `Function` and cluster
 types live in `src/pages/function-list/types.ts`. `ClusterError` carries cluster
 condition details, `AppError` represents protocol application errors, and
 `HttpError` represents transport HTTP failures. These are not interchangeable
 build-failure reasons.
 
-Kubernetes watches, namespace/name row identity, and source/resource-based row
-actions are retained, not introduced by the workflow stream. `AuthProvider`
-is unchanged across this comparison: its existing `onLogin` increments
-`connectionId`. The page already consumed that counter for metadata reloads;
-the new receiver lifecycle also uses it to acquire current SCM headers.
+Rows use namespace/name identity for Kubernetes data and source/resource-based
+actions. `AuthProvider.onLogin` increments `connectionId`. The metadata request
+and workflow receiver lifecycles use that counter to reload metadata and open
+a stream with current SCM headers when the user connects or reconnects.
 
 ### Ownership boundaries
 
@@ -250,7 +238,8 @@ listeners.
 `receiveWorkflowRunEvents` supplies `consoleFetch` and the SCM headers. It
 decodes `build-status` JSON directly as `WorkflowRunRecord`, a plain record of
 `{status, url?, error?}` keyed by `owner/repo`. It returns a close function.
-There is no standalone `useBuildStatus` hook at this snapshot.
+The page owns workflow state directly rather than using a standalone
+`useBuildStatus` hook.
 
 An `app-error` with code 401 reports
 `Authentication expired. Reconnect to GitHub and refresh.` and closes the
@@ -326,14 +315,13 @@ The table's service URL is `routeURL` from the Knative Service's `status.url`,
 not the GitHub workflow URL. Workflow links are confined to status presentation.
 Rows without cluster enrichment have absent replicas and display a dash
 placeholder; enrichment uses Deployment `readyReplicas`, defaulting to zero if
-unavailable. The Knative Service becomes `mainResource`, enabling the existing
-Undeploy action. Without that resource the action is disabled. Edit still uses
-`repoName` and is unavailable for cluster-sourced rows. The Edit button retains
+unavailable. The Knative Service becomes `mainResource`, enabling the
+Undeploy action. Without that resource the action is disabled. Edit uses
+`repoName` and is unavailable for cluster-sourced rows. The Edit button uses
 `isAriaDisabled` rather than native disabling so its explanatory tooltip can
 receive hover events; the click handler also checks the disabled condition.
-The comparison adds the explanatory comment, not this disabling behavior.
 
-## Lifecycle and prototype limitations
+## Lifecycle and limitations
 
 The metadata effect depends on `[connectionId, namespace, refreshKey]`; the
 workflow receiver effect depends only on `[connectionId, refreshKey]`. The page
@@ -372,7 +360,7 @@ Other limits:
   on this path. Session-cookie transport or native EventSource migration is
   not implemented here.
 
-## Fake GitHub and existing test coverage
+## Fake GitHub and testing
 
 `backend/fakegithub/server.go` implements
 `GET /repos/{owner}/{repo}/actions/workflows/{workflow}/runs`. It filters scripted
@@ -388,7 +376,10 @@ does not update an existing run. Tests simulate transitions by appending newer
 runs. `POST /_admin/reset` clears repository state, including stored runs, but
 does not reset the server's run-ID sequence.
 
-Coverage present in this snapshot:
+### Coverage and test boundaries
+
+Tests exercise the following responsibilities. This coverage description is
+not a claim that every test passes or that live integration has been verified.
 
 | Test source | Exercised behavior |
 | --- | --- |
@@ -399,32 +390,31 @@ Coverage present in this snapshot:
 | `src/common/clients/functionsClient.test.ts` | Parsed snapshots, terminal 401 app-error, other app-errors, HTTP/network error messages |
 | `src/pages/function-list/FunctionsListPage.test.tsx` | Real page/hooks/client with MSW and SDK boundary doubles; status composition, links, stream errors/recovery, retained workflow status after application errors, refresh behavior, namespace scoping |
 
-Relative to the comparison base, testing moves with the frontend ownership:
-the shared `useCluster.test.tsx` and standalone `FunctionTable.test.tsx` files
-are deleted, while `FunctionsListPage.test.tsx` is expanded to exercise cluster
-derivation and table presentation through the real page. New transport tests
-exercise framing, retry, and cancellation independently of workflow semantics;
-new client tests exercise decoding and protocol-error policy. The page tests
-then cover their composition using MSW for HTTP/SSE and SDK doubles for cluster
-watches, consistent with `docs/TESTING.md`. This describes a redistribution of
-test responsibilities, not proof that every deleted assertion has an exact
-replacement or that live Console integration passes.
+Frontend tests follow the ownership boundaries. `FunctionsListPage.test.tsx`
+exercises cluster derivation and table presentation through the real page.
+Transport tests exercise framing, retry, and cancellation independently of
+workflow semantics; client tests exercise decoding and protocol-error policy.
+The page tests cover their composition using MSW for HTTP/SSE and SDK doubles
+for cluster watches, consistent with `docs/TESTING.md`. These layers describe
+test responsibilities, not a guarantee of exhaustive assertions or successful
+live Console integration.
 
 Shared streaming test infrastructure includes
 `src/common/testing/functionsClientStub.ts`, `src/common/testing/AsyncQueue.ts`,
 and `src/common/testing/timerFake.ts`.
-There is no `useBuildStatus` hook to mock at this snapshot. Repository test
-commands are `make unit-frontend`, `make unit-backend`, and `make test-e2e`;
-the latter needs the configured Console/cluster environment described in
-`docs/TESTING.md` and `hack/test-prow-e2e.sh`.
+Repository test commands are `make unit-frontend`, `make unit-backend`, and
+`make test-e2e`; the latter needs the configured Console/cluster environment
+described in `docs/TESTING.md` and `hack/test-prow-e2e.sh`.
 
-Multiline `data:` joining is implemented in the transport but is not directly
-exercised by its test file at this snapshot. Cross-account workflow retention
-is a source-derived limitation, not a tested account-switch guarantee.
+### Coverage gaps
+
+Multiline `data:` joining is supported by the transport but is not directly
+exercised by its test file. Cross-account workflow retention is a limitation
+of the hook's state handling, not a tested account-switch guarantee.
 
 `e2e/use-cases/list/build-status.test.ts` scripts the real backend/fakegithub
-path, but its first-build assertions still expect Not deployed plus an icon
-named "build in progress". Current rendering instead shows Building and an
+path, but its first-build assertions expect Not deployed plus an icon
+named "build in progress". The UI instead shows Building and an
 icon named "Workflow run in progress". The test expresses intended E2E coverage,
-not evidence that the snapshot's assertions pass. This documentation update
-does not repair that test or claim a successful E2E execution.
+not evidence of passing assertions. The mismatched assertions remain a test
+limitation; no successful E2E execution is claimed.
