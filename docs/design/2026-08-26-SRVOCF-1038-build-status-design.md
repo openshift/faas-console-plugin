@@ -4,10 +4,9 @@ Status: Implemented prototype, as implemented at the snapshot below.
 Original design date: 2026-08-26.
 Implementation snapshot: `80ced39a8886b9081c8c2b1753a52fd8b6fba589`.
 
-Source references are repository-relative and refer to that commit, not to the
-current default branch, except explicitly marked historical references at the
-comparison base. This document describes existing behavior, including
-limitations. It is not an implementation plan or a claim that every test passes.
+This document describes existing behavior, including limitations, at that commit
+rather than the current default branch. It is not an implementation plan or a
+claim that every test passes.
 
 ## Purpose and architecture
 
@@ -34,11 +33,6 @@ this path. Each build-watch request creates an SCM client, its own HTTP cache,
 and its own polling loop. The list's metadata request is separate from the
 workflow watch. Rediscovering a repository in the workflow watch does not itself
 insert a row into the metadata list.
-
-Sources: `backend/main.go:79`, `backend/handler/build.go:65`,
-`backend/scm/github/client.go:56`, `backend/scm/github/watch.go:37`,
-`src/common/clients/functionsClient.ts:83`,
-`src/pages/function-list/FunctionsListPage.tsx:172`.
 
 ## Backend discovery and watch contract
 
@@ -77,11 +71,6 @@ looks up the authenticated GitHub user and paginates a repository search for
 the first returned run as latest; unrelated workflow files are not queried.
 A missing workflow (404) or empty run list becomes a zero-value run.
 
-Sources: `backend/scm/client.go:55`, `backend/scm/client.go:82`,
-`backend/scm/client.go:104`, `backend/scm/github/client.go:189`,
-`backend/functions/ci.go:17`, `backend/functions/scaffold_test.go:39`,
-`backend/scm/github/watch.go:155`.
-
 ### Polling, cancellation, and deduplication
 
 - An initial poll emits the full repository map, including an empty map when
@@ -112,12 +101,6 @@ The HTTP client has a per-client in-memory cache. `forceRevalidate` sets
 can store them. Tests exercise conditional requests and 304 revalidation across
 payload sizes. Caching does not eliminate requests or guarantee a 304 response.
 
-Sources: `backend/scm/github/watch.go:19`, `backend/scm/github/watch.go:43`,
-`backend/scm/github/watch.go:57`, `backend/scm/github/watch.go:81`,
-`backend/scm/github/watch.go:105`, `backend/scm/github/watch.go:114`,
-`backend/scm/github/client.go:92`, `backend/scm/github/client.go:127`,
-`backend/scm/github/watch_test.go:75`.
-
 ### Exact build-status mapping
 
 | GitHub run status | Conclusion | SCM status |
@@ -130,9 +113,7 @@ Sources: `backend/scm/github/watch.go:19`, `backend/scm/github/watch.go:43`,
 
 For an existing run, its HTML URL is retained even if its derived status is
 `None`. No run ID, conclusion, head SHA, job name, or step name is sent to the
-frontend. Source: `backend/scm/github/watch.go:155` and
-`backend/scm/github/watch.go:184`; table coverage:
-`backend/scm/github/watch_test.go:568`.
+frontend.
 
 ## SSE endpoint and wire format
 
@@ -162,10 +143,6 @@ The handler sends a heartbeat comment, `:\n\n`, every 15 seconds while its
 event loop is active. It flushes snapshots, watch-wide errors, and heartbeats.
 It returns on request cancellation, write failure, or result-channel closure,
 and defers `watch.Stop()` after successfully obtaining a watch.
-
-Sources: `backend/handler/build.go:82`, `backend/handler/build.go:120`,
-`backend/handler/build.go:171`, `backend/handler/build_test.go:94`,
-`backend/handler/build_test.go:114`, `backend/handler/build_test.go:252`.
 
 ### Error scopes and sanitization
 
@@ -201,10 +178,6 @@ DTOs. The browser reads the PAT from session storage and passes it in the
 request header, not a URL parameter. This describes the build-status path, not
 a general security guarantee for all backend endpoints.
 
-Sources: `backend/scm/github/client.go:145`, `backend/handler/build.go:100`,
-`backend/handler/build.go:136`, `backend/handler/build.go:183`,
-`backend/handler/build.go:197`, `src/common/clients/functionsClient.ts:33`.
-
 ## Frontend transport and data flow
 
 ### What changed in the frontend
@@ -234,14 +207,6 @@ is unchanged across this comparison: its existing `onLogin` increments
 `connectionId`. The page already consumed that counter for metadata reloads;
 the new receiver lifecycle also uses it to acquire current SCM headers.
 
-Historical sources at the comparison base:
-`375493f796d1e162bd4d012eff93399fc10c3688:src/pages/function-list/FunctionsListPage.tsx`
-(`useFunctionListPage`, `useCluster`, and the combined loaded flag),
-`375493f796d1e162bd4d012eff93399fc10c3688:src/common/clients/useCluster.ts`.
-Snapshot sources: `src/pages/function-list/FunctionsListPage.tsx:172`,
-`src/pages/function-list/types.ts:5`, `src/common/types.ts:42`,
-`src/common/errors.ts:1`, `src/common/context/AuthProvider.tsx:25`.
-
 ### Ownership boundaries
 
 | Layer | Owns | Outside its responsibility |
@@ -258,12 +223,6 @@ transport does not know repository keys or React state. In particular, retrying
 HTTP errors belongs to transport while deciding that an application 401 is
 terminal belongs to the receiver. The custom fetch requirement below explains
 why native EventSource cannot replace the transport as it stands.
-
-Sources: `src/common/transport/sseEventSource.ts:9`,
-`src/common/transport/sseEventSource.ts:21`,
-`src/common/clients/functionsClient.ts:83`,
-`src/pages/function-list/FunctionsListPage.tsx:275`,
-`src/pages/function-list/components/FunctionTable.tsx:22`.
 
 ### Generic fetch-based transport
 
@@ -285,10 +244,6 @@ an immediate retry path before the delay. HTTP errors, including 401/403, do
 not themselves stop the transport. Listener exceptions are logged and do not
 stop event delivery. `close()` aborts the request and pending delay and clears
 listeners.
-
-Source: `src/common/transport/sseEventSource.ts:51`,
-`src/common/transport/sseEventSource.ts:89`,
-`src/common/transport/sseEventSource.ts:159`.
 
 ### Client policy and page ownership
 
@@ -336,15 +291,6 @@ rendering uses status and URL. Neither is a job/step build failure reason.
 An entry's nested `error.code: 401` does not trigger terminal authentication
 handling; the receiver closes only for a top-level `app-error` with code 401.
 
-Sources: `src/common/types.ts:59`, `src/common/clients/functionsClient.ts:83`,
-`src/pages/function-list/FunctionsListPage.tsx:205`,
-`src/pages/function-list/FunctionsListPage.tsx:236`,
-`src/pages/function-list/FunctionsListPage.tsx:263`,
-`src/pages/function-list/FunctionsListPage.tsx:272`,
-`src/pages/function-list/FunctionsListPage.tsx:304`,
-`src/pages/function-list/FunctionsListPage.tsx:402`,
-`src/pages/function-list/types.ts:18`.
-
 ## Cluster/workflow rendering
 
 The status model retains both sources; it does not overwrite a cluster enum
@@ -387,15 +333,6 @@ Undeploy action. Without that resource the action is disabled. Edit still uses
 receive hover events; the click handler also checks the disabled condition.
 The comparison adds the explanatory comment, not this disabling behavior.
 
-Sources: `src/pages/function-list/components/FunctionTable.tsx:90`,
-`src/pages/function-list/components/FunctionTable.tsx:126`,
-`src/pages/function-list/components/FunctionTable.tsx:188`,
-`src/pages/function-list/components/FunctionTable.tsx:66`,
-`src/pages/function-list/components/FunctionTable.tsx:215`,
-`src/pages/function-list/components/FunctionTable.tsx:247`,
-`src/pages/function-list/FunctionsListPage.tsx:336`,
-`src/common/errors.ts:15`, `locales/en/plugin__console-functions-plugin.json`.
-
 ## Lifecycle and prototype limitations
 
 The metadata effect depends on `[connectionId, namespace, refreshKey]`; the
@@ -435,17 +372,6 @@ Other limits:
   on this path. Session-cookie transport or native EventSource migration is
   not implemented here.
 
-Sources: `src/common/context/AuthProvider.tsx:17`,
-`src/pages/function-list/FunctionsListPage.tsx:142`,
-`src/pages/function-list/FunctionsListPage.tsx:190`,
-`src/pages/function-list/FunctionsListPage.tsx:205`,
-`src/pages/function-list/FunctionsListPage.tsx:263`,
-`src/pages/function-list/FunctionsListPage.tsx:275`,
-`src/pages/function-list/FunctionsListPage.tsx:304`,
-`src/common/transport/sseEventSource.ts:80`,
-`backend/handler/list.go:126`,
-`src/pages/function-list/components/FunctionTable.tsx:111`.
-
 ## Fake GitHub and existing test coverage
 
 `backend/fakegithub/server.go` implements
@@ -461,10 +387,6 @@ immutable run record with an increasing ID and generated GitHub run URL; it
 does not update an existing run. Tests simulate transitions by appending newer
 runs. `POST /_admin/reset` clears repository state, including stored runs, but
 does not reset the server's run-ID sequence.
-
-Sources: `backend/fakegithub/server.go:160`,
-`backend/fakegithub/server.go:728`, `backend/fakegithub/server.go:838`,
-`backend/fakegithub/server.go:817` (`handleAdminReset`).
 
 Coverage present in this snapshot:
 
@@ -487,14 +409,6 @@ then cover their composition using MSW for HTTP/SSE and SDK doubles for cluster
 watches, consistent with `docs/TESTING.md`. This describes a redistribution of
 test responsibilities, not proof that every deleted assertion has an exact
 replacement or that live Console integration passes.
-
-Historical test sources:
-`375493f796d1e162bd4d012eff93399fc10c3688:src/common/clients/useCluster.test.tsx`,
-`375493f796d1e162bd4d012eff93399fc10c3688:src/pages/function-list/components/FunctionTable.test.tsx`.
-Snapshot sources: `src/common/transport/sseEventSource.test.ts`,
-`src/common/clients/functionsClient.test.ts`,
-`src/pages/function-list/FunctionsListPage.test.tsx:1146`,
-`src/pages/function-list/FunctionsListPage.test.tsx:1310`.
 
 Shared streaming test infrastructure includes
 `src/common/testing/functionsClientStub.ts`, `src/common/testing/AsyncQueue.ts`,
