@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:a837c90a5522474a24eba840a21d05696a566706b0f2c48a36dec5d25a6ad74b AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:ecdcc047222dc57edbdd07879a54b97d7ff9232d740d608e188b41315b5462de AS nodebuilder
 USER root
 
 WORKDIR /usr/src/app
