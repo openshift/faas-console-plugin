@@ -82,7 +82,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace, h.externalAPIServerURL)
+		repoFunctions, repoErr = listRepoFunctions(r.Context(), pat, namespace, h.clusterID)
 	}()
 	go func() {
 		defer wg.Done()
@@ -125,7 +125,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string) ([]listItem, error) {
+func listRepoFunctions(ctx context.Context, pat, namespace, clusterID string) ([]listItem, error) {
 	client := config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 
 	repos, err := client.ListRepos(ctx)
@@ -148,12 +148,12 @@ func listRepoFunctions(ctx context.Context, pat, namespace, clusterAPIURL string
 				Source:        sourceRepo,
 			}
 
-			repoClusterURL, err := client.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterAPIURL)
+			repoClusterID, err := client.GetVariable(gctx, repo.Owner, repo.Name, repoVarClusterID)
 			if err != nil {
-				slog.Warn("failed to read variable", "variable", repoVarClusterAPIURL, "repo", repo.Owner+"/"+repo.Name, "err", err)
+				slog.Warn("failed to read variable", "variable", repoVarClusterID, "repo", repo.Owner+"/"+repo.Name, "err", err)
 				// keep the repo on transient errors rather than hiding it
-			} else if repoClusterURL != clusterAPIURL {
-				// Filter out repos whose CLUSTER_API_URL variable does not match this cluster. The variable is written alongside
+			} else if repoClusterID != clusterID {
+				// Filter out repos whose CLUSTER_ID variable does not match this cluster. The variable is written alongside
 				// the KUBECONFIG secret at repo creation, so a mismatch means the secret points to a different cluster
 				// (from where it was created) and deploying from this console would target the wrong cluster.
 				excluded[i] = true

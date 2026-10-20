@@ -13,6 +13,7 @@ type Handlers struct {
 	caCert               []byte // cluster CA certificate, read once at startup
 	kubeHost             string // API server URL for dev/test; empty uses in-cluster config
 	externalAPIServerURL string // external URL embedded in generated kubeconfigs
+	clusterID            string // unique cluster identifier
 	saTokenExpiry        int64  // requested SA token lifetime in seconds
 }
 
@@ -34,7 +35,7 @@ func newHTTPError(code int, message string, cause error) error {
 	return &httpError{code: code, message: message, cause: cause}
 }
 
-func New(caPath, kubeHost, externalAPIServerURL string, saTokenExpiry int64) (*Handlers, error) {
+func New(caPath, kubeHost, externalAPIServerURL, clusterID string, saTokenExpiry int64) (*Handlers, error) {
 	var caCert []byte
 	if caPath != "" {
 		var err error
@@ -44,7 +45,7 @@ func New(caPath, kubeHost, externalAPIServerURL string, saTokenExpiry int64) (*H
 		}
 	}
 
-	return &Handlers{caCert: caCert, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL, saTokenExpiry: saTokenExpiry}, nil
+	return &Handlers{caCert: caCert, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL, clusterID: clusterID, saTokenExpiry: saTokenExpiry}, nil
 }
 
 func extractSCMToken(r *http.Request) (string, bool) {

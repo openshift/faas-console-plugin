@@ -36,7 +36,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 				}, nil
 			},
 			OnGetVariable: func(ctx context.Context, owner, repo, name string) (string, error) {
-				return "https://api.my-cluster.example.com:6443", nil
+				return "my-cluster-id-abc123", nil
 			},
 			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
 				return "name: my-func\nnamespace: demo\nruntime: go\n", nil
@@ -45,7 +45,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}).HandleListFunctions(w, listRequest())
+		(&Handlers{clusterID: "my-cluster-id-abc123"}).HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -298,7 +298,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
-	It("excludes repos whose CLUSTER_API_URL variable points to a different cluster", func() {
+	It("excludes repos whose CLUSTER_ID variable belongs to a different cluster", func() {
 		withSCMStub(&scm.ClientStub{
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{
@@ -308,9 +308,9 @@ var _ = Describe("GET /api/v1/func/list", func() {
 			},
 			OnGetVariable: func(ctx context.Context, owner, repo, name string) (string, error) {
 				if repo == "other-cluster" {
-					return "https://api.other-cluster.example.com:6443", nil
+					return "other-cluster-id-xyz789", nil
 				}
-				return "https://api.my-cluster.example.com:6443", nil
+				return "my-cluster-id-abc123", nil
 			},
 			OnGetFileContent: func(ctx context.Context, owner, repo, ref, path string) (string, error) {
 				return "name: " + repo + "\nnamespace: demo\nruntime: go\n", nil
@@ -319,7 +319,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h := &Handlers{clusterID: "my-cluster-id-abc123"}
 		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
@@ -346,7 +346,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h := &Handlers{clusterID: "my-cluster-id-abc123"}
 		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
@@ -356,7 +356,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items[0].RepoName).To(Equal("my-func"))
 	})
 
-	It("excludes repos without a CLUSTER_API_URL variable", func() {
+	It("excludes repos without a CLUSTER_ID variable", func() {
 		withSCMStub(&scm.ClientStub{
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return []scm.Repo{
@@ -370,7 +370,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h := &Handlers{clusterID: "my-cluster-id-abc123"}
 		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
