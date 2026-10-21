@@ -1,11 +1,40 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToFunctionsList } from '../../helpers/navigation';
 import { PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE } from '../../helpers/constants';
-import { deleteFunction } from '../../helpers/cluster';
+import { deleteFunction, deleteNamespace, ensureNamespace } from '../../helpers/cluster';
 
 test.describe('Functions list', () => {
   test.beforeEach(async ({ page }) => {
+    await ensureNamespace(page, PRESEEDED_FUNC_NAMESPACE);
     await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
+  });
+
+  test('shows Error status with tooltip when function namespace does not exist', async ({
+    page,
+  }) => {
+    await test.step('delete namespace so it does not exist on the cluster', async () => {
+      await deleteNamespace(page, PRESEEDED_FUNC_NAMESPACE);
+    });
+
+    await test.step('navigate to functions list', async () => {
+      await navigateToFunctionsList(page);
+    });
+
+    await test.step('verify Error status for preseeded function', async () => {
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      await expect(grid).toBeVisible({ timeout: 30_000 });
+
+      const row = grid.locator(`tbody tr:has(td:text-is("${PRESEEDED_FUNC_NAME}"))`);
+      await expect(row).toBeVisible();
+      await expect(row.getByText('Error')).toBeVisible();
+    });
+
+    await test.step('hover Error chip shows namespace error tooltip', async () => {
+      const grid = page.getByRole('grid', { name: 'Functions' });
+      const row = grid.locator(`tbody tr:has(td:text-is("${PRESEEDED_FUNC_NAME}"))`);
+      await row.getByText('Error').hover();
+      await expect(page.getByRole('tooltip')).toContainText('func.yaml: namespace does not exist');
+    });
   });
 
   test('user browses functions, refreshes, and navigates to edit and create', async ({ page }) => {

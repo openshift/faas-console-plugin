@@ -34,6 +34,23 @@ export async function k8sHeaders(page: Page): Promise<Record<string, string>> {
 // Namespace
 // ---------------------------------------------------------------------------
 
+export async function deleteNamespace(page: Page, name: string): Promise<void> {
+  const headers = await k8sHeaders(page);
+  const nsUrl = `${K8S}/api/v1/namespaces/${name}`;
+
+  const check = await page.request.get(nsUrl, { headers });
+  if (!check.ok()) return;
+
+  await page.request.delete(nsUrl, { headers });
+
+  await expect
+    .poll(async () => (await page.request.get(nsUrl, { headers })).ok(), {
+      timeout: 120_000,
+      intervals: [2_000],
+    })
+    .toBe(false);
+}
+
 export async function ensureNamespace(page: Page, name: string): Promise<void> {
   const headers = await k8sHeaders(page);
   const nsUrl = `${K8S}/api/v1/namespaces/${name}`;

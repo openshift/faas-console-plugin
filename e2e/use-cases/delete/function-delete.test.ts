@@ -15,6 +15,7 @@ test.describe('Delete function', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {
+    await ensureNamespace(page, PRESEEDED_FUNC_NAMESPACE);
     await deleteFunction(page, PRESEEDED_FUNC_NAME, PRESEEDED_FUNC_NAMESPACE);
   });
 
@@ -33,7 +34,6 @@ test.describe('Delete function', () => {
     test.setTimeout(600_000);
 
     await test.step('make sure deletion target function is deployed in cluster', async () => {
-      await ensureNamespace(page, PRESEEDED_FUNC_NAMESPACE);
       await simulateGitHubActionsDeploy(
         page,
         PRESEEDED_FUNC_NAME,
