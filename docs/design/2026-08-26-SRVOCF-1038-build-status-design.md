@@ -2,7 +2,7 @@
 
 Status: Implemented
 Date: 2026-08-26
-Updated: 2026-10-19 (synced with the implementation)
+Updated: 2026-10-22 (synced with the implementation)
 Jira: SRVOCF-1038 (Story, parent SRVOCF-953)
 
 ## Problem
@@ -55,6 +55,7 @@ FunctionTable.tsx <── useFunctions <── functionsClient.ts <── sseEve
 | `src/common/clients/functionsClient.ts` | `receiveWorkflowRunEvents`: wire events to callbacks |
 | `src/common/types.ts`, `src/common/errors.ts` | `WorkflowRunRecord`, `WorkflowRun`, `AppError`, `ClusterError` |
 | `src/pages/function-list/FunctionsListPage.tsx` | `useFunctions`: merges list, K8s watches and the SSE stream |
+| `src/pages/function-list/types.ts` | Page-local domain types (`Function`, `FunctionStatus`, `ClusterStatus`) and `functionKey`, the key the merge is built on |
 | `src/pages/function-list/components/FunctionTable.tsx` | `StatusCell`, the merge table rendered |
 | `e2e/helpers/fakegithub.ts` | `setWorkflowRun` and reset helpers for e2e |
 
@@ -124,57 +125,66 @@ interface WorkflowRun {
 }
 ```
 
-A function is treated as **known to the cluster** when the watch matched a ksvc
-for it, whatever its status. It has deployed at least once, so a subsequent build
-is a rebuild. Expressed in the type above: `cluster.status !== 'NotDeployed'`.
+A third input sits outside `FunctionStatus`, on the enclosing `Function`: a
+repo-level `error?: string`, set when the backend could not read or parse the
+repo's `func.yaml`. It is not a status of the function so much as of the entry
+describing it, which is why it is not folded into the composite above.
 
-| Workflow run         | Cluster      | Shown status                                       |
-|----------------------|--------------|----------------------------------------------------|
-| Building             | known        | cluster status + secondary "in progress" indicator |
-| Building             | not known    | "Building" + "in progress" indicator               |
-| Failed               | known        | cluster status + secondary "failed" indicator      |
-| Failed               | not known    | "Build failed", linked to the run                  |
-| Succeeded            | known        | cluster status                                     |
-| Succeeded            | not known    | "Deploying"                                        |
-| None (no run)        | known        | cluster status                                     |
-| None (no run)        | not known    | "Not deployed"                                     |
+The merge is a **precedence order, not a cross product.** Exactly one primary
+badge is chosen, and the workflow run only ever adds a secondary indicator
+beside it:
+
+| Precedence | Condition           | Primary badge                                          |
+|------------|---------------------|--------------------------------------------------------|
+| 1          | `Function.error` set | "Error", with the parse error in a tooltip             |
+| 2          | otherwise            | the `cluster.status` badge, "Not deployed" included    |
+
+| Workflow run  | Secondary indicator                                                      |
+|---------------|--------------------------------------------------------------------------|
+| Building      | spinning sync icon, tooltip "Workflow run in progress"                    |
+| Failed        | red warning icon linked to the run, tooltip "Latest workflow run failed"  |
+| Succeeded     | none                                                                      |
+| None (no run) | none                                                                      |
 
 Notes:
 
-- The build status is **non-destructive** over a function the cluster knows
-  about: it keeps its cluster status even while a new revision builds or a
-  rebuild fails, so the cluster state is never misrepresented. The build activity
-  is surfaced as a small secondary indicator next to the status: a spinning sync
-  icon (tooltip "Workflow run in progress") while building, or a red
-  (danger-colored) warning icon (tooltip "Latest workflow run failed", link to
-  the run) when the latest run failed. The failed tooltip is phrased to make
-  clear the function is still available and only the latest rebuild failed, not
-  the function itself. This avoids flip-flopping a deployed function between its
-  cluster status and "Building"/"Build failed" on every redeploy.
+- The build status is **non-destructive, always.** A function keeps its cluster
+  status while a new revision builds or a rebuild fails, so the cluster state is
+  never misrepresented, and a function with no ksvc keeps reading "Not deployed",
+  because it genuinely is not deployed whether or not a build is running. The
+  build activity is only ever the secondary indicator. The failed tooltip is
+  phrased to make clear that the latest run failed, not the function itself.
+- An earlier version promoted the workflow to the primary badge for a function
+  the cluster did not know about: "Building" on a first deploy, "Build failed"
+  on a failed run, "Deploying" once the run went green but no ksvc had appeared
+  yet. That was reverted. The promotion overstated what was known (a running
+  build is not a deployment state) and it made the badge flip between two
+  sources as a deploy progressed. "Deploying" now comes only from the K8s watch,
+  when the ksvc actually appears. The locale keys `Building` and `BuildFailed`
+  were removed with the branch; no badge text is derived from a workflow status
+  any more.
+- Because the cluster badge is unconditional, nothing gates on cluster presence
+  any more. The gate that used to exist was **presence, not the status value**:
+  gating on availability ("Running"/"Scaled to zero") looked equivalent but was
+  not, since a live function reports "Deploying" for a second or two while a
+  build applies its new revision (ksvc `Ready=Unknown`, or no Deployment for the
+  latest ready revision yet), and during that window the merge overwrote the
+  status with "Building", flickering Running -> Building -> Running on every
+  redeploy. Dropping the promotion removes the whole class of problem.
 - The tooltip says "workflow run" rather than "build" because the run covers
-  both building and deploying. The primary status moves from "Building" to
-  "Deploying" partway through the same run, so calling the indicator a build
-  would stop being accurate.
-- The gate is **cluster presence, not the status value.** Gating on availability
-  ("Running"/"Scaled to zero") instead looked equivalent but was not: a live
-  function reports "Deploying" for a second or two while the build applies its new
-  revision (ksvc `Ready=Unknown`, or no Deployment for the latest ready revision
-  yet), and during that window the merge overwrote the status with "Building", so
-  every redeploy flickered Running -> Building -> Running. Cluster presence
-  also keeps a broken ksvc (`Ready=False` -> "Error") as the primary status
-  instead of hiding it behind "Build failed".
-- For a function the cluster does **not** know about, the build status is the most
-  useful thing to show, so it becomes the primary status: "Building" on a first
-  deploy or a redeploy of a deleted function, "Build failed" when the run failed,
-  and "Deploying" once the run succeeded but the ksvc has not appeared yet. That
-  last case closes the gap between a green workflow and the first cluster
-  resource, which would otherwise read as "Not deployed".
-- "Build failed" (and the secondary failed indicator) links to the failing run.
-  No failure reason is surfaced in the list; the run is one click away.
+  both building and deploying, so calling the indicator a build would be
+  accurate for only part of the run.
+- The failed indicator links to the failing run. No failure reason is surfaced
+  in the list; the run is one click away.
 - A cluster "Error" carries a `ClusterError` built from the ksvc `Ready`
   condition and shows "Deployment error. Reason: `<reason>`." in a tooltip. The
   reason comes from the cluster, so unlike build failures there is no external
   run to link to.
+- A repo error and a workflow indicator can appear together: a `func.yaml` that
+  parses but names a namespace the cluster does not have yields an "Error" badge
+  beside a live build spinner. An entry whose `func.yaml` did not parse at all
+  never has cluster data (it has no name to match a ksvc label against), but it
+  is still keyed on its repo, so it does pick up its workflow run.
 - The backend returns a build-centric status (Building/Succeeded/Failed/None);
   the merge to `FunctionStatus` happens in the frontend, which is the only place
   that also has the cluster status.
@@ -323,12 +333,30 @@ key everything is correlated on, matching what `listFunctions` returns.
 - Repos are polled concurrently (errgroup, limit 10). A per-repo error carries
   that repo's last-known run forward with `WorkflowRun.Error` set, rather than
   flickering the status to `None`.
-- The channel carries **changes only**: a snapshot equal to the previous one is
-  not sent. This covers per-repo errors too, because a repeated failure reuses
-  the previous error instance and so compares equal. It does **not** cover
-  stream-wide errors: the dedup check is skipped whenever `Err != nil`, so a
-  persistently failing rediscovery re-emits an identical event every 30s for the
-  life of the connection.
+- The channel carries **changes only**: an event is suppressed when both its
+  snapshot and its stream-wide error are unchanged from the one before. The loop
+  therefore remembers the last error beside the last snapshot. Remembering only
+  the snapshot made a failed rediscovery a one-way door: the failure went out,
+  the next tick produced the same runs with no error, that event was suppressed
+  as a duplicate of the snapshot, and the warning stayed on screen until
+  something unrelated changed, which on an idle project is never. Recovery is a
+  change, so it now goes out and the client can clear the warning, while a
+  failure that repeats unchanged is still suppressed. Rediscovery emits on
+  success as well as on failure for the same reason, so recovery reaches the
+  client on the tick that achieves it.
+- Comparing two errors is the awkward part, since every tick builds a fresh
+  instance, so neither `==` nor `reflect.DeepEqual` answers the question.
+  `errEqual` defers to `errors.Is`, which works because the go-github error
+  types implement `Is` and resolve the target with `errors.As`, so the
+  comparison sees past the `fmt.Errorf` wrapping this package adds on both sides
+  and compares the API message, the documentation URL and the status code.
+  (Majors before v90 type-asserted the target instead and would have seen only
+  the wrapper.) Both call sites feed it two errors from one source, a single
+  repo or a single rediscovery, so comparing that little is enough to tell a
+  repeat from a change. An error that never passed through the library, a dial
+  failure say, carries no `Is` of its own and will not match itself, which costs
+  a duplicate event rather than a wrong one. The carried-forward per-repo error
+  uses the same helper.
 - Poll interval ~3s. The repo set is rediscovered on a slower cadence (~30s) so
   newly created or deleted functions appear/disappear without reconnecting.
 - **A failed rediscovery does not end the watch.** It emits
@@ -575,7 +603,7 @@ declared alongside their Go counterparts under Wire format above.
 ### List integration (`src/pages/function-list/FunctionsListPage.tsx`)
 
 A private `useFunctions` hook owns the whole composition, as the page is the only
-consumer. It layers three sources onto a `Map` keyed `namespace/name`:
+consumer. It layers three sources onto a `Map` keyed by `functionKey(fn)`:
 
 1. `listFunctions(namespace)` for the repo/cluster function metadata, which seeds
    the map.
@@ -586,28 +614,48 @@ consumer. It layers three sources onto a `Map` keyed `namespace/name`:
 3. `receiveWorkflowRunEvents`, folded in by `withWorkflowRunData`, looking each
    function up by its `owner/repo` key.
 
+`functionKey` is `namespace/name` for an entry that has both, and
+`~owner/repoName` for one that does not, which is the case when `func.yaml`
+could not be read or parsed. The `~` prefix keeps the two spaces apart: without
+it, a K8s namespace that happens to match a GitHub owner name would collide
+(both producing `alice/my-func`). The fallback keys on the absence of a name
+rather than on the presence of an error, so an entry that has an error but still
+parsed, a function whose namespace is missing from the cluster say, keeps
+matching its cluster counterpart. No downstream logic reads the key string.
+
+Each fold tolerates the other's absence. `withClusterData` synthesises a
+cluster-only `Function` (`source: 'cluster'`) when a ksvc in the watch has no
+metadata entry behind it, which happens for a function deployed by the CLI, or
+deployed to another namespace while the page was open. `withWorkflowRunData`
+skips any entry without `owner`/`repoName`, since a cluster-only function has no
+repo to correlate a run with.
+
 The stream is re-established when the auth `connectionId` changes, so it picks up
 the current PAT on in-place login and account switch, and on an explicit refresh.
 
-Page-local domain types (`Function`, `FunctionStatus`, `ClusterStatus`) live in
-`src/pages/function-list/types.ts`; only the wire types stay in `common`.
+Page-local domain types (`Function`, `FunctionStatus`, `ClusterStatus`) and
+`functionKey` live in `src/pages/function-list/types.ts`; only the wire types
+stay in `common`. Co-locating the pure function with the types it derives from
+is a pattern `docs/ARCHITECTURE.md` describes: a `types.ts` carries types plus
+the pure functions over them, with no React and no side effects.
 
 ### Rendering (`src/pages/function-list/components/FunctionTable.tsx`)
 
-`FunctionTable` takes `Function[]` and is otherwise a plain renderer. `StatusCell`
-implements the merge table above against `fn.status.cluster` and
-`fn.status.workflow`:
+`FunctionTable` takes `Function[]`, keys each row on `functionKey(fn)`, falls
+back to `fn.repoName` for the name cell when there is no `fn.name`, and is
+otherwise a plain renderer. `StatusCell` implements the precedence above against
+`fn.error`, `fn.status.cluster` and `fn.status.workflow`:
 
-- Cluster not known: the workflow status is primary. "Building" (`InfoStatus`)
-  plus the spinning icon, "Deploying" (`InfoStatus`) once the run succeeded,
-  "Build failed" (`ErrorStatus`, linked to the run), or "Not deployed"
-  (`InfoStatus`).
-- Cluster known: the cluster badge is primary. "Running" is `SuccessStatus`,
-  "Error" is `ErrorStatus` with the `ClusterError` message in a tooltip, and
-  "Deploying" / "Scaled to zero" / "Undeploying" are `InfoStatus`.
-- Secondary indicator, rendered beside the cluster badge: a spinning
-  `RhUiSyncIcon` while the run is in progress, a danger-colored warning icon
-  (linked to the run) when it failed, nothing for `Succeeded` or `None`.
+- `fn.error` set: `ErrorStatus` titled "Error", the error string in a tooltip.
+  This is the whole cell unless there is a workflow indicator, in which case the
+  two sit side by side in a `Flex`.
+- Otherwise the cluster badge is primary, for every one of the six values.
+  "Running" is `SuccessStatus`, "Error" is `ErrorStatus` with the `ClusterError`
+  message in a tooltip, and "Not deployed" / "Deploying" / "Scaled to zero" /
+  "Undeploying" are `InfoStatus`.
+- Secondary indicator, rendered beside the primary badge in the same `Flex`: a
+  spinning `RhUiSyncIcon` while the run is in progress, a danger-colored warning
+  icon (linked to the run) when it failed, nothing for `Succeeded` or `None`.
 
 The badge and icon choices (`InfoStatus` rather than the originally planned
 `ProgressStatus`, `RhUiSyncIcon` rather than a PatternFly `Spinner`) were made to
@@ -659,11 +707,26 @@ processing keeps working).
 E2e (Playwright): run against the **real backend connected to fakegithub**, no
 `page.route` mocking (e2e no longer mocks GitHub; it seeds/resets fakegithub via
 `/_admin` in `e2e/helpers/fakegithub.ts`). `setWorkflowRun(owner, name, branch,
-run)` POSTs to `/_admin/actions/runs`. A test seeds a repo, scripts an
-`in_progress` run, loads the list and asserts the status column, then scripts a
-`completed`/`failure` run and asserts it updates to "Build failed" with a link to
-the run. Because the list streams over SSE the update arrives without a manual
-refresh, so the assertions poll with a timeout rather than reloading the page.
+run)` POSTs to `/_admin/actions/runs`. The suite is
+`e2e/use-cases/list/workflow-run-status.test.ts`. Each spec seeds a repo, scripts
+a run and asserts the status cell, then scripts the next run state and asserts
+the cell follows. Because the list streams over SSE the update arrives without a
+manual refresh, so the assertions poll with a timeout rather than reloading the
+page. What is covered:
+
+- An `in_progress` run on an undeployed function: "Not deployed" stays primary
+  and the progress indicator appears beside it. After `completed`/`failure`,
+  "Not deployed" is still primary and the run link is there.
+- A run that succeeds: the indicator disappears and the badge is still "Not
+  deployed", no stale "Deploying".
+- A redeploy that fails over a deployed function: "Running" is preserved with
+  the failure link beside it.
+- A `func.yaml` naming a namespace the cluster does not have, with a run in
+  flight: one row, "Error" primary with the namespace error in its tooltip, the
+  progress indicator beside it, and the error surviving the run's transition to
+  failed. This is the one spec where a repo-level error and a workflow indicator
+  meet; they were built by separate changes and had only ever been exercised
+  apart.
 
 ## Out of scope
 
