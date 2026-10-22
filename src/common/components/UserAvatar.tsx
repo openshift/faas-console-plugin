@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthUser, PAT_KEY, PROXY_BASE, USER_KEY } from '../types';
 import { useContext, useState } from 'react';
 import { AuthContext } from '../context/AuthProvider';
-import { errorMessage } from '../utils/utils';
+import { handleErrorMessage } from '../utils/utils';
 
 interface UserAvatarProps {
   enableReconnect: boolean;
@@ -188,7 +188,7 @@ function usePatModal(onClose: () => void, onConnect: (pat: string) => Promise<vo
       await onConnect(pat);
       setPat('');
     } catch (err) {
-      setError(errorMessage(err));
+      setError(handleErrorMessage(err));
     } finally {
       setIsValidating(false);
     }

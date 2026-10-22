@@ -19,16 +19,16 @@ import {
 import { SyncAltIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router';
-import { FunctionsEmptyState } from './components/EmptyState';
-import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
-import { SetupGuide } from './components/SetupGuide';
+import { useNavigate } from 'react-router';
+import { listFunctions } from '../../common/clients/functionsClient';
+import { useCluster } from '../../common/clients/useCluster';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { ClusterFunction, FunctionListItem } from '../../common/types';
-import { useCluster } from '../../common/clients/useCluster';
-import { listFunctions } from '../../common/clients/functionsClient';
-import { errorMessage } from '../../common/utils/utils';
+import { handleErrorMessage } from '../../common/utils/utils';
+import { FunctionsEmptyState } from './components/EmptyState';
+import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
+import { SetupGuide } from './components/SetupGuide';
 
 export default function FunctionsListPage() {
   return (
@@ -40,6 +40,7 @@ export default function FunctionsListPage() {
 
 function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
+  const navigate = useNavigate();
   const {
     functions,
     loaded,
@@ -86,10 +87,7 @@ function FunctionsListPageContent() {
                       {t('Create new function')}
                     </Button>
                   ) : (
-                    <Button
-                      variant="primary"
-                      component={(props) => <Link {...props} to="/faas/create" />}
-                    >
+                    <Button variant="primary" onClick={() => navigate('/faas/create')}>
                       {t('Create new function')}
                     </Button>
                   )}
@@ -166,7 +164,7 @@ function useFunctionListPage(): {
       setNamespaceLoaded(true);
       setError('');
     } catch (err) {
-      setError(errorMessage(err));
+      setError(handleErrorMessage(err));
     } finally {
       setRefreshing(false);
     }
@@ -185,7 +183,7 @@ function useFunctionListPage(): {
       } catch (err) {
         if (!ignore) {
           setNamespaceLoaded(true);
-          setError(errorMessage(err));
+          setError(handleErrorMessage(err));
         }
         return;
       }
@@ -204,12 +202,12 @@ function useFunctionListPage(): {
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 
-  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster(
+  const { functions: clusterFunctions, loaded: clusterLoaded } = useCluster({
     functionNames,
     // if namespace === #ALL_NS# then we pass 'undefined' to watcher which equals
     // to 'get resources from all namespaces'
-    isAllNamespacesKey(namespace) ? undefined : namespace,
-  );
+    namespace: isAllNamespacesKey(namespace) ? undefined : namespace,
+  });
 
   const functions = useMemo(
     () =>
