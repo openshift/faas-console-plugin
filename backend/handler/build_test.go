@@ -287,6 +287,27 @@ var _ = Describe("BuildWatch", func() {
 		}
 	})
 
+	It("sends a 401 app-error event when the watch fails with an auth error", func() {
+		ch := make(chan scm.WorkflowRunsOrErr, 1)
+		stub := &scm.ClientStub{
+			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
+				return &scm.StubWatch{C: ch}, nil
+			},
+		}
+		ch <- scm.WorkflowRunsOrErr{
+			Err: fmt.Errorf("auth issue: %w", scm.ErrUnauthorized),
+		}
+		reader := startWatchStream(stub, ticker.SilentTickerFactory())
+		events := readWorkflowEventStream(reader)
+		evt := receiveWTO(events)
+		Expect(evt).To(Equal(workflowEvent{
+			appError: &handler.ErrorDTO{
+				Message: "Authentication failed. Please check your access token.",
+				Code:    new(401),
+			},
+		}))
+	})
+
 	It("validate test auxiliaries", func() {
 		r := strings.NewReader(`:
 event: app-error
