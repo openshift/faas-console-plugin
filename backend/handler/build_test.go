@@ -100,13 +100,13 @@ var _ = Describe("BuildWatch", func() {
 		}
 
 		beat, factory := ticker.CreateFakeTickerFactory()
-		reader := startWatchStream(scmClient, factory)
+		respBody := startWatchStream(scmClient, factory)
 
 		go func() {
 			beat()
 			w.Stop()
 		}()
-		bs, err := io.ReadAll(reader)
+		bs, err := io.ReadAll(respBody)
 		Expect(err).To(BeNil())
 		Expect(bs).To(Equal([]byte{':', '\n', '\n'}))
 	})
@@ -119,7 +119,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{
@@ -135,7 +135,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		events := readWorkflowEventStream(reader)
+		events := readWorkflowEventStream(respBody)
 
 		first := receiveWTO(events)
 		Expect(first).To(Equal(workflowEvent{
@@ -163,13 +163,13 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
 		}
 
-		events := readWorkflowEventStream(reader)
+		events := readWorkflowEventStream(respBody)
 		evt := receiveWTO(events)
 		Expect(evt).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
@@ -187,13 +187,13 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
 		}
 
-		events := readWorkflowEventStream(reader)
+		events := readWorkflowEventStream(respBody)
 		first := receiveWTO(events)
 		Expect(first).To(Equal(workflowEvent{
 			buildStatus: map[string]handler.WorkflowRunDTO{
@@ -215,7 +215,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}
 
-		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		// Emit an error from the watch
 		watchErr := errors.New("github API rate limited")
@@ -227,7 +227,7 @@ var _ = Describe("BuildWatch", func() {
 			},
 		}}
 
-		events := readWorkflowEventStream(reader)
+		events := readWorkflowEventStream(respBody)
 
 		// Verify the error event is sent
 		errorEvt := receiveWTO(events)
@@ -297,8 +297,8 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsEvent{
 			Err: fmt.Errorf("auth issue: %w", scm.ErrUnauthorized),
 		}
-		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
-		events := readWorkflowEventStream(reader)
+		respBody := startWatchStream(scmClient, ticker.SilentTickerFactory())
+		events := readWorkflowEventStream(respBody)
 		evt := receiveWTO(events)
 		Expect(evt).To(Equal(workflowEvent{
 			appError: &handler.ErrorDTO{
