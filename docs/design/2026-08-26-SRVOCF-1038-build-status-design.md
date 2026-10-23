@@ -271,11 +271,11 @@ WatchWorkflowRuns(ctx context.Context, workflowFile string) (WorkflowWatch, erro
 
 ```go
 type WorkflowWatch interface {
-    ResultChan() <-chan WorkflowRunsOrErr
+    ResultChan() <-chan WorkflowRunsEvent
     Stop()
 }
 
-type WorkflowRunsOrErr struct {
+type WorkflowRunsEvent struct {
     Runs map[string]WorkflowRun
     Err  error
 }
@@ -300,10 +300,10 @@ Design notes on these shapes:
   `status`/`conclusion` strings. GitHub's vocabulary then stops at the SCM
   boundary and the handler only has to serialize. Fields nothing consumes (run
   ID, head SHA) are not carried at all.
-- **Errors travel in-band**, in the same `WorkflowRunsOrErr` as the snapshots,
+- **Errors travel in-band**, in the same `WorkflowRunsEvent` as the snapshots,
   rather than on a second channel. One ordered stream, and a recoverable error
   does not have to end the watch.
-- **Two error levels.** `WorkflowRunsOrErr.Err` is stream-wide (repo discovery
+- **Two error levels.** `WorkflowRunsEvent.Err` is stream-wide (repo discovery
   failed, token revoked). `WorkflowRun.Error` is scoped to one repo, so one
   failing repo degrades one row instead of the whole list.
 - **A map, not a slice.** Both the change detection in the poll loop and the
@@ -360,7 +360,7 @@ key everything is correlated on, matching what `listFunctions` returns.
 - Poll interval ~3s. The repo set is rediscovered on a slower cadence (~30s) so
   newly created or deleted functions appear/disappear without reconnecting.
 - **A failed rediscovery does not end the watch.** It emits
-  `WorkflowRunsOrErr{Runs: <last snapshot>, Err: err}` and keeps polling the repo
+  `WorkflowRunsEvent{Runs: <last snapshot>, Err: err}` and keeps polling the repo
   set it already has. Closing the channel was the original design and was
   reversed so that the client, not the server, decides when the connection ends:
   the server cannot tell a transient GitHub failure from a terminal one, and
