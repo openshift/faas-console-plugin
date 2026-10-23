@@ -351,8 +351,8 @@ func receiveWTO(ch <-chan workflowEvent) workflowEvent {
 	select {
 	case e := <-ch:
 		return e
-	case <-time.After(time.Second):
-		Fail("message not received in time")
+	case <-time.After(time.Second * 1):
+		Fail("receive timeout", 1)
 		return workflowEvent{err: errors.New("timeout")}
 	}
 }
