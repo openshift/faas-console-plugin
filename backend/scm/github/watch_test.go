@@ -708,8 +708,8 @@ func padRun(run map[string]any, n int) map[string]any {
 }
 
 // receiveWTO receives one event from ch or times out.
-// It also asserts that the scm.WorkflowRunsOrErr.Err is nil.
-func receiveWTO(ch <-chan scm.WorkflowRunsOrErr) map[string]scm.WorkflowRun {
+// It also asserts that the scm.WorkflowRunsEvent.Err is nil.
+func receiveWTO(ch <-chan scm.WorkflowRunsEvent) map[string]scm.WorkflowRun {
 	select {
 	case event := <-ch:
 		if event.Err != nil {

@@ -92,7 +92,7 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("emits a heartbeat comment on demand", func() {
-		w := scm.StubWatch{C: make(chan scm.WorkflowRunsOrErr)}
+		w := scm.StubWatch{C: make(chan scm.WorkflowRunsEvent)}
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &w, nil
@@ -112,7 +112,7 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
-		ch := make(chan scm.WorkflowRunsOrErr, 4)
+		ch := make(chan scm.WorkflowRunsEvent, 4)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
@@ -121,12 +121,12 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
-		ch <- scm.WorkflowRunsOrErr{
+		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{
 				"alice/fn": {BuildStatus: scm.Building},
 			},
 		}
-		ch <- scm.WorkflowRunsOrErr{
+		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{
 				"alice/fn": {
 					BuildStatus: scm.Failed,
@@ -156,7 +156,7 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("omits the optional fields for a repo with no run", func() {
-		ch := make(chan scm.WorkflowRunsOrErr, 1)
+		ch := make(chan scm.WorkflowRunsEvent, 1)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
@@ -165,7 +165,7 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
-		ch <- scm.WorkflowRunsOrErr{
+		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
 		}
 
@@ -179,7 +179,7 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("ends the stream when the watch channel closes", func() {
-		ch := make(chan scm.WorkflowRunsOrErr)
+		ch := make(chan scm.WorkflowRunsEvent)
 		tw := &scm.StubWatch{C: ch}
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
@@ -189,7 +189,7 @@ var _ = Describe("BuildWatch", func() {
 
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())
 
-		ch <- scm.WorkflowRunsOrErr{
+		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
 		}
 
@@ -208,7 +208,7 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("sends an SSE error event and continues the stream when the watch fails", func() {
-		ch := make(chan scm.WorkflowRunsOrErr, 2)
+		ch := make(chan scm.WorkflowRunsEvent, 2)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
@@ -219,8 +219,8 @@ var _ = Describe("BuildWatch", func() {
 
 		// Emit an error from the watch
 		watchErr := errors.New("github API rate limited")
-		ch <- scm.WorkflowRunsOrErr{Err: watchErr}
-		ch <- scm.WorkflowRunsOrErr{Runs: map[string]scm.WorkflowRun{
+		ch <- scm.WorkflowRunsEvent{Err: watchErr}
+		ch <- scm.WorkflowRunsEvent{Runs: map[string]scm.WorkflowRun{
 			"alice/fn": {
 				BuildStatus: scm.Succeeded,
 				HTMLURL:     "example.com/run/1",
@@ -250,7 +250,7 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
-		ch := make(chan scm.WorkflowRunsOrErr)
+		ch := make(chan scm.WorkflowRunsEvent)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
@@ -288,13 +288,13 @@ var _ = Describe("BuildWatch", func() {
 	})
 
 	It("sends a 401 app-error event when the watch fails with an auth error", func() {
-		ch := make(chan scm.WorkflowRunsOrErr, 1)
+		ch := make(chan scm.WorkflowRunsEvent, 1)
 		stub := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
-		ch <- scm.WorkflowRunsOrErr{
+		ch <- scm.WorkflowRunsEvent{
 			Err: fmt.Errorf("auth issue: %w", scm.ErrUnauthorized),
 		}
 		reader := startWatchStream(stub, ticker.SilentTickerFactory())

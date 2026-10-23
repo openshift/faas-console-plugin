@@ -31,7 +31,7 @@ const (
 //
 // Error handling: per-repo failures set WorkflowRun.Error and carry forward the
 // last-known status (anti-flicker). Catastrophic failures (repo rediscovery, token
-// revocation) set WorkflowRunsOrErr.Err. Unchanged snapshots are suppressed.
+// revocation) set WorkflowRunsEvent.Err. Unchanged snapshots are suppressed.
 //
 // Initial repo discovery runs synchronously on the caller's ctx, so auth failures
 // are returned immediately rather than lost in the goroutine. The polling loop runs
@@ -46,7 +46,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 	// The loop terminates when this context is cancelled via Stop().
 	pollCtx, cancel := context.WithCancel(context.Background())
 
-	ch := make(chan scm.WorkflowRunsOrErr)
+	ch := make(chan scm.WorkflowRunsEvent)
 	watch := &workflowWatch{ch: ch, cancel: cancel}
 
 	go func() {
@@ -63,7 +63,7 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 				return
 			}
 			select {
-			case ch <- scm.WorkflowRunsOrErr{Runs: runs, Err: err}:
+			case ch <- scm.WorkflowRunsEvent{Runs: runs, Err: err}:
 				prevRuns = runs
 				prevErr = err
 			case <-pollCtx.Done():
@@ -102,11 +102,11 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 // workflowWatch implements scm.WorkflowWatch. The result channel carries both
 // snapshots and errors; the caller must handle both.
 type workflowWatch struct {
-	ch     chan scm.WorkflowRunsOrErr
+	ch     chan scm.WorkflowRunsEvent
 	cancel context.CancelFunc
 }
 
-func (w *workflowWatch) ResultChan() <-chan scm.WorkflowRunsOrErr { return w.ch }
+func (w *workflowWatch) ResultChan() <-chan scm.WorkflowRunsEvent { return w.ch }
 func (w *workflowWatch) Stop() {
 	// Cancel the polling loop's context. The loop will clean up and close the channel.
 	w.cancel()

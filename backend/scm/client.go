@@ -77,22 +77,22 @@ type FileEntry struct {
 	Deleted bool   `json:"deleted,omitempty"`
 }
 
-type WorkflowRunsOrErr struct {
+type WorkflowRunsEvent struct {
 	Runs map[string]WorkflowRun
 	Err  error
 }
 
 type WorkflowWatch interface {
-	ResultChan() <-chan WorkflowRunsOrErr
+	ResultChan() <-chan WorkflowRunsEvent
 	Stop()
 }
 
 type StubWatch struct {
-	C chan WorkflowRunsOrErr
+	C chan WorkflowRunsEvent
 	o sync.Once
 }
 
-func (w *StubWatch) ResultChan() <-chan WorkflowRunsOrErr { return w.C }
+func (w *StubWatch) ResultChan() <-chan WorkflowRunsEvent { return w.C }
 func (w *StubWatch) Stop() {
 	w.o.Do(func() {
 		close(w.C)
@@ -222,7 +222,7 @@ func (s *ClientStub) WatchWorkflowRuns(ctx context.Context, workflowFilename str
 	// A closed channel ends the stream immediately. A nil one would block the
 	// caller's receive forever, so an unconfigured stub would hang rather than
 	// fail.
-	w := StubWatch{C: make(chan WorkflowRunsOrErr)}
+	w := StubWatch{C: make(chan WorkflowRunsEvent)}
 	w.Stop()
 	return &w, nil
 }
