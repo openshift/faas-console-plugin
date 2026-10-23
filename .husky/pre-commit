@@ -9,6 +9,24 @@ has_changes() {
   echo "$STAGED" | grep -qE "$1"
 }
 
+# Stash unstaged changes (and untracked files) so that checks run only
+# against what is staged, not the full working tree. The trap ensures the
+# stash is restored even if a check fails or the script exits early.
+STASHED=false
+if ! git diff --quiet || test -n "$(git ls-files --others --exclude-standard)"; then
+  log::info "Stashing unstaged and untracked changes..."
+  git stash push --keep-index --include-untracked --quiet
+  STASHED=true
+fi
+
+unstash() {
+  if [ "$STASHED" = true ]; then
+    log::info "Restoring unstaged changes..."
+    git stash pop --quiet || log::warn "Failed to restore stash; recover with 'git stash pop'"
+  fi
+}
+trap unstash EXIT
+
 log::step "Running pre-commit checks"
 
 if has_changes '^(src|e2e)/'; then
