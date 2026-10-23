@@ -149,6 +149,7 @@ func handleBuildWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.C
 				continue
 			}
 			if err := ew.writeBuildStatus(event.Runs); err != nil {
+				slog.Error("build watch: failed to write build event", "err", err)
 				return
 			}
 			flusher.Flush()
