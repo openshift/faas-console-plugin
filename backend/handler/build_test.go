@@ -27,7 +27,7 @@ var _ = Describe("BuildWatch", func() {
 		It("sends 401 app-error event without an SCM token", func() {
 			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 			w := httptest.NewRecorder()
-			buildWatchWithStub(&scm.ClientStub{})(w, req)
+			buildWatchWithSCMClient(&scm.ClientStub{})(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusOK))
 			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
@@ -43,7 +43,7 @@ var _ = Describe("BuildWatch", func() {
 		})
 
 		It("sends 401 app-error event when the SCM token is rejected during discovery", func() {
-			stub := &scm.ClientStub{
+			scmClient := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 					return nil, scm.ErrUnauthorized
 				},
@@ -51,7 +51,7 @@ var _ = Describe("BuildWatch", func() {
 			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 			req.Header.Set("X-SCM-Token", "pat")
 			w := httptest.NewRecorder()
-			buildWatchWithStub(stub)(w, req)
+			buildWatchWithSCMClient(scmClient)(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusOK))
 			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
@@ -67,7 +67,7 @@ var _ = Describe("BuildWatch", func() {
 		})
 
 		It("sends 502 app-error event when discovery fails with a non-auth error", func() {
-			stub := &scm.ClientStub{
+			scmClient := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 					return nil, errors.New("github unreachable")
 				},
@@ -75,7 +75,7 @@ var _ = Describe("BuildWatch", func() {
 			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
 			req.Header.Set("X-SCM-Token", "pat")
 			w := httptest.NewRecorder()
-			buildWatchWithStub(stub)(w, req)
+			buildWatchWithSCMClient(scmClient)(w, req)
 
 			Expect(w.Code).To(Equal(http.StatusOK))
 			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
@@ -93,14 +93,14 @@ var _ = Describe("BuildWatch", func() {
 
 	It("emits a heartbeat comment on demand", func() {
 		w := scm.StubWatch{C: make(chan scm.WorkflowRunsEvent)}
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &w, nil
 			},
 		}
 
 		beat, factory := ticker.CreateFakeTickerFactory()
-		reader := startWatchStream(stub, factory)
+		reader := startWatchStream(scmClient, factory)
 
 		go func() {
 			beat()
@@ -113,13 +113,13 @@ var _ = Describe("BuildWatch", func() {
 
 	It("emits an SSE frame per snapshot, keyed by owner/repo in build vocabulary", func() {
 		ch := make(chan scm.WorkflowRunsEvent, 4)
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
-		reader := startWatchStream(stub, ticker.SilentTickerFactory())
+		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{
@@ -157,13 +157,13 @@ var _ = Describe("BuildWatch", func() {
 
 	It("omits the optional fields for a repo with no run", func() {
 		ch := make(chan scm.WorkflowRunsEvent, 1)
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
-		reader := startWatchStream(stub, ticker.SilentTickerFactory())
+		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {}},
@@ -181,13 +181,13 @@ var _ = Describe("BuildWatch", func() {
 	It("ends the stream when the watch channel closes", func() {
 		ch := make(chan scm.WorkflowRunsEvent)
 		tw := &scm.StubWatch{C: ch}
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return tw, nil
 			},
 		}
 
-		reader := startWatchStream(stub, ticker.SilentTickerFactory())
+		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		ch <- scm.WorkflowRunsEvent{
 			Runs: map[string]scm.WorkflowRun{"alice/fn": {BuildStatus: scm.Building}},
@@ -209,13 +209,13 @@ var _ = Describe("BuildWatch", func() {
 
 	It("sends an SSE error event and continues the stream when the watch fails", func() {
 		ch := make(chan scm.WorkflowRunsEvent, 2)
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
 		}
 
-		reader := startWatchStream(stub, ticker.SilentTickerFactory())
+		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
 
 		// Emit an error from the watch
 		watchErr := errors.New("github API rate limited")
@@ -251,7 +251,7 @@ var _ = Describe("BuildWatch", func() {
 
 	It("calls watch.Stop() when the request context is cancelled to halt polling", func() {
 		ch := make(chan scm.WorkflowRunsEvent)
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
@@ -259,7 +259,7 @@ var _ = Describe("BuildWatch", func() {
 
 		beat, factory := ticker.CreateFakeTickerFactory()
 		mux := http.NewServeMux()
-		mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
+		mux.HandleFunc("GET /watch", buildWatchWithSCMClient(scmClient, handler.WithHeartbeatTickerFactory(factory)))
 		ts := httptest.NewServer(mux)
 		DeferCleanup(ts.Close)
 
@@ -289,7 +289,7 @@ var _ = Describe("BuildWatch", func() {
 
 	It("sends a 401 app-error event when the watch fails with an auth error", func() {
 		ch := make(chan scm.WorkflowRunsEvent, 1)
-		stub := &scm.ClientStub{
+		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 				return &scm.StubWatch{C: ch}, nil
 			},
@@ -297,7 +297,7 @@ var _ = Describe("BuildWatch", func() {
 		ch <- scm.WorkflowRunsEvent{
 			Err: fmt.Errorf("auth issue: %w", scm.ErrUnauthorized),
 		}
-		reader := startWatchStream(stub, ticker.SilentTickerFactory())
+		reader := startWatchStream(scmClient, ticker.SilentTickerFactory())
 		events := readWorkflowEventStream(reader)
 		evt := receiveWTO(events)
 		Expect(evt).To(Equal(workflowEvent{
@@ -342,8 +342,8 @@ data: {"status": "Building"}}
 // buildWatchWithStub returns the handler wired to stub instead of the SCM
 // registry it defaults to, ignoring the token the way the stubs ignore
 // authentication. Any opts are applied after, so a spec can name its heartbeat.
-func buildWatchWithStub(stub scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
-	withStub := handler.WithSCMFactory(func(string) scm.Client { return stub })
+func buildWatchWithSCMClient(scmClient scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
+	withStub := handler.WithSCMFactory(func(string) scm.Client { return scmClient })
 	return handler.BuildWatch(append([]handler.WatchOption{withStub}, opts...)...)
 }
 
@@ -527,9 +527,9 @@ func readSSELine(r *bufio.Reader) ([]byte, error) {
 	}
 }
 
-func startWatchStream(stub scm.Client, factory ticker.Factory) io.Reader {
+func startWatchStream(scmClient scm.Client, factory ticker.Factory) io.Reader {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /watch", buildWatchWithStub(stub, handler.WithHeartbeatTickerFactory(factory)))
+	mux.HandleFunc("GET /watch", buildWatchWithSCMClient(scmClient, handler.WithHeartbeatTickerFactory(factory)))
 	ts := httptest.NewServer(mux)
 	DeferCleanup(ts.Close)
 
