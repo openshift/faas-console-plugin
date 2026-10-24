@@ -15,7 +15,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 
 | Guide | Description |
 |-------|-------------|
-| [Agile Workflow](docs/AGILE.md) | Issue tracking, ceremonies, branching, pull requests |
+| [Ways of Working](docs/WAYS_OF_WORKING.md) | PM roles and rotation, issue tracking, ceremonies, pull requests |
 | [Architecture](docs/ARCHITECTURE.md) | Layered architecture, dependency rules, and React patterns |
 | [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, commit conventions, CSS rules, and OCP plugin constraints |
 | [Testing](docs/TESTING.md) | TDD approach, test layers, mock strategy, and file conventions |
@@ -134,7 +134,7 @@ make test-e2e ARGS="--headed" # visible browser
 make test-e2e ARGS="--ui"     # interactive UI mode
 ```
 
-See [docs/TESTING.md](docs/TESTING.md#e2e-conventions) for full conventions, helpers, and environment variables.
+See [docs/TESTING.md](docs/TESTING.md#e2e-tests) for full conventions, helpers, and environment variables.
 
 ### Deploy to cluster
 
