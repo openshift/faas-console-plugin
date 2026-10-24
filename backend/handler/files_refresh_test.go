@@ -30,17 +30,16 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", f
 	}
 	newRequest := func() *http.Request {
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(validBody()))
-		req.Header.Set("Authorization", "Bearer ocp-token")
-		req.Header.Set("X-SCM-Token", "test-pat")
+		authenticate(req)
 		req.SetPathValue("owner", "alice")
 		req.SetPathValue("name", "my-func")
 		return req
 	}
 	newHandlers := func() *Handlers {
-		return &Handlers{
+		return testHandlers(Handlers{
 			externalAPIServerURL: "https://api.test-cluster.example.com:6443",
 			saTokenExpiry:        config.DefaultSATokenExpiry,
-		}
+		})
 	}
 
 	const funcYaml = "name: my-func\nnamespace: demo\nruntime: go\n"

@@ -61,21 +61,18 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
-		return
-	}
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "Authorization header is required")
+	ocpToken, _ := extractOCPToken(r)
+
+	credential, err := h.scmCredentials.GetCredential(r.Context(), ocpToken)
+	if err != nil {
+		writeAuthError(w, err)
 		return
 	}
 
-	if err := h.createFunction(r.Context(), req, pat, ocpToken); err != nil {
+	if err := h.createFunction(r.Context(), req, credential.Token, ocpToken); err != nil {
 		switch {
 		case errors.Is(err, scm.ErrUnauthorized):
-			writeError(w, http.StatusUnauthorized, "invalid SCM token")
+			writeError(w, http.StatusForbidden, "invalid SCM token")
 		case errors.Is(err, scm.ErrRepoExists):
 			writeError(w, http.StatusConflict, "repository already exists")
 		case errors.Is(err, errUpstream):

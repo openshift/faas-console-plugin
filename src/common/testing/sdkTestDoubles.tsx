@@ -9,6 +9,29 @@ export function reset() {
 }
 // END: global helpers ---------------------------------------------------------
 
+// START: customFetch / customFetchJSON stubs -----------------------------------
+// These bridge httpClient's fetch wrappers to real fetch so MSW can intercept.
+// Every test file that needs HTTP mocks httpClient with these stubs.
+
+async function handleJSON(res: Response) {
+  const json = await res.json();
+  if (!res.ok) throw Object.assign(new Error(json.message ?? ''), { response: res, json });
+  return json;
+}
+
+export const customFetchStub = async (url: string, options?: RequestInit) => {
+  const res = await fetch(new URL(url, 'http://localhost').href, options);
+  if (!res.ok) {
+    const json = await res.json();
+    throw Object.assign(new Error(json.message), { response: res, json });
+  }
+  return res;
+};
+
+export const customFetchJSONStub = async (url: string, method = 'GET', options?: RequestInit) =>
+  handleJSON(await fetch(new URL(url, 'http://localhost').href, { ...options, method }));
+// END: customFetch / customFetchJSON stubs ------------------------------------
+
 // START: useK8sWatchResourceStub ----------------------------------------------
 type WatchFixtures = {
   knSvcs: K8sResourceKind[];

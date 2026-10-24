@@ -2,112 +2,154 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse, delay } from 'msw';
 import { UserAvatar } from './UserAvatar';
-import { PAT_KEY, USER_KEY } from '../types';
 import { AuthContext } from '../context/AuthProvider';
 import { ReactNode } from 'react';
-import { authenticateGithubFake, logoutGithubFake } from '../testing/authFake';
+import { connectGithubUserStub } from '../testing/authClientStub';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
+
+const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
-  const consoleFetchJSON = async (url: string, _method?: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  };
+vi.mock('../clients/httpClient', () => ({
+  customFetch: sdkTestDoubles.customFetchStub,
+  customFetchJSON: sdkTestDoubles.customFetchJSONStub,
+}));
 
-  return { consoleFetchJSON };
-});
+const CREDENTIAL_URL = `${BACKEND_API}/api/v1/scm/github/credential`;
 
 const testUser = { name: 'twoGiants', avatarUrl: '' };
 
-function renderWithContext(
-  ui: ReactNode,
-  contextValue = {
+function authContext(overrides = {}) {
+  return {
     isAuthenticated: false,
     user: testUser,
-    connectionId: 0,
     onLogin: vi.fn(),
-  },
-) {
+    onLogout: vi.fn(),
+    ...overrides,
+  };
+}
+
+function renderWithContext(ui: ReactNode, contextValue = authContext()) {
   return render(<AuthContext.Provider value={contextValue}>{ui}</AuthContext.Provider>);
+}
+
+function connectedContext(overrides = {}) {
+  return authContext({ isAuthenticated: true, ...overrides });
 }
 
 describe('UserAvatar', () => {
   beforeEach(() => {
-    logoutGithubFake();
+    connectGithubUserStub({ response: { login: 'twoGiants', avatarUrl: '' } });
   });
 
   describe('rendering', () => {
-    it('renders "Connect to GitHub" when no user is stored', () => {
-      renderWithContext(<UserAvatar enableReconnect={false} />);
+    it('renders "Connect to GitHub" when not connected', () => {
+      renderWithContext(<UserAvatar />);
 
-      expect(screen.getByText('Connect to GitHub')).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: /Connect to GitHub/ })).toBeInTheDocument();
     });
 
-    it('renders username when user is stored in sessionStorage', () => {
-      authenticateGithubFake();
+    it('shows PAT modal automatically when not connected', () => {
+      renderWithContext(<UserAvatar />);
 
-      renderWithContext(<UserAvatar enableReconnect />);
+      expect(screen.getByText('Personal Access Token')).toBeInTheDocument();
+    });
+
+    it('renders username when connected', () => {
+      renderWithContext(<UserAvatar />, connectedContext());
 
       expect(screen.getByText('twoGiants')).toBeInTheDocument();
     });
 
-    it('button is clickable when enableReconnect is true', async () => {
-      const user = userEvent.setup();
-      authenticateGithubFake();
+    it('renders the GitHub avatar when the user has one', () => {
+      const avatarUrl = 'https://avatars.githubusercontent.com/u/1?v=4';
+      renderWithContext(
+        <UserAvatar />,
+        connectedContext({ user: { name: 'twoGiants', avatarUrl } }),
+      );
 
-      renderWithContext(<UserAvatar enableReconnect />);
-
-      const button = screen.getByRole('button', { name: 'twoGiants' });
-      await user.click(button);
-
-      expect(screen.getByText('Personal Access Token')).toBeInTheDocument();
+      const avatar = document.querySelector('[data-test="user-avatar"]');
+      expect(avatar).toHaveAttribute('src', avatarUrl);
+      // The login is already rendered next to the image, so the avatar stays
+      // out of the accessibility tree rather than repeating it.
+      expect(avatar).toHaveAttribute('alt', '');
     });
 
-    it('button is disabled when enableReconnect is false', async () => {
+    it('falls back to the generic icon when there is no avatar URL', () => {
+      renderWithContext(<UserAvatar />, connectedContext());
+
+      expect(document.querySelector('[data-test="user-avatar"]')).not.toBeInTheDocument();
+      expect(screen.getByText('twoGiants')).toBeInTheDocument();
+    });
+  });
+
+  describe('disconnect', () => {
+    it('shows Disconnect in the user menu', async () => {
       const user = userEvent.setup();
 
-      renderWithContext(<UserAvatar enableReconnect={false} />);
+      renderWithContext(<UserAvatar />, connectedContext());
 
-      const button = screen.getByRole('button', { name: 'Connect to GitHub' });
-      expect(button).toBeDisabled();
+      await user.click(screen.getByRole('button', { name: /twoGiants/ }));
 
-      await user.click(button);
-      expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
+      expect(screen.getByText('Disconnect')).toBeInTheDocument();
+    });
+
+    it('calls onLogout when Disconnect is clicked', async () => {
+      const user = userEvent.setup();
+      const onLogout = vi.fn();
+
+      renderWithContext(<UserAvatar />, connectedContext({ onLogout }));
+
+      await user.click(screen.getByRole('button', { name: /twoGiants/ }));
+      await user.click(screen.getByText('Disconnect'));
+
+      expect(onLogout).toHaveBeenCalled();
+    });
+
+    it('does not show the user menu when disconnected', () => {
+      renderWithContext(<UserAvatar />);
+
+      expect(screen.queryByText('twoGiants')).not.toBeInTheDocument();
     });
   });
 
   describe('modal auto-open', () => {
-    it('opens modal automatically when enableReconnect is true and no PAT stored', () => {
-      renderWithContext(<UserAvatar enableReconnect />);
+    it('opens the modal when the backend holds no credential', () => {
+      renderWithContext(<UserAvatar />);
 
       expect(screen.getByText('Personal Access Token')).toBeInTheDocument();
     });
 
-    it('does not auto-open modal when PAT is already stored', () => {
-      authenticateGithubFake();
+    it('does not prompt a user when the backend has a credential', () => {
+      renderWithContext(<UserAvatar />, connectedContext());
 
-      renderWithContext(<UserAvatar enableReconnect />);
+      expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
+      expect(screen.getByText('twoGiants')).toBeInTheDocument();
+    });
+
+    it('does not reopen the modal after the user dismisses it', async () => {
+      const user = userEvent.setup();
+
+      renderWithContext(<UserAvatar />);
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
 
       expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
     });
 
-    it('does not auto-open modal when enableReconnect is false', () => {
-      renderWithContext(<UserAvatar enableReconnect={false} />);
+    it('auto-opens modal when not connected', () => {
+      renderWithContext(<UserAvatar />);
 
-      expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
+      expect(screen.getByText('Personal Access Token')).toBeInTheDocument();
     });
   });
 
   describe('OAuth button placeholder', () => {
     it('renders a disabled "Sign in with GitHub" button', () => {
-      renderWithContext(<UserAvatar enableReconnect />);
+      renderWithContext(<UserAvatar />);
 
       const oauthButton = screen.getByRole('button', { name: /Sign in with GitHub/i });
       expect(oauthButton).toHaveAttribute('aria-disabled', 'true');
@@ -117,12 +159,7 @@ describe('UserAvatar', () => {
       const user = userEvent.setup();
       const onLogin = vi.fn();
 
-      renderWithContext(<UserAvatar enableReconnect />, {
-        isAuthenticated: false,
-        user: testUser,
-        connectionId: 0,
-        onLogin,
-      });
+      renderWithContext(<UserAvatar />, authContext({ onLogin }));
 
       const oauthButton = screen.getByRole('button', { name: /Sign in with GitHub/i });
       await user.click(oauthButton);
@@ -133,78 +170,61 @@ describe('UserAvatar', () => {
 
   describe('PAT modal', () => {
     it('Connect button disabled when input is empty', () => {
-      renderWithContext(<UserAvatar enableReconnect />);
+      renderWithContext(<UserAvatar />);
 
       expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled();
     });
 
-    it('calls backend API with PAT and updates UI on successful connect', async () => {
+    it('sends the PAT to the backend', async () => {
       const user = userEvent.setup();
-      const onLogin = vi.fn();
+      let sentBody: { pat?: string } = {};
+      server.use(
+        http.post(CREDENTIAL_URL, async ({ request }) => {
+          sentBody = (await request.json()) as { pat?: string };
+          return HttpResponse.json({ login: 'twoGiants', avatarUrl: '' });
+        }),
+      );
 
-      renderWithContext(<UserAvatar enableReconnect />, {
-        isAuthenticated: false,
-        user: testUser,
-        connectionId: 0,
-        onLogin,
-      });
+      renderWithContext(<UserAvatar />);
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
       await waitFor(() => {
-        expect(screen.getByText('twoGiants')).toBeInTheDocument();
+        expect(sentBody.pat).toBe('ghp_valid');
       });
-
-      expect(sessionStorage.getItem(PAT_KEY)).toBe('ghp_valid');
-      expect(JSON.parse(sessionStorage.getItem(USER_KEY)!)).toEqual({
-        name: 'twoGiants',
-        avatarUrl: '',
-      });
-      expect(onLogin).toHaveBeenCalled();
     });
 
-    it('shows error alert when backend API rejects', async () => {
+    it('shows error alert when the backend rejects the PAT', async () => {
       const user = userEvent.setup();
-      server.use(
-        http.get(`${BACKEND_API}/api/v1/auth/user`, () =>
-          HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
-        ),
-      );
+      connectGithubUserStub({ errorResponse: { message: 'invalid SCM token', status: 403 } });
 
-      renderWithContext(<UserAvatar enableReconnect />);
+      renderWithContext(<UserAvatar />);
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_bad');
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
-      expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
+      expect(await screen.findByText(/invalid SCM token/)).toBeInTheDocument();
     });
 
     it('submits PAT when Enter is pressed in the input', async () => {
       const user = userEvent.setup();
       const onLogin = vi.fn();
 
-      renderWithContext(<UserAvatar enableReconnect />, {
-        isAuthenticated: false,
-        user: testUser,
-        connectionId: 0,
-        onLogin,
-      });
+      renderWithContext(<UserAvatar />, authContext({ onLogin }));
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
       await user.keyboard('{Enter}');
 
       await waitFor(() => {
-        expect(screen.getByText('twoGiants')).toBeInTheDocument();
+        expect(onLogin).toHaveBeenCalled();
       });
-
-      expect(onLogin).toHaveBeenCalled();
     });
 
     it('closes modal when Cancel is clicked', async () => {
       const user = userEvent.setup();
 
-      renderWithContext(<UserAvatar enableReconnect />);
+      renderWithContext(<UserAvatar />);
 
       expect(screen.getByText('Personal Access Token')).toBeInTheDocument();
 
@@ -213,61 +233,34 @@ describe('UserAvatar', () => {
       expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
     });
 
-    it('clears PAT input after successful connect', async () => {
-      const user = userEvent.setup();
-      const onLogin = vi.fn();
-
-      renderWithContext(<UserAvatar enableReconnect />, {
-        isAuthenticated: false,
-        user: testUser,
-        connectionId: 0,
-        onLogin,
-      });
-
-      await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_valid');
-      await user.click(screen.getByRole('button', { name: 'Connect' }));
-
-      await waitFor(() => {
-        expect(screen.getByText('twoGiants')).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole('button', { name: 'twoGiants' }));
-
-      expect(screen.getByLabelText('Personal Access Token')).toHaveValue('');
-    });
-
     it('clears PAT input and error on cancel', async () => {
       const user = userEvent.setup();
-      server.use(
-        http.get(`${BACKEND_API}/api/v1/auth/user`, () =>
-          HttpResponse.json({ message: 'Bad credentials' }, { status: 401 }),
-        ),
-      );
+      connectGithubUserStub({ errorResponse: { message: 'invalid SCM token', status: 403 } });
 
-      renderWithContext(<UserAvatar enableReconnect />);
+      renderWithContext(<UserAvatar />);
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_bad');
       await user.click(screen.getByRole('button', { name: 'Connect' }));
 
-      expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
+      expect(await screen.findByText(/invalid SCM token/)).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: 'Cancel' }));
       await user.click(screen.getByRole('button', { name: 'Connect to GitHub' }));
 
       expect(screen.getByLabelText('Personal Access Token')).toHaveValue('');
-      expect(screen.queryByText(/Bad credentials/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/invalid SCM token/)).not.toBeInTheDocument();
     });
 
     it('disables Cancel button while validating', async () => {
       const user = userEvent.setup();
       server.use(
-        http.get(`${BACKEND_API}/api/v1/auth/user`, async () => {
+        http.post(CREDENTIAL_URL, async () => {
           await delay('infinite');
           return HttpResponse.json({ login: 'twoGiants', avatarUrl: '' });
         }),
       );
 
-      renderWithContext(<UserAvatar enableReconnect />);
+      renderWithContext(<UserAvatar />);
 
       await user.type(screen.getByLabelText('Personal Access Token'), 'ghp_slow');
       await user.click(screen.getByRole('button', { name: 'Connect' }));

@@ -20,15 +20,15 @@ import { SyncAltIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
-import { FunctionsEmptyState } from './components/EmptyState';
-import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
-import { SetupGuide } from './components/SetupGuide';
+import { listFunctions } from '../../common/clients/functionsClient';
+import { useCluster } from '../../common/clients/useCluster';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { ClusterFunction, FunctionListItem } from '../../common/types';
-import { useCluster } from '../../common/clients/useCluster';
-import { listFunctions } from '../../common/clients/functionsClient';
 import { errorMessage } from '../../common/utils/utils';
+import { FunctionsEmptyState } from './components/EmptyState';
+import { FunctionTable, FunctionTableItem } from './components/FunctionTable';
+import { SetupGuide } from './components/SetupGuide';
 
 export default function FunctionsListPage() {
   return (
@@ -56,7 +56,7 @@ function FunctionsListPageContent() {
       <DocumentTitle>{t('Functions')}</DocumentTitle>
       <NamespaceBar />
       <ListPageHeader title={t('Functions')}>
-        <UserAvatar enableReconnect />
+        <UserAvatar />
       </ListPageHeader>
       <PageSection>
         {error && (
@@ -126,7 +126,7 @@ function useFunctionListPage(): {
   error: string;
   showNamespace: boolean;
 } {
-  const { isAuthenticated, connectionId } = useContext(AuthContext);
+  const { isAuthenticated, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [namespace] = useActiveNamespace();
@@ -135,14 +135,15 @@ function useFunctionListPage(): {
   const [namespaceLoaded, setNamespaceLoaded] = useState(isAuthenticated ? false : true);
   const [prevNamespace, setPrevNamespace] = useState(namespace);
 
-  const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
+  const [prevAuthUserName, setPrevAuthUserName] = useState<string>(user.name);
 
   const [error, setError] = useState<string>('');
   const [refreshing, setRefreshing] = useState(false);
 
-  // Reset state when connection changes (initial connect or user switch)
-  if (connectionId !== prevConnectionId) {
-    setPrevConnectionId(connectionId);
+  // Reset state when the connection changes. The account name is the signal:
+  // it is set on connect, cleared on disconnect, and different after a switch.
+  if (user.name !== prevAuthUserName) {
+    setPrevAuthUserName(user.name);
     setFunctionItems([]);
     setError('');
     setNamespaceLoaded(false);
@@ -200,7 +201,7 @@ function useFunctionListPage(): {
     return () => {
       ignore = true;
     };
-  }, [isAuthenticated, connectionId, namespace]);
+  }, [isAuthenticated, user.name, namespace]);
 
   const functionNames = useMemo(() => functionItems.map((item) => item.name), [functionItems]);
 

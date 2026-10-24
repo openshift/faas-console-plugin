@@ -4,8 +4,10 @@ import { http, HttpResponse } from 'msw';
 import { MemoryRouter } from 'react-router';
 import FunctionCreatePage from './FunctionCreatePage';
 import { BACKEND_API } from '../../common/testing/constants';
-import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import { fetchGithubUserStub, noGithubUserStub } from '../../common/testing/authClientStub';
 import { server } from '../../common/testing/mswServer';
+
+const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
 const mockNavigate = vi.fn();
 
@@ -13,49 +15,21 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
-  async function handleResponse(res: Response) {
-    const json = await res.json();
-    if (!res.ok) throw json;
-    return json;
-  }
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  DocumentTitle: ({ children }: { children: string }) => children,
+  ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
+    <>
+      {title}
+      {children}
+    </>
+  ),
+  useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
+}));
 
-  const consoleFetchJSON = Object.assign(
-    async (url: string, _method?: string, options?: RequestInit) => {
-      const res = await fetch(new URL(url, 'http://localhost').href, options);
-      return handleResponse(res);
-    },
-    {
-      post: async (url: string, body: unknown) => {
-        const res = await fetch(new URL(url, 'http://localhost').href, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        return handleResponse(res);
-      },
-    },
-  );
-
-  const consoleFetch = async (url: string, options?: RequestInit) => {
-    const res = await fetch(new URL(url, 'http://localhost').href, options);
-    if (!res.ok) throw await res.json();
-    return res;
-  };
-
-  return {
-    DocumentTitle: ({ children }: { children: string }) => children,
-    ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
-      <>
-        {title}
-        {children}
-      </>
-    ),
-    consoleFetchJSON,
-    consoleFetch,
-    useK8sWatchResource: vi.fn().mockReturnValue([[], true, null]),
-  };
-});
+vi.mock('../../common/clients/httpClient', () => ({
+  customFetch: sdkTestDoubles.customFetchStub,
+  customFetchJSON: sdkTestDoubles.customFetchJSONStub,
+}));
 
 vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
@@ -81,7 +55,10 @@ const renderPage = () =>
     </MemoryRouter>,
   );
 
+// The form appears only once the backend has confirmed a stored credential,
+// so every flow through it waits for that answer first.
 const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
+  await screen.findByRole('textbox', { name: /Owner/ });
   await user.type(screen.getByRole('textbox', { name: /Repository/ }), 'my-repo');
   await user.type(screen.getByRole('textbox', { name: /Branch/ }), 'main');
   await user.type(screen.getByRole('textbox', { name: /^Name$/ }), 'my-func');
@@ -90,22 +67,17 @@ const fillForm = async (user: ReturnType<typeof userEvent.setup>) => {
 
 describe('FunctionCreatePage', () => {
   beforeEach(() => {
-    logoutGithubFake();
-    authenticateGithubFake();
+    fetchGithubUserStub();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  afterAll(() => {
-    logoutGithubFake();
-  });
-
-  it('renders CreateFunctionForm', () => {
+  it('renders CreateFunctionForm for a user the backend already connected', async () => {
     renderPage();
 
-    expect(screen.getByRole('textbox', { name: /Owner/ })).toBeInTheDocument();
+    expect(await screen.findByRole('textbox', { name: /Owner/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Create/ })).toBeInTheDocument();
   });
 
@@ -142,21 +114,20 @@ describe('FunctionCreatePage', () => {
     });
   });
 
-  it('renders UserAvatar in header', () => {
-    logoutGithubFake();
+  it('renders UserAvatar in header', async () => {
+    noGithubUserStub();
     renderPage();
 
-    expect(screen.getByTestId('user-avatar')).toBeInTheDocument();
+    expect(await screen.findByTestId('user-avatar')).toBeInTheDocument();
   });
 
-  it('shows warning and hides form when no PAT is set', () => {
-    logoutGithubFake();
+  it('hides form when the backend holds no credential', async () => {
+    noGithubUserStub();
     renderPage();
 
-    expect(
-      screen.getByText(/A GitHub Personal Access Token is required to create functions/),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: /Owner/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: /Owner/ })).not.toBeInTheDocument(),
+    );
   });
 
   it('sends environment variables to backend during submission', async () => {

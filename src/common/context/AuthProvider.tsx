@@ -1,46 +1,92 @@
-import { createContext, ReactNode, useState } from 'react';
-import { AuthUser, PAT_KEY, USER_KEY } from '../types';
+import { Alert, Bullseye, Spinner } from '@patternfly/react-core';
+import { createContext, ReactNode, useCallback, useEffect, useState } from 'react';
+import { disconnectGithubUser, fetchGithubUser } from '../clients/authClient';
+import { AUTH_EXPIRED_EVENT, AuthUser } from '../types';
+
+const NO_USER: AuthUser = { name: '', avatarUrl: '' };
 
 interface AuthState {
   isAuthenticated: boolean;
   user: AuthUser;
-  connectionId: number;
   onLogin: (user: AuthUser) => void;
+  onLogout: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthState>({
   isAuthenticated: false,
-  user: { name: '', avatarUrl: '' },
-  connectionId: 0,
+  user: NO_USER,
   onLogin: () => {},
+  onLogout: async () => {},
 });
 
 export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    () => !!sessionStorage.getItem(PAT_KEY),
-  );
-  const [user, setUser] = useState<AuthUser>(readStoredUser);
-  const [connectionId, setConnectionId] = useState(0);
+  // undefined until the backend answers, null once it says it holds nothing
+  const [authUser, setAuthUser] = useState<AuthUser | null | undefined>(undefined);
+  const [showExpiredAlert, setShowExpiredAlert] = useState(false);
 
   const onLogin = (authUser: AuthUser) => {
-    setUser(authUser);
-    setIsAuthenticated(true);
-    setConnectionId((id) => id + 1);
+    setAuthUser(authUser);
+    setShowExpiredAlert(false);
   };
 
+  const onAuthExpired = useCallback(() => {
+    setAuthUser(null);
+    setShowExpiredAlert(true);
+  }, []);
+
+  const onLogout = async () => {
+    await disconnectGithubUser();
+    setAuthUser(null);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchGithubUser()
+      .then((connected) => {
+        if (cancelled) return;
+        if (connected) onLogin(connected);
+        else setAuthUser(null);
+      })
+      .catch(() => {
+        // Stay disconnected: the user can still connect by hand.
+        if (!cancelled) setAuthUser(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
+  }, [onAuthExpired]);
+
+  if (authUser === undefined) {
+    return (
+      <Bullseye>
+        <Spinner aria-label="Loading" />
+      </Bullseye>
+    );
+  }
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, connectionId, onLogin }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated: Boolean(authUser),
+        user: authUser ?? NO_USER,
+        onLogin,
+        onLogout,
+      }}
+    >
+      {showExpiredAlert && (
+        <Alert
+          variant="warning"
+          title="Your GitHub session has expired. Click 'Connect to GitHub' to reconnect."
+          isInline
+          className="pf-v6-u-m-md"
+        />
+      )}
       {children}
     </AuthContext.Provider>
   );
-}
-
-function readStoredUser(): AuthUser {
-  const userJson = sessionStorage.getItem(USER_KEY);
-  if (!userJson) return { name: '', avatarUrl: '' };
-  try {
-    return JSON.parse(userJson) as AuthUser;
-  } catch {
-    return { name: '', avatarUrl: '' };
-  }
 }

@@ -60,9 +60,10 @@ Arrows mean "imports / depends on."
 
 ### Clients
 
-`common/clients/` contains thin wrappers around external APIs. Two forms:
+`common/clients/` contains thin wrappers around external APIs. Three forms:
 
-- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers that hooks call.
+- **`httpClient.ts`** -- the single fetch boundary. Wraps the SDK's `consoleFetch`/`consoleFetchJSON` with 401 -> `AUTH_EXPIRED_EVENT` dispatch and header flattening. All HTTP clients import `customFetch`/`customFetchJSON` from here, never from the SDK directly.
+- **Plain async functions** (e.g., `functionsClient.ts`, `authClient.ts`) -- stateless fetch wrappers that hooks call, built on `httpClient`.
 - **Hooks** (e.g., `useCluster.ts`) -- when the client wraps a React-aware SDK call such as `useK8sWatchResource`, it stays as a hook.
 
 ### Hooks
@@ -114,6 +115,8 @@ Go + `net/http` standard library. Key dependencies:
 | `handler` | HTTP handlers: input validation, orchestration, error mapping |
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
 | `scm/github` | go-github implementation of `scm.Client` |
+| `scm/credentials` | SCM tokens (GitHub PAT today, OAuth later) stored as Secrets in the backend's own namespace, each bound to the `identity.User` that created it |
+| `identity` | Who the caller is: turns the console-forwarded user token into an `identity.User` (username + UID) via `SelfSubjectReview`, with a short-lived cache |
 | `config` | Runtime configuration, package-level wiring vars (`SCMRegistry`), constants, and service account token expiry parsing |
 | `tlsreload` | Reloads the serving cert/key from disk on change (fsnotify plus a poll fallback), swapping an atomic `*tls.Certificate` via `GetCertificate` so rotated certs are served without a restart |
 
@@ -126,6 +129,9 @@ Go + `net/http` standard library. Key dependencies:
 - `scm` has no knowledge of cluster or functions
 - `functions` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
 - `config` is imported by `handler`, `functions`, and `main` only; it owns runtime configuration and package-level wiring
+- `identity` is a leaf next to `kube`: it imports `kube` and nothing else from the backend. It is about OpenShift identity, not SCM, so it sits at the top level rather than under the package that happens to use it most
+- `scm/credentials` imports `identity` because a stored token is meaningless without the user it belongs to, and it owns the `identity.Resolver`. `handler` hands it the raw bearer token and gets a credential back, so it never holds an `identity.User` and never mediates between the two. `handler` imports `identity` only for `ErrUnauthenticated`, which is an OpenShift concept and does not belong behind an SCM package
+- `scm/credentials` sits under `scm` because that is what it stores tokens for, but it imports neither `scm` nor `cluster` nor anything HTTP. The handlers that store and read the token live in `handler`, which is what keeps it free of the SCM dependency it would otherwise need to verify a PAT. Callers name it `scmCredentials` rather than `credentials`, so the variable never reads as cluster credentials
 
 ### Key Decisions
 
@@ -152,6 +158,40 @@ The backend requests service account tokens with a configurable lifetime, set by
 **TLS serving certificate reloaded at runtime by an fsnotify + poll hybrid**
 The OCP service CA operator rotates the serving cert/key automatically. `tlsreload.Reloader` watches the mounted pair with fsnotify and atomically swaps the cached `*tls.Certificate` served via `tls.Config.GetCertificate`, so a rotation is picked up without restarting the pod. A poll ticker running every 30 seconds operates alongside the watcher as a safety net for events fsnotify can miss, in particular the atomic `..data` symlink swap Kubernetes uses for mounted secrets: when a watched file is removed or renamed the watch is re-added to the new file, and the poll guarantees the change is eventually observed regardless. Polling stays active during watcher setup failures and the 3-second watcher restart delays. Watcher events and poll ticks are processed on one goroutine, so `reload` and its content hash remain serialized and the swap needs only a plain atomic `Store` (no mutex). fsnotify was promoted from an existing indirect dependency; the heavier `k8s.io/apiserver/dynamiccertificates` and `controller-runtime/certwatcher` (which pulls in Prometheus) were avoided. Reloads are content-hashed to skip re-parsing when the pair is unchanged, and the last valid pair is retained when an update is incomplete or invalid.
 
+**Credentials are stored per OpenShift user and found by identity, not by token**
+
+A user's SCM credential lives in one Secret named after a SHA-256 of their identity (the UID where they have one, the username otherwise, prefixed so the two cannot collide). The name is hashed because it is not a secret: it shows up in audit logs and in `oc get secrets` for anyone with read access to the namespace. Connecting again overwrites that Secret rather than adding another, so a user never accumulates live PATs nobody deletes, and revocation has exactly one thing to delete.
+
+`auth.Store` takes the console's bearer token and resolves it itself, so a caller cannot reach a credential without having proved whose it is; the check cannot be forgotten at a call site, and a mismatch is an error rather than a flag the caller inspects. `auth.ErrUnauthenticated` is re-exported so `handler` can tell "the cluster would not say who this is" from "nothing is stored" without importing `identity`. The binding written into the Secret is verified on every read rather than inferred from where the Secret was found, since a deleted and recreated account could hash to the same name. There is no `SessionStore` interface: the store has one implementation, and handler tests run against a real `auth.Store` over `k8s.io/client-go/kubernetes/fake` so the ownership and expiry rules they exercise are the ones that ship.
+
+**The OpenShift identity is the only key, so there is no second token**
+
+An earlier design issued a plugin session token alongside the credential. It was removed because it never was a second secret: the endpoint that re-issued it authenticated with the OpenShift token alone, so reaching the console proxy as a given user already yielded their SCM-backed session. What the token did buy was cost: a second TTL, a reissue path, a browser handle to lose, and a 401-resume-retry loop to recover it. Dropping it leaves the property that actually mattered intact, because it never came from the token: the credential is bound to an OpenShift identity, a caller who is somebody else cannot read it, and the PAT is never in the browser.
+
+The consequence worth stating plainly is unchanged. Anyone who can reach the console proxy as a given OpenShift user can act with that user's stored SCM credential. That is the same exposure the console itself has, and it is the price of not making the user paste their PAT into every new tab.
+
+**One TTL, and a 401 that means one thing**
+
+`credentialTTL` (7d) is absolute and not sliding: it caps how long a stored credential can be used before the user supplies it again. Credentials past it are dropped when their owner next comes back (`dropIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
+
+The credential is one resource with three verbs:
+
+- `POST /api/v1/scm/github/credential` verifies the PAT with the SCM provider **before** writing it, so a token that cannot work never overwrites one that still does. It answers 201 with the SCM login and avatar, never the token, and **403** when the provider rejects what was supplied.
+- `GET /api/v1/scm/github/credential` answers 200 with the connected account, or **404** when the user has nothing stored. Not 401: the frontend reads 404 as "ask for a PAT" and 401 as an authentication failure, and conflating them would prompt on a backend blip. A 503 says the store could not be read, which is not the same as there being nothing in it.
+The caller's SCM credential is one resource with three verbs, named for what it is rather than for the token inside it: `GET` answers with the account the credential belongs to, which is its only representation that is safe to return. The provider sits in the path so a second one can be added beside it; it is the literal `github` until there is a second, rather than a parameter the backend would accept and ignore.
+
+- `DELETE /api/v1/scm/github/credential` is keyed on the OpenShift user. A leaked anything must not be a way to revoke somebody else's connection, and the browser disconnects regardless of whether the call succeeds. The backend Role needs `update` on secrets alongside `create`, `get`, and `delete`, because reconnecting overwrites the Secret in place.
+
+`writeAuthError` is the only source of 401, which is what lets the frontend read that one status as "connect to GitHub": either the OpenShift identity could not be established, or the store holds no credential for it. That has to hold everywhere, because `customFetch` turns any 401 into `AUTH_EXPIRED_EVENT` and disconnects. An SCM provider rejecting a token is a **403**, whether the token was stored earlier or supplied on the request being served: re-asking for the OpenShift identity cannot repair either, and answering 401 for a mistyped PAT would throw away a working connection.
+
+The frontend holds no auth state of its own. `AuthProvider` calls `GET /api/v1/scm/github/credential` on mount, and renders a spinner rather than its children until the answer arrives, so a user whose PAT is already stored is connected having typed nothing and nothing below ever has to reason about "not connected yet". `customFetch` does not retry: a 401 fires `AUTH_EXPIRED_EVENT` and `AuthProvider` clears its state. That is why a rejected PAT is a 403 and not a 401, which would disconnect a user over a typo.
+
+Credentials past `credentialTTL` are dropped when their owner next comes back (`dropIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
+
+The identity comes from the console proxy, which is declared `authorization: UserToken` and forwards the console user's bearer token in `Authorization`. That token is opaque, so `identity.Resolver` asks the API server who it belongs to with a `SelfSubjectReview` (the call behind `oc auth whoami`), which every authenticated user may create; reading `users.user.openshift.io` would need a `ClusterRole` the backend does not have. Answers are cached for an hour, keyed by a SHA-256 of the token, so the lookup costs one round trip per console session rather than one per request. The answer cannot go stale: an `OAuthAccessToken` carries the `userName` and `userUID` it was issued for, and the token string is what names that object, so a given token always means the same person. What the TTL bounds is liveness, not correctness: while an entry is cached, a revoked console token still reaches the stored credential, because nothing on the GitHub-only routes (`files`, and `list` when it falls back to repo-only results) re-checks it. Reading the credential does reach the API server on every request, but it reads the Secret with the backend's own ServiceAccount and proves only that the caller's identity owns it, which says nothing about whether their console token is still good. The map is pruned on write, which is why entries need to expire at all.
+
+`identity.User` carries both the username and the UID. The UID is the authoritative key where it exists, since a username can be deleted and recreated for a different person while a UID is never reused, but `kube:admin` is backed by a static Secret rather than a `User` object and has none, so `Matches` compares both and falls back to the name alone when neither side has a UID. Two empty users never match, which keeps a credential written without a binding from being readable by everybody.
+
 **SCM is abstracted behind a registry**
 `scm.Registry` maps `scm.Platform` → `scm.ClientFactory`. The active registry lives at `config.SCMRegistry`, a package-level var that tests swap out via `withSCMMock`. Handlers never reference a concrete SCM client type. The platform is currently resolved statically (`scm.DefaultPlatform = GitHub`), but the registry is designed to support dynamic platform selection — the handler can later derive the platform from the request body or header without changes to the registry or client implementations.
 
@@ -169,7 +209,7 @@ Using `List` all namespaces and then checking membership was rejected: `Namespac
 
 | Error | HTTP status |
 |---|---|
-| `scm.ErrUnauthorized` | 401 |
+| `scm.ErrUnauthorized` | 403 |
 | `scm.ErrRepoExists` | 409 |
 | `errUpstream` (cluster or SCM failure) | 502 |
 | validation failure | 400 |
@@ -177,4 +217,4 @@ Using `List` all namespaces and then checking membership was rejected: `Namespac
 
 
 **Handlers are stateless**
-`Handlers` holds only static configuration, including the requested service account token lifetime. Cluster clients are request-scoped, authenticated with the caller's OCP bearer token, and created only when an operation needs cluster access. There is no shared connection, credential, or session.
+`Handlers` holds only static configuration, including the requested service account token lifetime. Cluster clients are request-scoped, authenticated with the caller's OCP bearer token, and created only when an operation needs cluster access. There is no shared connection or credential.

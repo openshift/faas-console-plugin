@@ -22,7 +22,7 @@ Not every test double is a mock. Use the correct term:
 | Term | Purpose | Examples |
 |------|---------|----------|
 | **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub`, `getFilesStub`, `putFilesStub` (MSW handlers), `useK8sWatchResourceStub` |
-| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewSimpleClientset` (in-memory K8s client). Frontend: `authenticateGithubFake` (populates sessionStorage instead of real OAuth) |
+| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewClientset` / `fake.NewSimpleClientset` (in-memory K8s client). No frontend fake: nothing about the connection lives in the browser to fake |
 | **Mock** | Asserts expectations inside the double | Use sparingly. Prefer stubs with assertions in the test body. |
 | **Spy** | Records calls for later assertion | Not currently used. Prefer asserting on observable output. |
 
@@ -59,20 +59,24 @@ Shared test infrastructure lives in `src/common/testing/`:
 
 | File | Purpose |
 | ------ | --------- |
-| `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
-| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`) |
+| `sdkTestDoubles.tsx` | Stubs for the OCP SDK and `httpClient`: `customFetchStub` and `customFetchJSONStub` (bridge `httpClient` to real `fetch` so MSW can intercept), `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
+| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`), with configurable responses, errors, and delays |
+| `authClientStub.ts` | MSW handlers for the three verbs on `/api/v1/scm/github/credential`: `connectStub` (POST), `connectionStub` and `noConnectionStub` (GET, the second playing a user with nothing stored), `disconnectStub` (DELETE) |
 | `testData.ts` | Test data factories for shared test fixtures (`repoListItem`) |
-| `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
-| `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
+| `mswServer.ts` | The MSW server. It starts with no handlers and rejects any unhandled request, so each test declares the endpoints it expects |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
 
 ### Frontend Test Double Strategy
 
 Tests replace external dependencies at two boundaries using test doubles:
 
-**Backend API (MSW).** `functionsClient.ts` calls the Go backend over HTTP. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, query params, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts`.
+**Backend API (MSW).** `functionsClient.ts` and `authClient.ts` call the Go backend over HTTP via `httpClient.ts`. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, headers, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts` and `src/common/testing/authClientStub.ts`.
 
-**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks (e.g., `useCluster`) derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
+Nothing about the connection lives in the browser, so a test puts a component in the connected state by stubbing the GET rather than by seeding storage. That also makes connection asynchronous: `AuthProvider` renders a spinner instead of its children until the backend answers, so assertions on anything inside it need `findBy*`.
+
+All HTTP clients go through `httpClient.ts`, which is the mock boundary for tests. `vi.mock` replaces `httpClient` with `customFetchStub`/`customFetchJSONStub` from `sdkTestDoubles.tsx`, which bridge to real `fetch` so MSW can intercept. Tests that only need HTTP mock `httpClient` and do not need to mock the SDK at all.
+
+**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace`, plus UI components like `DocumentTitle` and `ListPageHeader`, that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The SDK mock contains only hooks and UI component stubs, not fetch functions (those are mocked at the `httpClient` level). The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks (e.g., `useCluster`) derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
 
 `vi.mock` is also used for framework internals that have no external service and cannot run outside their host environment:
 
@@ -157,10 +161,16 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-// OCP SDK boundary — load test doubles via vi.hoisted so they are
+// httpClient boundary — load test doubles via vi.hoisted so they are
 // available inside the vi.mock factory (which is hoisted above imports)
 const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
+vi.mock('../../common/clients/httpClient', () => ({
+  customFetch: sdkTestDoubles.customFetchStub,
+  customFetchJSON: sdkTestDoubles.customFetchJSONStub,
+}));
+
+// OCP SDK boundary — only hooks and UI components, not fetch functions
 vi.mock('@openshift-console/dynamic-plugin-sdk', async () => ({
   useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
   useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
@@ -315,7 +325,7 @@ e2e/
   auth.setup.ts                    # Playwright login setup (saves storageState)
   global-setup.ts                  # Global setup (operator install, namespace)
   fixtures/
-    authenticated-page.ts          # Custom test fixture: injects PAT into sessionStorage
+    authenticated-page.ts          # Custom test fixture: stores the fake PAT on the backend, revokes it after
   helpers/
     cluster.ts                     # K8s API helpers (namespace, operator, deploy)
     constants.ts                   # Shared constants (PRESEEDED_FUNC_NAME, E2E_USER, etc.)
@@ -352,7 +362,7 @@ test.describe('My feature', () => {
 
 ### E2E Test Doubles
 
-Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. The fixture injects a placeholder PAT and user into sessionStorage before each test.
+Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. Before each test the fixture posts the fake PAT to `/api/v1/scm/github/credential`, which leaves the credential in a Secret on the cluster, and sends a DELETE afterwards so the Secret does not outlive the test. Nothing is seeded into the browser: the credential is keyed by the OpenShift identity the console forwards, so every page load reconnects on its own, which is what makes a reload mid-test a real assertion rather than a fixture trick.
 
 The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seeding, resetting, and deleting repos, reading a repo Actions variable (`getRepoVariable`), and building the standard Node function seed files (`nodeFunctionFiles`). Shared constants live in `e2e/helpers/constants.ts`:
 
@@ -361,7 +371,7 @@ The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seedin
 
 ### Helpers
 
-**Auth** - Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`. The authenticated-page fixture then injects the PAT and user into sessionStorage on top of that session.
+**Auth** - OpenShift login is handled by `e2e/auth.setup.ts`, which saves console session state via Playwright's `storageState`. That console session is the whole of the browser's auth state; the authenticated-page fixture only arranges for a credential to exist on the backend for the user it identifies.
 
 **Navigation** (`e2e/helpers/navigation.ts`)
 
