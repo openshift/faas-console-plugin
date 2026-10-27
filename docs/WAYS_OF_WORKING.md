@@ -35,8 +35,8 @@ All team members:
 ### Backlog Manager
 
 - Set up and facilitate backlog grooming, and coordinate story refinement across the team.
-- Ensure work is tracked in an appropriate Jira issue. Before implementation, check that it is refined, assigned, prioritized, and estimated.
-- Check issue status, PR links where applicable, story-to-epic links, epic-to-OCPSTRAT links, and dependencies.
+- Ensure work is tracked in an appropriate Jira issue. Continuously monitor that issues in status Backlog and beyond are refined, assigned, prioritized, and estimated.
+- Check issue has correct status, PR links where applicable, story-to-epic links, epic-to-OCPSTRAT links, and dependencies.
 - Lead the Jira sanity check during weekly syncs and follow up on unresolved ticket dependencies.
 
 ### Roadmap Manager
@@ -196,6 +196,19 @@ Checklist:
 On weeks where the retrospective intersects with the backlog grooming meeting, grooming moves to Thu.
 
 Calendar event descriptions should reference this checklist as the single source of truth.
+
+**Knowledge Transfer** (as needed)
+
+An informal session where a team member shares context on a topic relevant to the team. The Meeting Manager keeps the session on the calendar and coordinates scheduling with the presenter.
+
+Reasons to hold one:
+
+- New feature walkthrough after a complex feature lands
+- Spike or research findings from a technical investigation
+- Tooling or workflow changes the team will use
+- Onboarding a new team member
+- Cross-team learnings from conferences, training, or other teams
+- Spreading knowledge of a critical area beyond a single person
 
 ## Pull Requests
 
