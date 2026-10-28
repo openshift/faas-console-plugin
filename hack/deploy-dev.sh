@@ -32,6 +32,15 @@ if ! oc whoami &>/dev/null; then
   exit 1
 fi
 
+if [ -n "${OCP_VERSION:-}" ]; then
+  cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+  if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
+    log::error "Cluster version (${cluster_version}) is different from dev target (${OCP_VERSION}). The plugin will not load."
+    log::error "Log in to a ${OCP_VERSION} cluster or set OCP_VERSION to match your cluster."
+    exit 1
+  fi
+fi
+
 # --- Build ---
 
 log::step "Building image"
