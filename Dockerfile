@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:8be9cf86863a69b54a44a6a77a5406de19948f6ecf86ca64f27a3724db3be892 AS nodebuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/nodejs-24:latest@sha256:e2e5691882dda8415ebdb62471684e5d910a6085f2fab0acdc10261b78dcd17a AS nodebuilder
 USER root
 
 WORKDIR /usr/src/app
@@ -13,7 +13,7 @@ COPY locales/ locales/
 COPY config/ config/
 RUN if [ -f /cachi2/cachi2.env ]; then . /cachi2/cachi2.env; fi && node .yarn/releases/yarn-*.cjs build
 
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.10-1792906297@sha256:c51f0f31cbaa7e91dede6013f636d54fe10dd7d581cfc4cda014ba9d62bcd779 AS gobuilder
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/go-toolset:1.26.10-1793107762@sha256:c8947b60e6568dcdc5f66d382e18fa1fb89039918f59783e45b8c90847579955 AS gobuilder
 ARG TARGETOS TARGETARCH
 ENV GOOS=$TARGETOS GOARCH=$TARGETARCH
 ENV GOFIPS140=v1.0.0
