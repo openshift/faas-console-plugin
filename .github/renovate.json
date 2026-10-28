@@ -7,21 +7,34 @@
   "enabledManagers": ["tekton", "gomod", "npm", "dockerfile"],
   "timezone": "UTC",
   "schedule": ["before 7am"],
-  "minimumReleaseAge": "7 days",
+  "minimumReleaseAge": "90 days",
   "lockFileMaintenance": {
     "enabled": true
   },
   "gomod": {
     "packageRules": [
       {
-        "matchManagers": ["gomod"],
         "matchUpdateTypes": ["major"],
         "enabled": false
       },
       {
-        "matchManagers": ["gomod"],
         "matchPackageNames": ["k8s.io/*", "sigs.k8s.io/*", "knative.dev/*"],
         "matchUpdateTypes": ["major", "minor"],
+        "enabled": false
+      },
+      {
+        "matchPackageNames": ["knative.dev/*"],
+        "matchUpdateTypes": ["digest"],
+        "enabled": false
+      },
+      {
+        "description": "Let the module graph pick indirect deps; bumping them alone breaks the build. CVE fixes still land via vulnerabilityAlerts.",
+        "matchDepTypes": ["indirect"],
+        "enabled": false
+      },
+      {
+        "description": "Bump the go directive deliberately, in step with the go-toolset builder image.",
+        "matchDatasources": ["golang-version"],
         "enabled": false
       }
     ]
