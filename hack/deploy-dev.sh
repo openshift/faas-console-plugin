@@ -32,6 +32,18 @@ if ! oc whoami &>/dev/null; then
   exit 1
 fi
 
+if [ -z "${OCP_VERSION:-}" ]; then
+  log::error "OCP_VERSION is not set. Run via 'make deploy-dev'."
+  exit 1
+fi
+
+cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
+  log::error "Cluster version (${cluster_version}) is different from plugin compatible target (${OCP_VERSION}). The plugin will not load."
+  log::error "Log in to an OCP ${OCP_VERSION} cluster."
+  exit 1
+fi
+
 # --- Build ---
 
 log::step "Building image"

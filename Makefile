@@ -22,6 +22,12 @@ NAMESPACE ?= console-functions-plugin
 IMAGE ?= quay.io/redhat-user-workloads/ocp-serverless-tenant/faas-console-plugin:latest
 KUBE_API_SERVER ?= https://api.example.com:6443
 
+# The OCP version to develop and test against. This selects the console image
+# for local dev and is used as a reference point for cluster version checks.
+# It is a hard compatibility boundary; the plugin supports only this version, 
+# declared via @console/pluginAPI in package.json.
+export OCP_VERSION ?= $(shell node -p "require('./package.json').consolePlugin.dependencies['@console/pluginAPI'].match(/\d+\.\d+/)[0]")
+
 .PHONY: help install-frontend build-frontend lint-frontend unit-frontend type-check test-e2e verify \
         install-backend build-backend build-fakegithub unit-backend lint-backend fmt-backend \
         image deploy undeploy deploy-dev setup-serverless \
@@ -38,7 +44,7 @@ help: ## Show this help
 
 ##@ Development
 
-dev: ## Start dev environment (also: dev-stop, dev-randomize-ports, dev-fake-gh)
+dev: ## Start dev environment (also: dev-stop, dev-randomize-ports, dev-fake-gh, dev-allow-version-mismatch)
 	hack/dev.sh
 
 dev-%:
