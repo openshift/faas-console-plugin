@@ -23,7 +23,8 @@ the Roadmap Managers coordinate delivery with the product manager.
 All team members:
 
 - Develop, test, document, review code, and contribute to architecture decisions.
-- Refine stories and keep their own Jira issues, status, and PR links up to date.
+- Own refinement of their issues through to Backlog, and keep status, labels, estimates, dependencies and PR links up to date.
+- Bring decisions and requests for refinement help to grooming.
 - Create or update an appropriate Jira issue for actionable findings and ideas they raise.
 
 ### Meeting Manager
@@ -34,10 +35,14 @@ All team members:
 
 ### Backlog Manager
 
-- Set up and facilitate backlog grooming, and coordinate story refinement across the team.
-- Ensure work is tracked in an appropriate Jira issue. Continuously monitor that issues in status Backlog and beyond are refined, assigned, prioritized, and estimated.
-- Check issue has correct status, PR links where applicable, story-to-epic links, epic-to-OCPSTRAT links, and dependencies.
-- Lead the Jira sanity check during weekly syncs and follow up on unresolved ticket dependencies.
+- Set up and facilitate backlog grooming, and help story owners get refinement input from the team. Owners remain responsible for refinement and moving ready issues to Backlog.
+- Ensure work is tracked in an appropriate Jira issue.
+- Return insufficiently refined Backlog issues to New with a comment explaining the gaps. Across these reviews, verify status, labels, applicable PR links, story-to-epic links, epic-to-OCPSTRAT links, and dependencies.
+- Continuously monitor that issues in status beyond Backlog are correctly estimated and refined.
+- Lead the Jira sanity check during weekly syncs, raise gaps, and follow up on unresolved ticket dependencies with their owners.
+- Collect topics people bring, hot topics, relevant Slack conversations, and unanswered requests for PM opinion, and keep them in a short running grooming agenda.
+- During grooming, briefly review a few of the oldest untouched New or Refinement issues with their owners to agree next steps and prevent abandoned tickets.
+- Review potentially stale items with PM in a separate meeting when needed and agree their resolution. `needs-stale-check` may be used temporarily to collect those items, then removed once resolved.
 
 ### Roadmap Manager
 
@@ -105,16 +110,63 @@ We use Jira for planning and tracking. Issues are organized as:
 - **Bugs** describe a defect to fix (see [bug template](templates/jira-bug-template.md))
 - **Sub-tasks** break a story into smaller pieces when needed
 
+### Qualification Labels
+
+Use one primary purpose label and one support tier where known.
+Jira status tracks progress. Decisions and refinement questions belong in the issue and grooming agenda.
+
+#### Support Tiers
+
+The tiers follow "Serverless 2.0 Dependency Support Tiers".
+
+| Label             | Support scope                                              | Examples                                                                                                           |
+| ----------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `tier-0`  | Core dependencies and capabilities that make up Serverless | KEDA autoscaling, OCP Console, Git or equivalent repository capability, in-cluster CI/CD such as Tekton, Kafka EDA |
+| `tier-1`  | OpenShift dependencies that make Serverless work in OCP    | External-cluster CI/CD, Service Mesh networking                                                                    |
+| `tier-2`  | Established customer integrations                          | GitHub, Camel, SQS and S3                                                                                          |
+| `tier-3`  | Best-effort integrations                                   | MCP, GitHub Actions                                                                                                |
+| `tier-4`  | Documentation/upstream-only integrations                   | RedisStream                                                                                                        |
+| `tier-na` | Work outside the dependency support model                  | Team process, generic development tooling                                                                          |
+
+- Generic Console correctness or refactoring is Tier 0; GitHub-specific integration is Tier 2 even when implemented in the Console.
+- Product CI/CD and the team's own build/test infrastructure are different: development CI does not automatically inherit a customer CI/CD tier.
+- Documentation inherits the capability's tier. Writing documentation does not make an issue Tier 4.
+- Unknown is not N/A. Leave the tier unset and bring the support question to grooming when the mapping is unresolved. Do not assign a new integration a tier by analogy without agreement.
+
+#### Work Purpose
+
+| Label         | Purpose                                                                            |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `capability`  | Add or extend user-facing functionality or integrations                            |
+| `hardening`   | Improve correctness, security, reliability, recovery or production robustness      |
+| `maintenance` | Refactor, simplify code, maintain compatibility or update dependencies             |
+| `tooling`     | Improve development environments, repository CI, test infrastructure or automation |
+| `docs`        | Provide user/operator documentation, examples or guides                            |
+| `process`     | Improve team practices, planning, roles or ceremonies                              |
+
+Choose one or more purposes. For example, production-code test refactoring can be Tier 0 maintenance, while a generic E2E runner improvement is tooling outside the support tiers. Developer tooling guides belong with tooling; team working agreements belong with process.
+
+### Backlog Readiness
+
+The issue owner (reporter unless another owner is agreed) owns refinement and moves the issue to Backlog when it is ready.
+The Backlog Manager checks readiness and labels, and returns unready Backlog issues to New with a comment identifying the gaps. The owner addresses them before moving it back to Backlog.
+
+An issue is ready when:
+
+- The description states the problem and expected outcome following our guide templates.
+- Priority and a story-point estimate are set.
+- Parent epic, dependencies and related issue links are correct.
+- Scope is bounded, coherent and independently deliverable.
+- Acceptance criteria are observable.
+
 ## Jira Story Status
 
-- **New** - Issue to refine
-- **Backlog** - Ready for development
-- **Refinement** - Issue is in refinement
-- **In Progress** - Work has started
-- **Code Review** - PR is open and awaiting review
-- **Closed** - Acceptance criteria are met and all required PRs are merged, if applicable
-
-Create unrefined issues in New. Use Backlog for work that is refined and ready for development.
+- **New** - Issue to refine.
+- **Refinement** - The owner is actively refining the issue.
+- **Backlog** - Refined and ready for development (the issue reporter moves it here).
+- **In Progress** - Work has started.
+- **Code Review** - Required changes are awaiting review.
+- **Closed** - Acceptance criteria are met and required PRs are merged, or the issue is otherwise resolved, such as duplicate or obsolete.
 
 ## Async Ceremonies
 
@@ -135,7 +187,8 @@ Refinement converts a vague initiative into work an engineer can act on. A story
 
 - Blocked work should not be refined, defer until it is unblocked.
 - Refinement is ongoing.
-- Identify large stories during refinement and split them into subtasks with priorities (must-have / nice-to-have). Each subtask should be independently mergeable.
+- Owners move ready issues to Backlog without waiting for a grooming meeting.
+- Identify large stories and split them into subtasks with priorities (must-have / nice-to-have). Each subtask should be independently mergeable
 
 ### Async Review
 
@@ -145,7 +198,7 @@ The rest of the team reviews refined stories in Jira and leaves comments.
 
 **Weekly Sync + Technical Discussions** (every Tue + Thu)
 
-The Meeting Manager facilitates; the Backlog Manager leads the Jira sanity check.
+The Meeting Manager facilitates; the Backlog Manager checks In Progress and Code Review issues beforehand and raises gaps in definition, estimates, ownership, status or links during the Jira sanity check.
 
 Checklist:
 
@@ -154,25 +207,25 @@ Checklist:
   - Status up to date?
   - Are priorities correct?
   - PR linked to the story?
-  - Stories in refinement up to date? Questions/comments answered?
   - Correct parent epic?
 - [ ] **PR review assignments** - assign open PRs until everyone has 1-3 PRs to review.
 - [ ] **Technical discussions** - discuss stories in progress or upcoming stories that need alignment.
 
 Calendar event descriptions should reference this checklist as the single source of truth.
 
-**Backlog Cleanup / Grooming** (every week, Tue or Thu or both)
+**Grooming** (every week, Tue or Thu)
 
-The Backlog Manager sets up and facilitates this meeting.
+The Backlog Manager sets up and facilitates the meeting. Anyone can bring an issue they want to discuss, including the Backlog Manager bringing items they want clarified. Use the running agenda as a reminder of hot topics, Slack discussions and pending questions for PM.
+
+The spotlight is work connected to current priorities or upcoming planning. Review it when no one brings a topic; grooming does not require scanning every New or Refinement issue each week.
 
 Checklist:
 
-- [ ] Go through all New / Backlog stories and bugs
+- [ ] Discuss items people bring for decisions, clarification, or refinement help. If no topics are raised, check that New / Refinement / Backlog stories and bugs in the spotlight have clear scope and next steps.
+- [ ] Briefly review a few of the oldest untouched New or Refinement issues. Ask owners to refine them, explain a deferral and agree when to revisit it, or propose closing them.
 - [ ] Identify large stories and split them into prioritized subtasks (must-have / nice-to-have)
-- [ ] Prioritize and assign stories for refinement
 - [ ] Close stale items
 - [ ] Create new tickets as needed
-- [ ] Discuss open questions
 
 Calendar event descriptions should reference this checklist as the single source of truth.
 
