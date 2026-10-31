@@ -34,7 +34,7 @@ function FunctionCreatePageContent() {
     error,
     handleSubmit,
     handleCancel,
-    isConnectedToForge,
+    isAuthenticated,
     secrets,
     configMaps,
     onNamespaceChange,
@@ -44,24 +44,15 @@ function FunctionCreatePageContent() {
     <>
       <DocumentTitle>{t('Create function')}</DocumentTitle>
       <ListPageHeader title={t('Create function')}>
-        <UserAvatar enableReconnect={false} />
+        <UserAvatar />
       </ListPageHeader>
       <PageSection>
-        {!isConnectedToForge && (
-          <Alert
-            variant="warning"
-            title={t(
-              "A GitHub Personal Access Token is required to create functions. Go to the Functions page and click 'Connect to GitHub' to connect.",
-            )}
-            isInline
-          />
-        )}
         {error && (
           <Alert variant="danger" title={t('Error creating function')} isInline>
             {error}
           </Alert>
         )}
-        {isConnectedToForge && (
+        {isAuthenticated && (
           <CreateFunctionForm
             secrets={secrets}
             configMaps={configMaps}
@@ -80,14 +71,14 @@ function useFunctionCreatePage(): {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
   isSubmitting: boolean;
-  isConnectedToForge: boolean;
+  isAuthenticated: boolean;
   error: string | null;
   handleSubmit: (data: CreateFunctionFormData) => Promise<void>;
   handleCancel: () => void;
   onNamespaceChange: (namespace: string) => void;
 } {
   const navigate = useNavigate();
-  const isConnectedToForge = useContext(AuthContext).isAuthenticated;
+  const isAuthenticated = useContext(AuthContext).isAuthenticated;
   const [namespace, setNamespace] = useState('');
   const debouncedNamespace = useDebouncedValue(namespace, 300);
   const { secrets, configMaps } = useSecretsAndConfigMaps(debouncedNamespace);
@@ -128,7 +119,7 @@ function useFunctionCreatePage(): {
     error,
     handleSubmit,
     handleCancel,
-    isConnectedToForge,
+    isAuthenticated,
     secrets,
     configMaps,
     onNamespaceChange: setNamespace,

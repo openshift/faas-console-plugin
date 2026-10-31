@@ -199,6 +199,24 @@ describe('createSSEEventSource', () => {
       expect(await events.dequeue()).toBe('{"a/b":{"status":"InProgress"}}');
     });
 
+    it('reports the HTTP status when the fetch wrapper rejects a response', async () => {
+      const es = createSSEEventSource(TEST_URL, {
+        fetchFn: async () => {
+          throw Object.assign(new Error('Service Unavailable'), {
+            response: new Response(null, { status: 503, statusText: 'Service Unavailable' }),
+          });
+        },
+      });
+      using errors = captureErrors(es);
+      try {
+        const error = await errors.dequeue();
+        expect(error).toBeInstanceOf(HttpError);
+        expect((error as HttpError).status).toBe(503);
+      } finally {
+        es.close();
+      }
+    });
+
     it('reconnects after 401 (transport always reconnects, consumer decides)', async () => {
       using timer = timerFake();
       let callCount = 0;

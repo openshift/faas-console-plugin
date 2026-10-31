@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -18,6 +19,10 @@ import (
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func createFunctionRequest(body io.Reader) *http.Request {
+	return httptest.NewRequestWithContext(testCredentialContext(), http.MethodPost, "/api/v1/func/create", body)
+}
 
 var _ = Describe("POST /api/v1/func/create", func() {
 	validBody := func() []byte {
@@ -36,9 +41,8 @@ var _ = Describe("POST /api/v1/func/create", func() {
 	doCreate := func(setup func()) *httptest.ResponseRecorder {
 		setup()
 		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		req := createFunctionRequest(bytes.NewBuffer(validBody()))
+
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 		return w
@@ -89,11 +93,12 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				}, nil
 			},
 		})
-		h, err := New("", "", "https://api.test-cluster.example.com:6443", 7*24*60*60)
-		Expect(err).NotTo(HaveOccurred())
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		h := &Handlers{
+			externalAPIServerURL: "https://api.test-cluster.example.com:6443",
+			saTokenExpiry:        7 * 24 * 60 * 60,
+		}
+		req := createFunctionRequest(bytes.NewBuffer(validBody()))
+
 		w := httptest.NewRecorder()
 
 		h.HandleFuncCreate(w, req)
@@ -139,7 +144,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				},
 			})
 			withClusterStub(&cluster.ClientStub{})
-		}, http.StatusUnauthorized),
+		}, http.StatusForbidden),
 
 		Entry("InitRepo returns generic error", func() {
 			withSCMStub(&scm.ClientStub{
@@ -157,7 +162,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				},
 			})
 			withClusterStub(&cluster.ClientStub{})
-		}, http.StatusUnauthorized),
+		}, http.StatusForbidden),
 
 		Entry("StoreSecret returns generic error", func() {
 			withSCMStub(&scm.ClientStub{
@@ -175,7 +180,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				},
 			})
 			withClusterStub(&cluster.ClientStub{})
-		}, http.StatusUnauthorized),
+		}, http.StatusForbidden),
 
 		Entry("StoreVariable returns generic error", func() {
 			withSCMStub(&scm.ClientStub{
@@ -193,7 +198,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 				},
 			})
 			withClusterStub(&cluster.ClientStub{})
-		}, http.StatusUnauthorized),
+		}, http.StatusForbidden),
 
 		Entry("PushFiles returns generic error", func() {
 			withSCMStub(&scm.ClientStub{
@@ -205,31 +210,10 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		}, http.StatusBadGateway),
 	)
 
-	It("rejects requests without an X-SCM-Token", func() {
-		h := &Handlers{}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("Authorization", "Bearer ocp-token")
-		w := httptest.NewRecorder()
-		h.HandleFuncCreate(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
-
-	It("rejects requests without an Authorization header", func() {
-		h := &Handlers{}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(validBody()))
-		req.Header.Set("X-SCM-Token", "pat")
-		w := httptest.NewRecorder()
-		h.HandleFuncCreate(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
-
 	It("returns 400 for a malformed request body", func() {
 		h := &Handlers{}
-		req := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBufferString("not json"))
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.Header.Set("Authorization", "Bearer ocp-token")
+		req := createFunctionRequest(bytes.NewBufferString("not json"))
+
 		w := httptest.NewRecorder()
 		h.HandleFuncCreate(w, req)
 
@@ -240,9 +224,8 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		func(req createRequest) {
 			h := &Handlers{}
 			body, _ := json.Marshal(req)
-			r := httptest.NewRequest(http.MethodPost, "/api/v1/func/create", bytes.NewBuffer(body))
-			r.Header.Set("X-SCM-Token", "pat")
-			r.Header.Set("Authorization", "Bearer ocp-token")
+			r := createFunctionRequest(bytes.NewBuffer(body))
+
 			w := httptest.NewRecorder()
 			h.HandleFuncCreate(w, r)
 			Expect(w.Code).To(Equal(http.StatusBadRequest))

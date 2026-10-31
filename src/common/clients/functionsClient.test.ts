@@ -11,8 +11,11 @@ import { receiveWorkflowRunEvents } from './functionsClient';
 // https://vitest.dev/api/vi.html#vi-hoisted
 const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
 
+// Mock at the SDK boundary so the real httpClient logic (auth-expiry
+// events, header handling, error mapping) runs in these tests.
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  consoleFetch: sdkTestDoubles.consoleFetchFake,
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));
 
 describe('receiveWorkflowRunEvents', () => {
@@ -36,9 +39,9 @@ describe('receiveWorkflowRunEvents', () => {
     expect(data[0]['alice/fn'].status).toBe('InProgress');
   });
 
-  it('reports auth error and stops on 401 app-error', async () => {
+  it.each([401, 403])('reports auth error and stops on %i app-error', async (code) => {
     using timer = timerFake();
-    workflowWatchStub({ appError: { message: 'token expired', code: 401 } });
+    workflowWatchStub({ appError: { message: 'token expired', code } });
 
     const errors: string[] = [];
     const data: WorkflowRunRecord[] = [];

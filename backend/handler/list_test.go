@@ -22,10 +22,7 @@ func listRequest() *http.Request {
 }
 
 func scopedListRequest(query string) *http.Request {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/func/list"+query, nil)
-	req.Header.Set("X-SCM-Token", "valid-pat")
-	req.Header.Set("Authorization", "Bearer ocp-token")
-	return req
+	return httptest.NewRequestWithContext(testCredentialContext(), http.MethodGet, "/api/v1/func/list"+query, nil)
 }
 
 var _ = Describe("GET /api/v1/func/list", func() {
@@ -47,7 +44,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}).HandleListFunctions(w, listRequest())
+		h := &Handlers{externalAPIServerURL: "https://api.my-cluster.example.com:6443"}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -74,7 +72,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -106,7 +105,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -135,7 +135,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -168,7 +169,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -193,7 +195,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -218,7 +221,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -246,7 +250,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -266,7 +271,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClientError(errors.New("cannot reach cluster"))
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusBadGateway))
 	})
@@ -286,7 +292,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClientError(errors.New("cannot reach cluster"))
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusBadGateway))
 	})
@@ -300,30 +307,14 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(strings.TrimSpace(w.Body.String())).To(Equal("[]"))
 		var items []listItem
 		Expect(json.NewDecoder(w.Body).Decode(&items)).To(Succeed())
 		Expect(items).To(BeEmpty())
-	})
-
-	It("returns 401 when no X-SCM-Token header is provided", func() {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/list", nil)
-		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
-
-	It("returns 401 when no Authorization header is provided", func() {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/func/list", nil)
-		req.Header.Set("X-SCM-Token", "valid-pat")
-		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("excludes repos whose CLUSTER_API_URL variable points to a different cluster", func() {
@@ -409,7 +400,7 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		Expect(items).To(BeEmpty())
 	})
 
-	It("returns 401 when the SCM token is invalid", func() {
+	It("returns 403 when the SCM token is invalid", func() {
 		withSCMStub(&scm.ClientStub{
 			OnListRepos: func(ctx context.Context) ([]scm.Repo, error) {
 				return nil, scm.ErrUnauthorized
@@ -418,9 +409,10 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
+		Expect(w.Code).To(Equal(http.StatusForbidden))
 	})
 
 	It("returns 400 when neither namespace nor all is provided", func() {
@@ -430,7 +422,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest(""))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest(""))
 
 		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
@@ -442,7 +435,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withFunctionsClient(&functions.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace="))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest("?namespace="))
 
 		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
@@ -472,7 +466,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace=demo"))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest("?namespace=demo"))
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(gotNamespace).To(Equal("demo"))
@@ -498,7 +493,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace=demo"))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest("?namespace=demo"))
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -527,7 +523,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?namespace=demo"))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest("?namespace=demo"))
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -562,7 +559,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?all=true"))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest("?all=true"))
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(gotNamespace).To(Equal(""))
@@ -592,7 +590,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, scopedListRequest("?all=true&namespace=demo"))
+		h := &Handlers{}
+		h.HandleListFunctions(w, scopedListRequest("?all=true&namespace=demo"))
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(gotNamespace).To(Equal(""))
@@ -621,7 +620,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -651,7 +651,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -680,7 +681,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -708,7 +710,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem
@@ -730,7 +733,8 @@ var _ = Describe("GET /api/v1/func/list", func() {
 		})
 
 		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListFunctions(w, listRequest())
+		h := &Handlers{}
+		h.HandleListFunctions(w, listRequest())
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		var items []listItem

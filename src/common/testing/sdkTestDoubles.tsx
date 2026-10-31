@@ -9,6 +9,32 @@ export function reset() {
 }
 // END: global helpers ---------------------------------------------------------
 
+// START: consoleFetch / consoleFetchJSON stubs ---------------------------------
+// These bridge the SDK's console fetch wrappers to real fetch so MSW can
+// intercept. Mocking at this boundary keeps httpClient.ts (auth-expiry
+// events, header handling, error mapping) in the test path.
+
+export async function consoleFetchStub(url: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(new URL(url, 'http://localhost').href, options);
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(json.message), { response: res, json });
+  }
+  return res;
+}
+
+export async function consoleFetchJSONStub<T>(
+  url: string,
+  method = 'GET',
+  options?: RequestInit,
+): Promise<T> {
+  const res = await fetch(new URL(url, 'http://localhost').href, { ...options, method });
+  const json = await res.json();
+  if (!res.ok) throw Object.assign(new Error(json.message ?? ''), { response: res, json });
+  return json;
+}
+// END: consoleFetch / consoleFetchJSON stubs -----------------------------------
+
 // START: useK8sWatchResourceStub ----------------------------------------------
 type WatchFixtures = {
   knSvcs: K8sResourceKind[];
@@ -250,21 +276,3 @@ export const useDeleteModalStub = (
   };
 };
 // END: useDeleteModalStub -----------------------------------------------------
-
-// START: consoleFetchJSONFake ------------------------------------------------
-export const consoleFetchJSONFake = async (
-  url: string,
-  _method?: string,
-  options?: RequestInit,
-) => {
-  const res = await fetch(new URL(url, 'http://localhost').href, options);
-  const json = await res.json();
-  if (!res.ok) throw json;
-  return json;
-};
-// END: consoleFetchJSONFake --------------------------------------------------
-
-// START: consoleFetchFake ------------------------------------------------
-export const consoleFetchFake = async (url: string, options?: RequestInit) =>
-  fetch(new URL(url, 'http://localhost').href, options);
-// END: consoleFetchFake --------------------------------------------------

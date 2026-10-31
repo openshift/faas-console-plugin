@@ -54,6 +54,13 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Create the name of the SCM credential RBAC objects
+*/}}
+{{- define "openshift-console-plugin.credentialName" -}}
+{{- printf "%s-credentials" (include "openshift-console-plugin.name" .) }}
+{{- end }}
+
+{{/*
 Create the name of the patcher
 */}}
 {{- define "openshift-console-plugin.patcherName" -}}

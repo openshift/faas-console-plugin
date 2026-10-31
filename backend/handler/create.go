@@ -50,6 +50,8 @@ type createRequest struct {
 var errUpstream = errors.New("upstream error")
 
 func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
+	credential := credentialFrom(r.Context())
+
 	var req createRequest
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -61,21 +63,10 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
-		return
-	}
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "Authorization header is required")
-		return
-	}
-
-	if err := h.createFunction(r.Context(), req, pat, ocpToken); err != nil {
+	if err := h.createFunction(r.Context(), req, credential.Token, credential.ocpToken); err != nil {
 		switch {
 		case errors.Is(err, scm.ErrUnauthorized):
-			writeError(w, http.StatusUnauthorized, "invalid SCM token")
+			writeError(w, http.StatusForbidden, "invalid SCM token")
 		case errors.Is(err, scm.ErrRepoExists):
 			writeError(w, http.StatusConflict, "repository already exists")
 		case errors.Is(err, errUpstream):

@@ -68,7 +68,7 @@ function FunctionsListPageContent() {
       <DocumentTitle>{t('Functions')}</DocumentTitle>
       <NamespaceBar />
       <ListPageHeader title={t('Functions')}>
-        <UserAvatar enableReconnect />
+        <UserAvatar />
       </ListPageHeader>
       <PageSection>
         {errors.length > 0 &&
@@ -139,14 +139,14 @@ function useFunctionListPage(): {
   errors: string[];
   showNamespace: boolean;
 } {
-  const { isAuthenticated, connectionId } = useContext(AuthContext);
+  const { isAuthenticated, user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [namespace] = useActiveNamespace();
   const [refreshKey, setRefreshKey] = useState(0);
 
   const { functions, loaded, refreshing, errors } = useFunctions(
     namespace,
-    isAuthenticated ? connectionId : undefined,
+    isAuthenticated ? user?.name : undefined,
     refreshKey,
   );
 
@@ -171,7 +171,7 @@ function useFunctionListPage(): {
 
 function useFunctions(
   namespace: string,
-  connectionId?: number,
+  authUserName?: string,
   refreshKey?: number,
 ): {
   functions: Function[];
@@ -187,13 +187,13 @@ function useFunctions(
   const [listLoaded, setListLoaded] = useState(false);
   const [listError, setListError] = useState<string>();
   const [prevNamespace, setPrevNamespace] = useState(namespace);
-  const [prevConnectionId, setPrevConnectionId] = useState(connectionId);
+  const [prevAuthUserName, setPrevAuthUserName] = useState(authUserName);
   const [prevRefreshKey, setPrevRefreshKey] = useState(refreshKey);
   const [refreshing, setRefreshing] = useState(false);
 
-  if (namespace !== prevNamespace || connectionId !== prevConnectionId) {
+  if (namespace !== prevNamespace || authUserName !== prevAuthUserName) {
     setPrevNamespace(namespace);
-    setPrevConnectionId(connectionId);
+    setPrevAuthUserName(authUserName);
     setFunctionMetadataList([]);
     setListLoaded(false);
     setListError(undefined);
@@ -210,7 +210,7 @@ function useFunctions(
     let ignore = false;
 
     (async () => {
-      if (connectionId === undefined) {
+      if (authUserName === undefined) {
         setListLoaded(true);
         return;
       }
@@ -235,7 +235,7 @@ function useFunctions(
     return () => {
       ignore = true;
     };
-  }, [connectionId, namespace, refreshKey]);
+  }, [authUserName, namespace, refreshKey]);
 
   const initialFunctions: Map<string, Function> = useMemo(() => {
     const result = new Map<string, Function>();
@@ -284,7 +284,7 @@ function useFunctions(
   const [receiveError, setReceiveError] = useState<string>();
 
   useEffect(() => {
-    if (connectionId === undefined) return;
+    if (authUserName === undefined) return;
 
     const close = receiveWorkflowRunEvents(
       (runs) => {
@@ -297,7 +297,7 @@ function useFunctions(
     );
 
     return () => close();
-  }, [connectionId, refreshKey]);
+  }, [authUserName, refreshKey]);
 
   // Compose the final function list from all three sources.
   const functions = useMemo(

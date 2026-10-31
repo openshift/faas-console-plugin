@@ -1,6 +1,5 @@
 {
   "A GitHub Personal Access Token is required to create functions. Click 'Connect to GitHub' in the top-right corner to connect. Once connected, the create button will be enabled.": "A GitHub Personal Access Token is required to create functions. Click 'Connect to GitHub' in the top-right corner to connect. Once connected, the create button will be enabled.",
-  "A GitHub Personal Access Token is required to create functions. Go to the Functions page and click 'Connect to GitHub' to connect.": "A GitHub Personal Access Token is required to create functions. Go to the Functions page and click 'Connect to GitHub' to connect.",
   "Actions": "Actions",
   "Add environment variable": "Add environment variable",
   "Add key/value": "Add key/value",
@@ -25,6 +24,7 @@
   "Create or select a project for your function. If it needs credentials such as an API key, create a secret in that namespace so you can reference it as an environment variable.": "Create or select a project for your function. If it needs credentials such as an API key, create a secret in that namespace so you can reference it as an environment variable.",
   "Delete": "Delete",
   "Deploying": "Deploying",
+  "Disconnect": "Disconnect",
   "Edit": "Edit",
   "Edit and redeploy": "Edit and redeploy",
   "Edit function": "Edit function",
@@ -36,6 +36,7 @@
   "Function Settings": "Function Settings",
   "Functions": "Functions",
   "GitHub Settings": "GitHub Settings",
+  "Go to GitHub": "Go to GitHub",
   "Key": "Key",
   "Language": "Language",
   "Latest workflow run failed": "Latest workflow run failed",

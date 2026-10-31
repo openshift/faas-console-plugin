@@ -5,3 +5,8 @@ export function errorMessage(err: unknown): string {
   }
   return String(err);
 }
+
+export function resolveErrorStatus(err: unknown): number | undefined {
+  const e = err as { status?: number; response?: { status?: number } };
+  return e?.status ?? e?.response?.status;
+}

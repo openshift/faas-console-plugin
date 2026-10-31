@@ -15,12 +15,18 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
+	"github.com/openshift/faas-console-plugin/backend/identity"
+	"github.com/openshift/faas-console-plugin/backend/kube"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/scm/github"
 	"github.com/openshift/faas-console-plugin/backend/tlsreload"
 )
 
-const defaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+const (
+	defaultCAPath                 = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+	defaultConsolePluginNamespace = "console-functions-plugin"
+)
 
 //go:embed static/*
 var staticFiles embed.FS
@@ -31,9 +37,9 @@ func main() {
 	certFile := flag.String("cert", "/var/cert/tls.crt", "TLS certificate file")
 	keyFile := flag.String("key", "/var/cert/tls.key", "TLS key file")
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
-	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
+	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
-	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL (for testing with fake server)")
+	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
 	flag.Parse()
 
@@ -64,20 +70,26 @@ func main() {
 		}
 	}
 
-	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, saTokenExpiryParsed)
+	cfg, err := kube.ComponentConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", h.HandleHealthz)
-	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
-	mux.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
-	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
-	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
-	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
-	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch())
-	mux.Handle("/", http.FileServer(http.FS(static)))
+	namespace := kube.Namespace(defaultConsolePluginNamespace)
+	caCert, err := readCACert(*caPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	scmCredentials, err := credentials.NewStore(cfg, namespace, identity.NewResolver(*kubeHost, caCert))
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Storing SCM credentials as Secrets in namespace %q", namespace)
+
+	h := handler.New(caCert, *kubeHost, *kubeAPIServer, saTokenExpiryParsed, scmCredentials)
+
+	mux := newMux(h, scmCredentials, static)
 
 	muxHandler := loggingMiddleware(mux)
 
@@ -117,6 +129,35 @@ func main() {
 		log.Printf("TLS certificate not found, listening on http://%s", ln.Addr())
 		log.Fatal(http.Serve(ln, muxHandler))
 	}
+}
+
+func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.FS) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", h.HandleHealthz)
+	mux.HandleFunc("POST /api/v1/scm/github/credential", h.HandleSaveSCMCredential)
+	mux.HandleFunc("DELETE /api/v1/scm/github/credential", h.HandleDeleteSCMCredential)
+	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials)))
+	mux.Handle("/", http.FileServer(http.FS(static)))
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /api/v1/scm/github/credential", h.HandleGetSCMCredential)
+	protected.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
+	protected.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
+	protected.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
+	protected.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
+	mux.Handle("/api/v1/", handler.RequireCredential(protected, scmCredentials))
+	return mux
+}
+
+func readCACert(path string) ([]byte, error) {
+	if path == "" {
+		return nil, nil
+	}
+	caCert, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read CA certificate %q: %w", path, err)
+	}
+	return caCert, nil
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {

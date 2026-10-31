@@ -1,18 +1,14 @@
-import {
-  consoleFetch,
-  consoleFetchJSON,
-  isAllNamespacesKey,
-} from '@openshift-console/dynamic-plugin-sdk';
+import { isAllNamespacesKey } from '@openshift-console/dynamic-plugin-sdk';
+import { AppError, HttpError } from '../errors';
+import { customFetch, customFetchJSON } from './httpClient';
+import { createSSEEventSource } from '../transport/sseEventSource';
 import {
   CreateFunctionRequest,
   FileEntry,
   FunctionMetadata,
-  PAT_KEY,
   PROXY_BASE,
   WorkflowRunRecord,
 } from '../types';
-import { createSSEEventSource } from '../transport/sseEventSource';
-import { AppError, HttpError } from '../errors';
 
 /**
  * listFunctions returns a list of function metadata.
@@ -25,30 +21,21 @@ export async function listFunctions(namespace: string): Promise<FunctionMetadata
     ? '?all=true'
     : `?namespace=${encodeURIComponent(namespace)}`;
 
-  return consoleFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`, 'GET', {
-    headers: scmHeaders(),
-  });
-}
-
-function scmHeaders(): HeadersInit {
-  const pat = sessionStorage.getItem(PAT_KEY);
-  return pat ? { 'X-SCM-Token': pat } : {};
+  return customFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`);
 }
 
 export async function createFunction(data: CreateFunctionRequest): Promise<void> {
-  await consoleFetch(`${PROXY_BASE}/api/v1/func/create`, {
+  await customFetch(`${PROXY_BASE}/api/v1/func/create`, {
     method: 'POST',
-    headers: { ...scmHeaders(), 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
 }
 
 export async function getFiles(owner: string, name: string, ref?: string): Promise<FileEntry[]> {
   const query = ref ? `?ref=${encodeURIComponent(ref)}` : '';
-  return consoleFetchJSON(
+  return customFetchJSON(
     `${PROXY_BASE}/api/v1/func/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/files${query}`,
-    'GET',
-    { headers: scmHeaders() },
   );
 }
 
@@ -59,11 +46,11 @@ export async function putFiles(
   message: string,
   branch: string,
 ): Promise<void> {
-  await consoleFetch(
+  await customFetch(
     `${PROXY_BASE}/api/v1/func/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/files`,
     {
       method: 'PUT',
-      headers: { ...scmHeaders(), 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ files, message, branch }),
     },
   );
@@ -85,8 +72,7 @@ export function receiveWorkflowRunEvents(
   errorCbk: (message: string) => void,
 ): () => void {
   const es = createSSEEventSource(`${PROXY_BASE}/api/v1/func/workflow-run/watch`, {
-    headers: scmHeaders(),
-    fetchFn: consoleFetch,
+    fetchFn: customFetch,
   });
 
   es.addEventListener('workflow-run-status', (e) => {
@@ -95,7 +81,7 @@ export function receiveWorkflowRunEvents(
 
   es.addEventListener('app-error', (e) => {
     const parsed = JSON.parse(e.data) as AppError;
-    if (parsed.code === 401) {
+    if (parsed.code === 401 || parsed.code === 403) {
       errorCbk('Authentication expired. Reconnect to GitHub and refresh.');
       es.close();
     } else errorCbk(parsed.message);

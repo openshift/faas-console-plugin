@@ -51,16 +51,7 @@ type funcYamlFields struct {
 }
 
 func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
-	pat, ok := extractSCMToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "X-SCM-Token header is required")
-		return
-	}
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "Authorization header is required")
-		return
-	}
+	credential := credentialFrom(r.Context())
 
 	all := r.URL.Query().Get("all") == "true"
 	namespace := r.URL.Query().Get("namespace")
@@ -84,17 +75,17 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		repoFunctions, repoErr = h.listRepoFunctions(r.Context(), pat, ocpToken, namespace)
+		repoFunctions, repoErr = h.listRepoFunctions(r.Context(), credential.Token, credential.ocpToken, namespace)
 	}()
 	go func() {
 		defer wg.Done()
-		clusterFunctions, clusterErr = h.listClusterFunctions(r.Context(), ocpToken, namespace)
+		clusterFunctions, clusterErr = h.listClusterFunctions(r.Context(), credential.ocpToken, namespace)
 	}()
 	wg.Wait()
 
 	// An invalid SCM token is a client error worth surfacing on its own.
 	if errors.Is(repoErr, scm.ErrUnauthorized) {
-		writeError(w, http.StatusUnauthorized, "invalid SCM token")
+		writeError(w, http.StatusForbidden, "invalid SCM token")
 		return
 	}
 	if repoErr != nil {

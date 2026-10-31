@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"strings"
+
+	"github.com/openshift/faas-console-plugin/backend/identity"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 )
 
 type Handlers struct {
@@ -14,6 +17,7 @@ type Handlers struct {
 	kubeHost             string // API server URL for dev/test; empty uses in-cluster config
 	externalAPIServerURL string // external URL embedded in generated kubeconfigs
 	saTokenExpiry        int64  // requested SA token lifetime in seconds
+	scmCredentials       credentials.Provider
 }
 
 type httpError struct {
@@ -34,31 +38,73 @@ func newHTTPError(code int, message string, cause error) error {
 	return &httpError{code: code, message: message, cause: cause}
 }
 
-func New(caPath, kubeHost, externalAPIServerURL string, saTokenExpiry int64) (*Handlers, error) {
-	var caCert []byte
-	if caPath != "" {
-		var err error
-		caCert, err = os.ReadFile(caPath)
-		if err != nil {
-			return nil, fmt.Errorf("read CA certificate %q: %w", caPath, err)
-		}
+func New(caCert []byte, kubeHost, externalAPIServerURL string, saTokenExpiry int64, scmCredentials credentials.Provider) *Handlers {
+	return &Handlers{
+		caCert:               caCert,
+		kubeHost:             kubeHost,
+		externalAPIServerURL: externalAPIServerURL,
+		saTokenExpiry:        saTokenExpiry,
+		scmCredentials:       scmCredentials,
 	}
-
-	return &Handlers{caCert: caCert, kubeHost: kubeHost, externalAPIServerURL: externalAPIServerURL, saTokenExpiry: saTokenExpiry}, nil
 }
 
-func extractSCMToken(r *http.Request) (string, bool) {
-	v := r.Header.Get("X-SCM-Token")
-	return v, v != ""
+type credentialKey struct{}
+
+type requestCredential struct {
+	credentials.Credential
+	ocpToken string
+}
+
+func RequireCredential(next http.Handler, scmCredentials credentials.Provider) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ocpToken, ok := extractOCPToken(r)
+		if !ok {
+			writeError(w, http.StatusUnauthorized, "authentication required")
+			return
+		}
+		credential, err := scmCredentials.Get(r.Context(), ocpToken)
+		if err != nil {
+			// Reading the connection state distinguishes an unconnected caller
+			// from failed authentication; other protected routes require a credential.
+			if errors.Is(err, credentials.ErrNoCredential) &&
+				(r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+				r.URL.Path == "/api/v1/scm/github/credential" {
+				writeError(w, http.StatusNotFound, "no stored credential")
+				return
+			}
+			writeAuthError(w, err)
+			return
+		}
+		ctx := context.WithValue(r.Context(), credentialKey{}, requestCredential{Credential: credential, ocpToken: ocpToken})
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func credentialFrom(ctx context.Context) requestCredential {
+	return ctx.Value(credentialKey{}).(requestCredential)
 }
 
 func extractOCPToken(r *http.Request) (string, bool) {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
+	header := r.Header.Get("Authorization")
+	if !strings.HasPrefix(header, "Bearer ") {
 		return "", false
 	}
-	token := strings.TrimPrefix(auth, "Bearer ")
+	token := strings.TrimPrefix(header, "Bearer ")
 	return token, token != ""
+}
+
+// writeAuthError is the only source of 401 on the request path, which is what
+// lets the frontend read that one status as "connect to GitHub".
+func writeAuthError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, identity.ErrUnauthenticated),
+		errors.Is(err, credentials.ErrNoCredential):
+		slog.Warn("rejecting request without a usable credential", "err", err)
+		writeError(w, http.StatusUnauthorized, "authentication required")
+	default:
+		slog.Error("could not resolve the caller's credential", "err", err)
+		writeError(w, http.StatusServiceUnavailable, "credential store unavailable")
+	}
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

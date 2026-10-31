@@ -22,7 +22,7 @@ Not every test double is a mock. Use the correct term:
 | Term | Purpose | Examples |
 |------|---------|----------|
 | **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub`, `getFilesStub`, `putFilesStub` (MSW handlers), `useK8sWatchResourceStub` |
-| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewSimpleClientset` (in-memory K8s client). Frontend: `authenticateGithubFake` (populates sessionStorage instead of real OAuth) |
+| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewClientset` / `fake.NewSimpleClientset` (in-memory K8s client). No frontend fake: nothing about the connection lives in the browser to fake |
 | **Mock** | Asserts expectations inside the double | Use sparingly. Prefer stubs with assertions in the test body. |
 | **Spy** | Records calls for later assertion | Not currently used. Prefer asserting on observable output. |
 
@@ -59,22 +59,26 @@ Shared test infrastructure lives in `src/common/testing/`:
 
 | File | Purpose |
 | ------ | --------- |
-| `sdkTestDoubles.tsx` | Stubs for OCP SDK hooks: `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
-| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`, `receiveWorkflowRunEventsStub`) |
+| `sdkTestDoubles.tsx` | Stubs for the OCP SDK: `consoleFetchStub` and `consoleFetchJSONStub` (bridge the SDK's fetch wrappers to real `fetch` so MSW can intercept while the real `httpClient` logic stays in the test path), `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
+| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`, `receiveWorkflowRunEventsStub`), with configurable responses, errors, and delays |
+| `authClientStub.ts` | MSW handlers for `/api/v1/scm/github/credential` (`connectGithubUserStub`, `fetchGithubUserStub`, `noGithubUserStub`, `disconnectGithubUserStub`) |
 | `testData.ts` | Test data factories for shared test fixtures (`functionMetadata`) |
+| `mswServer.ts` | The MSW server. It provides an empty workflow event stream by default and rejects other unhandled requests |
 | `timerFake.ts` | Disposable fake timer wrapper with `advance()` for controlled time progression |
 | `AsyncQueue.ts` | Async iterable queue for streaming test stubs (SSE event sequences) |
-| `mswServer.ts` | MSW server with default backend API handlers (auth user, function list) |
-| `authFake.ts` | Session storage helpers to simulate GitHub authentication (`authenticateGithubFake`, `logoutGithubFake`) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |
 
 ### Frontend Test Double Strategy
 
 Tests replace external dependencies at two boundaries using test doubles:
 
-**Backend API (MSW).** `functionsClient.ts` calls the Go backend over HTTP. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, query params, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts`.
+**Backend API (MSW).** `functionsClient.ts` and `authClient.ts` call the Go backend over HTTP via `httpClient.ts`. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, headers, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts` and `src/common/testing/authClientStub.ts`.
 
-**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace` that only work inside the console shell. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks derive cluster status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
+Nothing about the connection lives in the browser, so a test puts a component in the connected state by stubbing the GET rather than by seeding storage. That also makes connection asynchronous: `AuthProvider` renders a spinner instead of its children until the backend answers, so assertions on anything inside it need `findBy*`.
+
+All HTTP clients go through `httpClient.ts`, which wraps the SDK's `consoleFetch`/`consoleFetchJSON`. The mock boundary for tests is that SDK layer: `vi.mock` replaces the SDK's fetch functions with `consoleFetchStub`/`consoleFetchJSONStub` from `sdkTestDoubles.tsx`, which bridge to real `fetch` so MSW can intercept. The real `httpClient` logic (auth-expiry events, header handling, error mapping) stays in the test path. Client unit tests (`httpClient.test.ts`, `authClient.test.ts`) mock one layer down instead: `authClient` tests replace `httpClient`, and `httpClient` tests replace the SDK fetch functions with `vi.fn()` doubles to control rejection shapes directly.
+
+**OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace`, plus UI components like `DocumentTitle` and `ListPageHeader`, that only work inside the console shell, and the fetch wrappers `httpClient` builds on. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The SDK mock contains the fetch stubs alongside the hook and UI component stubs; tests that only need HTTP provide just the fetch stubs. Do not spread `importOriginal()` in this factory: the real SDK imports SCSS, which cannot compile in the test environment. The hook stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
 
 `vi.mock` is also used for framework internals that have no external service and cannot run outside their host environment:
 
@@ -163,7 +167,12 @@ vi.mock('react-i18next', () => ({
 // available inside the vi.mock factory (which is hoisted above imports)
 const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
-vi.mock('@openshift-console/dynamic-plugin-sdk', async () => ({
+// Fetch stubs keep the real httpClient logic in the test path; hook and UI
+// stubs replace what only works inside the console shell. Tests that need
+// only HTTP provide just the two fetch stubs.
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
   useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
   useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
   // ... remaining SDK exports as simple stubs
@@ -213,17 +222,21 @@ Test double stubs live next to their interfaces:
 | `scm/client.go` (`ClientStub`) | Stub for `scm.Client` with function fields for each method (GetUser, ListRepos, PushFiles, etc.) |
 | `cluster/client.go` (`ClientStub`) | Stub for `cluster.Client` with function fields for RBAC and token operations |
 | `functions/client.go` (`ClientStub`) | Stub for `functions.Client` with a function field for List |
-| `handler/common_test.go` | Injection helpers: `withSCMStub`, `withClusterStub`, `withFunctionsClient` swap the production factory for a test stub via `DeferCleanup` |
+| `handler/common_test.go` | Injection helpers: `withSCMStub`, `withClusterStub`, `withFunctionsClient` swap the production factory for a test stub via `DeferCleanup`; credential fixtures: `testCredentialContext` builds the request context `RequireCredential` would produce, `withCredentialProviderStub`/`withCredentialProviderError` build provider doubles, `authenticate` sets the bearer header |
 
 ### Backend Test Double Strategy
 
-Two strategies depending on the package under test:
+Choose test doubles at the package boundary:
 
-**Interface-level stubs** (handler tests) - `scm.ClientStub`, `cluster.ClientStub`, and `functions.ClientStub` implement their respective interfaces with function fields. Each test sets only the fields it exercises; unset fields return happy-path defaults. `withSCMStub` swaps `config.SCMRegistry`, `withClusterStub` swaps `newClusterClient`, and `withFunctionsClient` swaps `newFunctionsClient` for the duration of the test. No `httptest.NewServer`, no real HTTP client stack - handler tests verify request parsing, error mapping, and response codes only.
+**Interface-level stubs** (handler tests) - `scm.ClientStub`, `cluster.ClientStub`, and `functions.ClientStub` implement their respective interfaces with function fields. Each test sets only the fields it exercises; unset fields return happy-path defaults. `withSCMStub` swaps `config.SCMRegistry`, `withClusterStub` swaps `newClusterClient`, and `withFunctionsClient` swaps `newFunctionsClient` for the duration of the test. Most handler tests call handlers directly to verify request parsing, error mapping, and response codes; workflow watch tests also use `httptest.NewServer` to verify streaming over HTTP.
+
+**Credential providers** (handler and routing tests): inject `withCredentialProviderStub` (`credentials.MapProvider`) for successful lookups or `withCredentialProviderError` (`credentials.ProviderStub`) for failures, wherever the code under test resolves credentials itself: `RequireCredential`, the credential POST/DELETE handlers, the workflow watch handler, and the routing tests. Assert returned account data, HTTP statuses, and SSE events rather than Secret counts or captured calls. Store tests exercise identity binding and expiry with a fake Kubernetes client; handler tests do not inspect that storage.
+
+**Protected handlers and routing** (handler and main package tests): handlers behind `RequireCredential` are unit-tested directly, without wrapping them in the middleware. Endpoint request helpers such as `listRequest`, `createFunctionRequest`, and `filesRequest` build requests with `httptest.NewRequestWithContext(testCredentialContext(), ...)`, so the validated credential and caller token arrive in context and that setup stays out of individual specs. `RequireCredential` itself is tested only in `handler/credential_middleware_test.go`, against a stub downstream handler, covering missing or malformed bearer headers, each credential lookup failure with its status mapping, and context propagation. The routing tests in `backend/main_test.go` drive the real `newMux` through `serveRoute`/`serveRouteAs` helpers: credential save, use, and delete across callers; the routes outside the middleware (credential POST/DELETE, health, static files, workflow SSE); the credential GET 404; and file path parameters through the nested mux. Credential POST/DELETE provider failures and workflow SSE error framing stay in their own handler tests, because those routes resolve credentials without `RequireCredential`.
 
 **`fake.NewSimpleClientset`** (cluster package tests) - `k8s.io/client-go/kubernetes/fake` implements `kubernetes.Interface` without any HTTP. Use reactors to simulate errors and pre-populate objects to simulate existing state. This is the client-go idiomatic approach.
 
-Tests live in the same package as the code (`package handler`, `package cluster`) for white-box access. Each package has a `suite_test.go` that registers the Ginkgo runner.
+Most tests live in the same package as the code (`package handler`, `package cluster`); workflow watch tests use `package handler_test` and exercise the exported handler over HTTP and SSE. Each package has a `suite_test.go` that registers the Ginkgo runner.
 
 ### Spec Pattern
 
@@ -354,7 +367,7 @@ e2e/
   auth.setup.ts                    # Playwright login setup (saves storageState)
   global-setup.ts                  # Global setup (operator install, namespace)
   fixtures/
-    authenticated-page.ts          # Custom test fixture: injects PAT into sessionStorage
+    authenticated-page.ts          # Custom test fixture: stores the fake PAT on the backend, revokes it after
   helpers/
     cluster.ts                     # K8s API helpers (namespace, operator, deploy)
     constants.ts                   # Shared constants (PRESEEDED_FUNC_NAME, E2E_USER, etc.)
@@ -391,7 +404,7 @@ test.describe('My feature', () => {
 
 ### E2E Test Doubles
 
-Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. The fixture injects a placeholder PAT and user into sessionStorage before each test.
+Tests import `test` and `expect` from `e2e/fixtures/authenticated-page.ts`, not from `@playwright/test` directly. Before each test the fixture posts the fake PAT to `/api/v1/scm/github/credential`, which leaves the credential in a Secret on the cluster, and sends a DELETE afterwards so the Secret does not outlive the test. Nothing is seeded into the browser: the credential is keyed by the OpenShift identity the console forwards, so every page load reconnects on its own, which is what makes a reload mid-test a real assertion rather than a fixture trick.
 
 The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seeding, resetting, and deleting repos, reading a repo Actions variable (`getRepoVariable`), and building the standard Node function seed files (`nodeFunctionFiles`). Shared constants live in `e2e/helpers/constants.ts`:
 
@@ -400,7 +413,7 @@ The fake GitHub server (`e2e/helpers/fakegithub.ts`) provides helpers for seedin
 
 ### Helpers
 
-**Auth** - Login is handled by `e2e/auth.setup.ts`, which saves session state via Playwright's `storageState`. The authenticated-page fixture then injects the PAT and user into sessionStorage on top of that session.
+**Auth** - OpenShift login is handled by `e2e/auth.setup.ts`, which saves console session state via Playwright's `storageState`. That console session is the whole of the browser's auth state; the authenticated-page fixture only arranges for a credential to exist on the backend for the user it identifies.
 
 **Navigation** (`e2e/helpers/navigation.ts`)
 

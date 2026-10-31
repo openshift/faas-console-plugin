@@ -21,8 +21,7 @@ export interface SSEEvent {
 // createSSEEventSource is a custom implementation of the browser's EventSource
 // API (https://developer.mozilla.org/en-US/docs/Web/API/EventSource). We cannot
 // use native EventSource because it does not support custom headers or a custom
-// fetch function, which we need to pass the SCM token and to use consoleFetch
-// (the OpenShift Console SDK's fetch wrapper).
+// fetch function, which we need to use the authenticated console fetch wrapper.
 //
 // Similarities with native EventSource:
 // - addEventListener('open', ...) fires on successful connection.
@@ -41,13 +40,6 @@ export interface SSEEvent {
 // - The transport always reconnects, including on HTTP errors like 401/403.
 //   The consumer is responsible for calling close() on terminal errors.
 //
-// Migration path to native EventSource:
-// - Once the backend uses HTTP-only session cookies instead of PAT headers,
-//   native EventSource can be used (no custom headers needed).
-// - The 'error' listener would lose the HttpError context. Auth errors must
-//   then be detected via 'app-error' events sent by the backend before the
-//   connection closes. The backend already sends these.
-// - The consumer API (addEventListener, close) stays the same.
 export function createSSEEventSource(url: string, options: SSEEventSourceOptions): SSEEventSource {
   const eventListeners = new Map<string, Array<(e: SSEEvent) => void>>();
   const browserErrorListeners: Array<(e: Error) => void> = [];
@@ -120,7 +112,12 @@ export function createSSEEventSource(url: string, options: SSEEventSourceOptions
       } catch (err) {
         if (!isReceiving) return;
 
-        const _err = err instanceof Error ? err : new Error(String(err) || 'Unknown error');
+        const response = (err as { response?: Response })?.response;
+        const _err = response
+          ? new HttpError(response.status, response.statusText)
+          : err instanceof Error
+            ? err
+            : new Error(String(err) || 'Unknown error');
 
         notify(browserErrorListeners, _err);
       }

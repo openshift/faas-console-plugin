@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
+	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
@@ -36,11 +39,11 @@ type ErrorDTO struct {
 
 // WorkflowRunWatch returns an HTTP handler that streams workflow run status over SSE.
 //
-// Request: GET with an X-SCM-Token header carrying a GitHub personal access
-// token. The options are wiring seams for tests, see WithSCMFactory and
-// WithHeartbeatTickerFactory.
+// Request: GET with the OpenShift bearer token forwarded by the console proxy.
+// Credential lookup failures are sent as app-error events. WithCredentialsProvider
+// wires credential lookup; WithSCMFactory and WithHeartbeatTickerFactory are test seams.
 //
-// Every request that can be flushed gets 200 and text/event-stream. A
+// Requests that can be flushed get 200 and text/event-stream. A
 // ResponseWriter that is not an http.Flusher gets 500 and a JSON error,
 // because buffering would stall both updates and heartbeats. Once the stream
 // is open no further HTTP status is available, so failures travel as frames.
@@ -53,7 +56,7 @@ type ErrorDTO struct {
 //	  error?: {message, code?}, absent when that repo polled cleanly
 //	app-error: {message, code?}
 //	  message: user-facing text
-//	  code?:   the HTTP status the response would have carried, 401 or 502
+//	  code?:   the HTTP status the response would have carried, 401, 403, 502 or 503
 //
 // Between frames the handler sends an SSE comment as a keepalive, every 15
 // seconds by default. It is a comment, not an event, and no listener fires
@@ -62,7 +65,8 @@ type ErrorDTO struct {
 // A failure confined to one repo, such as a rate limit, rides in that repo's
 // error field and the stream goes on. A failure affecting the whole watch
 // emits app-error, and whether the stream survives depends on when it
-// happens: a missing or invalid token (401) or a failed repo discovery (502)
+// happens: a missing or rejected caller credential (401), a credential store
+// failure (503), a rejected SCM credential (403) or failed repo discovery (502)
 // ends the stream, while anything raised once the loop is running leaves it
 // open and lets the client decide whether to reconnect. Otherwise the stream
 // runs until the client disconnects or the request context is cancelled.
@@ -74,16 +78,17 @@ func WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
 		heartbeatFactory: func() ticker.Ticker {
 			return ticker.New(defaultHeartbeat)
 		},
+		credProvider: emptyCredProv{},
 	}
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		handleWorkflowRunWatch(w, r, cfg.newSCMClient, cfg.heartbeatFactory)
+		handleWorkflowRunWatch(w, r, cfg)
 	}
 }
 
-func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, newSCMClient scm.ClientFactory, heartbeatFactory ticker.Factory) {
+func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConfig) {
 	// SSE requires explicit flushing to stream events in real-time. Go's net/http
 	// server always implements http.Flusher, but middleware that wraps ResponseWriter
 	// without forwarding the interface can break this. If flushing is unavailable,
@@ -103,18 +108,29 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, newSCMClient
 
 	ew := eventWriter{out: w}
 
-	pat, ok := extractSCMToken(r)
+	ocpToken, ok := extractOCPToken(r)
 	if !ok {
-		ew.writeHTTPError(http.StatusUnauthorized, "X-SCM-Token header is required")
+		ew.writeHTTPError(http.StatusUnauthorized, "authentication required")
 		return
 	}
-	client := newSCMClient(pat)
+	credential, err := wc.credProvider.Get(r.Context(), ocpToken)
+	if err != nil {
+		if errors.Is(err, identity.ErrUnauthenticated) || errors.Is(err, credentials.ErrNoCredential) {
+			ew.writeHTTPError(http.StatusUnauthorized, "authentication required")
+			return
+		}
+		slog.Error("workflow run watch: credential lookup failed", "err", err)
+		ew.writeHTTPError(http.StatusServiceUnavailable, "credential store unavailable")
+		return
+	}
+
+	client := wc.newSCMClient(credential.Token)
 	ctx := r.Context()
 
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			ew.writeHTTPError(http.StatusUnauthorized, "invalid SCM token")
+			ew.writeHTTPError(http.StatusForbidden, "invalid SCM token")
 			return
 		}
 		slog.Error("workflow run watch: watch workflow runs failed", "err", err)
@@ -123,7 +139,7 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, newSCMClient
 	}
 	defer watch.Stop()
 
-	beat := heartbeatFactory()
+	beat := wc.heartbeatFactory()
 	defer beat.Stop()
 
 	for {
@@ -160,12 +176,30 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, newSCMClient
 type watchConfig struct {
 	newSCMClient     scm.ClientFactory
 	heartbeatFactory ticker.Factory
+	credProvider     CredentialProvider
+}
+
+type CredentialProvider interface {
+	// Get returns the SCM credential for the given OpenShift token.
+	Get(ctx context.Context, ocpToken string) (credentials.Credential, error)
+}
+
+type emptyCredProv struct{}
+
+func (e emptyCredProv) Get(ctx context.Context, ocpToken string) (credentials.Credential, error) {
+	return credentials.Credential{}, credentials.ErrNoCredential
 }
 
 type WatchOption func(*watchConfig)
 
 func WithSCMFactory(f scm.ClientFactory) WatchOption {
 	return func(c *watchConfig) { c.newSCMClient = f }
+}
+
+func WithCredentialsProvider(credProvider CredentialProvider) WatchOption {
+	return func(w *watchConfig) {
+		w.credProvider = credProvider
+	}
 }
 
 func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
@@ -254,7 +288,7 @@ func errorToMessage(err error) string {
 
 func errorToCode(err error) *int {
 	if errors.Is(err, scm.ErrUnauthorized) {
-		return new(401)
+		return new(403)
 	}
 	return nil
 }

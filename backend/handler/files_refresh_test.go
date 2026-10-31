@@ -19,23 +19,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+func refreshFilesRequest() *http.Request {
+	body, _ := json.Marshal(putFilesRequest{
+		Files:   []scm.FileEntry{{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"}},
+		Message: "Update function files",
+		Branch:  "main",
+	})
+	return filesRequest(http.MethodPut, "alice", "my-func", "", bytes.NewReader(body))
+}
+
 var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", func() {
-	validBody := func() []byte {
-		body, _ := json.Marshal(putFilesRequest{
-			Files:   []scm.FileEntry{{Path: "func.go", Mode: "100644", Content: "package main", Type: "blob"}},
-			Message: "Update function files",
-			Branch:  "main",
-		})
-		return body
-	}
-	newRequest := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/func/alice/my-func/files", bytes.NewBuffer(validBody()))
-		req.Header.Set("Authorization", "Bearer ocp-token")
-		req.Header.Set("X-SCM-Token", "test-pat")
-		req.SetPathValue("owner", "alice")
-		req.SetPathValue("name", "my-func")
-		return req
-	}
 	newHandlers := func() *Handlers {
 		return &Handlers{
 			externalAPIServerURL: "https://api.test-cluster.example.com:6443",
@@ -93,7 +86,8 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", f
 		})
 
 		w := httptest.NewRecorder()
-		newHandlers().HandlePutFiles(w, newRequest())
+		h := newHandlers()
+		h.HandlePutFiles(w, refreshFilesRequest())
 
 		Expect(w.Code).To(Equal(http.StatusNoContent))
 		Expect(gotVariableName).To(Equal(repoKubeconfigExpireAt))
@@ -122,7 +116,9 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", f
 		withSCMStub(&scm.ClientStub{OnGetVariable: nearExpiryVar, OnGetFileContent: validFuncYaml})
 		w := httptest.NewRecorder()
 
-		newHandlers().HandlePutFiles(w, newRequest())
+		h := newHandlers()
+
+		h.HandlePutFiles(w, refreshFilesRequest())
 
 		Expect(w.Code).To(Equal(http.StatusNoContent))
 		Expect(requestedExpiry).To(Equal(config.DefaultSATokenExpiry))
@@ -146,23 +142,14 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", f
 		})
 		w := httptest.NewRecorder()
 
-		newHandlers().HandlePutFiles(w, newRequest())
+		h := newHandlers()
+
+		h.HandlePutFiles(w, refreshFilesRequest())
 
 		// A refresh would hit the canned error above and yield 502, so 204 proves none ran.
 		Expect(w.Code).To(Equal(http.StatusNoContent))
 		Expect(gotPushFiles).To(HaveLen(1))
 		Expect(gotPushFiles[0].Path).To(Equal("func.go"))
-	})
-
-	It("rejects requests without an OCP token", func() {
-		withSCMStub(&scm.ClientStub{OnGetVariable: nearExpiryVar})
-		req := newRequest()
-		req.Header.Del("Authorization")
-		w := httptest.NewRecorder()
-
-		newHandlers().HandlePutFiles(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("rejects an invalid namespace read from func.yaml", func() {
@@ -174,7 +161,9 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", f
 		})
 		w := httptest.NewRecorder()
 
-		newHandlers().HandlePutFiles(w, newRequest())
+		h := newHandlers()
+
+		h.HandlePutFiles(w, refreshFilesRequest())
 
 		Expect(w.Code).To(Equal(http.StatusUnprocessableEntity))
 	})
@@ -186,7 +175,9 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files - credential refresh", f
 			setup()
 			w := httptest.NewRecorder()
 
-			newHandlers().HandlePutFiles(w, newRequest())
+			h := newHandlers()
+
+			h.HandlePutFiles(w, refreshFilesRequest())
 
 			Expect(w.Code).To(Equal(http.StatusBadGateway))
 		},
