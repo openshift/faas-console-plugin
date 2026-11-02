@@ -255,7 +255,7 @@ var _ = Describe("NewStore", func() {
 	})
 
 	It("rejects an empty namespace", func() {
-		_, err := NewStore(&rest.Config{}, "")
+		_, err := NewStore(&rest.Config{}, "", tokenResolver())
 		Expect(err).To(MatchError("credential namespace is required"))
 	})
 })

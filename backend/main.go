@@ -15,6 +15,7 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
+	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/kube"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
@@ -80,7 +81,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	scmCredentials, err := credentials.NewStore(cfg, namespace)
+	scmCredentials, err := credentials.NewStore(cfg, namespace, identity.NewResolver(*kubeHost, caCert))
 	if err != nil {
 		log.Fatal(err)
 	}

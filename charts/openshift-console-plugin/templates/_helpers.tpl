@@ -68,13 +68,6 @@ Create the name of the patcher
 {{- end }}
 
 {{/*
-Create the name of the token review RBAC objects
-*/}}
-{{- define "openshift-console-plugin.tokenReviewName" -}}
-{{- printf "%s-token-review" (include "openshift-console-plugin.name" .) }}
-{{- end }}
-
-{{/*
 Create the name of the service account to use
 */}}
 {{- define "openshift-console-plugin.patcherServiceAccountName" -}}

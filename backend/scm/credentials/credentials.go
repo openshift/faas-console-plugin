@@ -56,14 +56,12 @@ type secretData struct {
 	ExpiresAt time.Time     `json:"expiresAt"`
 }
 
-// NewStore builds the client for its Secret operations and shares it with the
-// identity resolver, so one ServiceAccount connection pool serves both.
-func NewStore(cfg *rest.Config, namespace string) (*Store, error) {
+func NewStore(cfg *rest.Config, namespace string, resolver identity.Resolver) (*Store, error) {
 	client, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
-	return NewStoreWithClient(client, namespace, identity.NewResolver(client))
+	return NewStoreWithClient(client, namespace, resolver)
 }
 
 func NewStoreWithClient(client kubernetes.Interface, namespace string, resolver identity.Resolver) (*Store, error) {
