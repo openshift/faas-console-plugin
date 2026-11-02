@@ -1,4 +1,4 @@
-import { HttpError } from '../errors';
+import { HttpError } from '@openshift-console/dynamic-plugin-sdk';
 
 interface SSEEventSourceOptions {
   fetchFn: (url: string, init: RequestInit, timeout: number) => Promise<Response>;
@@ -39,6 +39,14 @@ export interface SSEEvent {
 //   instanceof-check for HttpError to detect specific HTTP failures (e.g. 401).
 // - The transport always reconnects, including on HTTP errors like 401/403.
 //   The consumer is responsible for calling close() on terminal errors.
+//
+// Migration path to native EventSource:
+// - Once the backend uses HTTP-only session cookies instead of PAT headers,
+//   native EventSource can be used (no custom headers needed).
+// - The 'error' listener would lose the HttpError context. Auth errors must
+//   then be detected via 'app-error' events sent by the backend before the
+//   connection closes. The backend already sends these.
+// - The consumer API (addEventListener, close) stays the same.
 //
 export function createSSEEventSource(url: string, options: SSEEventSourceOptions): SSEEventSource {
   const eventListeners = new Map<string, Array<(e: SSEEvent) => void>>();
@@ -90,7 +98,7 @@ export function createSSEEventSource(url: string, options: SSEEventSourceOptions
           0, // no timeout; the default ~60s would abort this long-lived stream
         );
 
-        if (!res.ok) throw new HttpError(res.status, res.statusText);
+        if (!res.ok) throw new HttpError(res.statusText, res.status, res);
 
         if (!res.body) continue;
 
@@ -112,10 +120,8 @@ export function createSSEEventSource(url: string, options: SSEEventSourceOptions
       } catch (err) {
         if (!isReceiving) return;
 
-        const response = (err as { response?: Response })?.response;
-        const _err = response
-          ? new HttpError(response.status, response.statusText)
-          : err instanceof Error
+        const _err =
+          err instanceof HttpError || err instanceof Error
             ? err
             : new Error(String(err) || 'Unknown error');
 

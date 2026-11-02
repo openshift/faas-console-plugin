@@ -1,5 +1,5 @@
 import { Alert, Bullseye, Spinner } from '@patternfly/react-core';
-import { createContext, ReactNode, useCallback, useEffect, useState } from 'react';
+import { createContext, ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { disconnectGithubUser, fetchGithubUser } from '../clients/authClient';
 import { AUTH_EXPIRED_EVENT, AuthUser } from '../types';
@@ -29,11 +29,6 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     setShowExpiredAlert(false);
   };
 
-  const onAuthExpired = useCallback(() => {
-    setAuthUser(null);
-    setShowExpiredAlert(true);
-  }, []);
-
   const onLogout = async () => {
     await disconnectGithubUser();
     setAuthUser(null);
@@ -58,10 +53,17 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
     };
   }, []);
 
+  // Listen only while connected: a credential can only expire if there was
+  // one, so a 401 for a user who never connected is not an expiry.
   useEffect(() => {
+    if (!authUser) return;
+    const onAuthExpired = () => {
+      setAuthUser(null);
+      setShowExpiredAlert(true);
+    };
     window.addEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onAuthExpired);
-  }, [onAuthExpired]);
+  }, [authUser]);
 
   if (authUser === undefined) {
     return (

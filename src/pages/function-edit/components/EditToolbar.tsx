@@ -14,7 +14,7 @@ import { ArrowLeftIcon } from '@patternfly/react-icons';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { errorMessage } from '../../../common/utils/utils';
+import { errorMessage } from '../../../common/errors';
 
 interface EditToolbarProps {
   hasChanges: boolean;

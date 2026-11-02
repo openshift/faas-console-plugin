@@ -16,6 +16,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  HttpError: sdkTestDoubles.HttpError,
   consoleFetch: sdkTestDoubles.consoleFetchStub,
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
   DocumentTitle: ({ children }: { children: string }) => children,

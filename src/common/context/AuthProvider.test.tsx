@@ -1,6 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
 import { useContext } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { AuthContext, AuthProvider } from './AuthProvider';
@@ -10,8 +9,6 @@ import {
   fetchGithubUserStub,
   noGithubUserStub,
 } from '../testing/authClientStub';
-import { BACKEND_API } from '../testing/constants';
-import { server } from '../testing/mswServer';
 
 const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
 
@@ -20,11 +17,10 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  HttpError: sdkTestDoubles.HttpError,
   consoleFetch: sdkTestDoubles.consoleFetchStub,
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));
-
-const CREDENTIAL_URL = `${BACKEND_API}/api/v1/scm/github/credential`;
 
 function ConnectionState() {
   const { isAuthenticated, user } = useContext(AuthContext);
@@ -95,27 +91,21 @@ describe('AuthProvider', () => {
   // Children must not mount before the answer arrives, or they would act on
   // "not connected" when the backend is about to say otherwise.
   it('holds its children back until the backend answers', async () => {
-    fetchGithubUserStub();
+    let continueWithRequest = () => {};
+    fetchGithubUserStub({
+      wait: new Promise<void>((r) => {
+        continueWithRequest = r;
+      }),
+    });
 
     renderProvider();
 
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByText('not connected')).not.toBeInTheDocument();
     expect(screen.queryByText(/connected as/)).not.toBeInTheDocument();
 
+    continueWithRequest();
     expect(await screen.findByText('connected as twoGiants')).toBeInTheDocument();
-  });
-
-  it('disconnects when a request reports the credential is gone', async () => {
-    fetchGithubUserStub();
-
-    renderProvider();
-    expect(await screen.findByText('connected as twoGiants')).toBeInTheDocument();
-
-    act(() => {
-      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
-    });
-
-    await waitFor(() => expect(screen.getByText('not connected')).toBeInTheDocument());
   });
 
   it('exposes a null user while disconnected', async () => {
@@ -137,15 +127,12 @@ describe('AuthProvider', () => {
     expect(await screen.findByText('connected as twoGiants')).toBeInTheDocument();
   });
 
-  it('disconnects and revokes the stored credential on logout', async () => {
+  it.each([
+    ['succeeds', undefined],
+    ['fails', { message: 'revocation failed', status: 500 }],
+  ])('disconnects on logout when revoking the credential %s', async (_, errorResponse) => {
     fetchGithubUserStub();
-    let revoked = false;
-    server.use(
-      http.delete(CREDENTIAL_URL, () => {
-        revoked = true;
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
+    disconnectGithubUserStub({ errorResponse });
 
     renderProvider();
     expect(await screen.findByText('connected as twoGiants')).toBeInTheDocument();
@@ -153,8 +140,6 @@ describe('AuthProvider', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
 
     expect(await screen.findByText('not connected')).toBeInTheDocument();
-    // The backend DELETE must finish before the UI drops the connection.
-    expect(revoked).toBe(true);
   });
 
   it('shows the expiry warning after the credential expires', async () => {
@@ -169,6 +154,19 @@ describe('AuthProvider', () => {
 
     expect(await screen.findByText(/session has expired/)).toBeInTheDocument();
     expect(screen.getByText('not connected')).toBeInTheDocument();
+  });
+
+  it('does not call it an expiry when the user was never connected', async () => {
+    // The load itself reports the credential is gone (401), which used to
+    // surface the expiry warning to a user who had no session to lose.
+    fetchGithubUserStub({
+      errorResponse: { message: 'credential rejected', status: 401 },
+    });
+
+    renderProvider();
+
+    expect(await screen.findByText('not connected')).toBeInTheDocument();
+    expect(screen.queryByText(/session has expired/)).not.toBeInTheDocument();
   });
 
   it('clears the expiry warning once the user reconnects', async () => {

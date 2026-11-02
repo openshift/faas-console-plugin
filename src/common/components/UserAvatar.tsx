@@ -27,7 +27,7 @@ import { Ref, useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthProvider';
 import { connectGithubUser } from '../clients/authClient';
-import { errorMessage } from '../utils/utils';
+import { errorMessage } from '../errors';
 
 export function UserAvatar() {
   const { t } = useTranslation('plugin__console-functions-plugin');
@@ -81,11 +81,7 @@ function ConnectedMenu({ name = '', avatarUrl = '', onDisconnect }: ConnectedMen
   const { t } = useTranslation('plugin__console-functions-plugin');
   const [isOpen, setIsOpen] = useState(false);
 
-  const toggleIcon = avatarUrl ? (
-    <Avatar src={avatarUrl} alt="" size="sm" data-test="user-avatar" />
-  ) : (
-    <UserIcon />
-  );
+  const toggleIcon = avatarUrl ? <Avatar src={avatarUrl} alt={name} size="sm" /> : <UserIcon />;
 
   return (
     <Dropdown
@@ -100,7 +96,6 @@ function ConnectedMenu({ name = '', avatarUrl = '', onDisconnect }: ConnectedMen
           icon={toggleIcon}
           isExpanded={isOpen}
           onClick={() => setIsOpen((open) => !open)}
-          data-test="user-menu-toggle"
         >
           {name}
         </MenuToggle>
@@ -148,7 +143,6 @@ function PatModal({ isOpen, onClose, onConnect }: PatModalProps) {
             icon={<GithubIcon />}
             isAriaDisabled
             isBlock
-            data-test="oauth-button"
           >
             {t('Sign in with GitHub')}
           </Button>

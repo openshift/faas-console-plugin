@@ -29,7 +29,7 @@ import {
   listFunctions as getFunctionMetadataList,
   receiveWorkflowRunEvents,
 } from '../../common/clients/functionsClient';
-import { ClusterError } from '../../common/errors';
+import { ClusterError, errorMessage } from '../../common/errors';
 import {
   FUNCTION_NAME_LABEL,
   FunctionMetadata,
@@ -37,7 +37,6 @@ import {
   WorkflowRunRecord,
 } from '../../common/types';
 import { ClusterStatus, Function, functionKey } from './types';
-import { errorMessage } from '../../common/utils/utils';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable } from './components/FunctionTable';
 import { SetupGuide } from './components/SetupGuide';

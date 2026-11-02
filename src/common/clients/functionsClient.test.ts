@@ -11,9 +11,8 @@ import { receiveWorkflowRunEvents } from './functionsClient';
 // https://vitest.dev/api/vi.html#vi-hoisted
 const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
 
-// Mock at the SDK boundary so the real httpClient logic (auth-expiry
-// events, header handling, error mapping) runs in these tests.
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  HttpError: sdkTestDoubles.HttpError,
   consoleFetch: sdkTestDoubles.consoleFetchStub,
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));

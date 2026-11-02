@@ -29,6 +29,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  HttpError: sdkTestDoubles.HttpError,
   consoleFetch: sdkTestDoubles.consoleFetchStub,
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
   NamespaceBar: () => null,
@@ -59,34 +60,6 @@ describe('FunctionsListPage', () => {
   afterEach(() => {
     act(() => sdkTestDoubles.reset());
     server.resetHandlers();
-  });
-
-  // End to end through the real AuthProvider: a stored credential means the
-  // page comes up connected, with no PAT prompt in the user's way.
-  it('connects automatically when the backend already holds a credential', async () => {
-    listFunctionsStub();
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText('twoGiants')).toBeInTheDocument();
-    expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
-  });
-
-  it('prompts for a PAT when the backend holds nothing', async () => {
-    noGithubUserStub();
-    listFunctionsStub();
-
-    render(
-      <MemoryRouter>
-        <FunctionsListPage />
-      </MemoryRouter>,
-    );
-
-    expect(await screen.findByText('Personal Access Token')).toBeInTheDocument();
   });
 
   // End to end through the real AuthProvider: a stored credential means the
@@ -158,7 +131,7 @@ describe('FunctionsListPage', () => {
       expect(await screen.findByText(funcName)).toBeInTheDocument();
     });
 
-    it('renders UserAvatar in header', async () => {
+    it('shows the signed-in user in the header', async () => {
       listFunctionsStub();
 
       render(
@@ -196,7 +169,7 @@ describe('FunctionsListPage', () => {
 
     expect(await screen.findByText(funcName)).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: 'twoGiants' }));
+    await userEvent.click(screen.getByRole('button', { name: /twoGiants/ }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect' }));
 
     await waitFor(() => expect(screen.queryByText(funcName)).not.toBeInTheDocument());
@@ -231,7 +204,7 @@ describe('FunctionsListPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
+    it('disables creating a function while not authenticated', async () => {
       noGithubUserStub();
       render(
         <MemoryRouter>
@@ -259,6 +232,8 @@ describe('FunctionsListPage', () => {
 
     it('resets functions when user reconnects', async () => {
       listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+      disconnectGithubUserStub();
+      connectGithubUserStub();
 
       render(
         <MemoryRouter>
@@ -270,9 +245,7 @@ describe('FunctionsListPage', () => {
 
       listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-b', name: 'fn-b' })] });
 
-      disconnectGithubUserStub();
-      connectGithubUserStub();
-      await userEvent.click(screen.getByRole('button', { name: 'twoGiants' }));
+      await userEvent.click(screen.getByRole('button', { name: /twoGiants/ }));
       await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect' }));
       await userEvent.click(await screen.findByRole('button', { name: 'Connect to GitHub' }));
 
@@ -1170,7 +1143,7 @@ describe('FunctionsListPage', () => {
         );
       });
 
-      it('displays build watcher error alert with message when stream fails', async () => {
+      it('shows an error alert when the workflow run stream fails', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
         receiveWorkflowRunEventsStub({
           errorResponse: { message: 'Service Unavailable', status: 503 },
@@ -1188,7 +1161,7 @@ describe('FunctionsListPage', () => {
         });
       });
 
-      it('clears build watcher error alert when stream recovers', async () => {
+      it('clears the stream error alert when the stream recovers', async () => {
         using timer = timerFake();
         listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
         // Initial endpoint response is an error

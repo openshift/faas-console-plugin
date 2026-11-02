@@ -25,6 +25,7 @@ let mockOnChange: ((value: string) => void) | undefined;
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => {
   return {
+    HttpError: sdkTestDoubles.HttpError,
     consoleFetch: sdkTestDoubles.consoleFetchStub,
     consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
     DocumentTitle: ({ children }: { children: string }) => children,

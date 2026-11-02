@@ -1,6 +1,5 @@
 import { AuthUser, PROXY_BASE } from '../types';
-import { resolveErrorStatus } from '../utils/utils';
-import { customFetch, customFetchJSON } from './httpClient';
+import { customFetch, customFetchJSON, resolveErrorStatus } from './httpClient';
 
 export { customFetch, customFetchJSON } from './httpClient';
 

@@ -1,6 +1,12 @@
 import { K8sResourceKind, WatchK8sResource } from '@openshift-console/dynamic-plugin-sdk';
+import { HttpError } from '@openshift-console/dynamic-plugin-sdk/lib/utils/error/http-error';
 import { ReactNode, useSyncExternalStore } from 'react';
 import { FUNCTION_NAME_LABEL, REVISION_LABEL } from '../types';
+
+// The real SDK class, re-exported so vi.mock factories can provide it under
+// the same name the SDK exports (tests that mock the SDK module must supply
+// every export the production code imports, this one included).
+export { HttpError };
 
 // START: global helpers -------------------------------------------------------
 export function reset() {
@@ -16,11 +22,10 @@ export function reset() {
 
 export async function consoleFetchStub(url: string, options?: RequestInit): Promise<Response> {
   const res = await fetch(new URL(url, 'http://localhost').href, options);
-  if (!res.ok) {
-    const json = await res.json().catch(() => ({}));
-    throw Object.assign(new Error(json.message), { response: res, json });
-  }
-  return res;
+  if (res.ok) return res;
+
+  const json = await res.json().catch(() => undefined);
+  throw new HttpError(json?.message ?? res.statusText, res.status, res, json);
 }
 
 export async function consoleFetchJSONStub<T>(
@@ -28,10 +33,8 @@ export async function consoleFetchJSONStub<T>(
   method = 'GET',
   options?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(new URL(url, 'http://localhost').href, { ...options, method });
-  const json = await res.json();
-  if (!res.ok) throw Object.assign(new Error(json.message ?? ''), { response: res, json });
-  return json;
+  const res = await consoleFetchStub(url, { ...options, method });
+  return res.json();
 }
 // END: consoleFetch / consoleFetchJSON stubs -----------------------------------
 

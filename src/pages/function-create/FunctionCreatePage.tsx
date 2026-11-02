@@ -17,7 +17,7 @@ import { CreateFunctionFormData } from './types';
 import { createFunction } from '../../common/clients/functionsClient';
 import { EnvVar } from '../../common/types';
 import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from './types';
-import { errorMessage } from '../../common/utils/utils';
+import { errorMessage } from '../../common/errors';
 
 export default function FunctionCreatePage() {
   return (

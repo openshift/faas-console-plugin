@@ -38,17 +38,21 @@ export function connectGithubUserStub({
 export function fetchGithubUserStub({
   response = CONNECTED_ACCOUNT,
   errorResponse,
+  wait,
 }: {
   response?: Account;
   errorResponse?: ErrorResponse;
+  wait?: Promise<void>;
 } = {}) {
   server.use(
-    http.get(CREDENTIAL_URL, () => {
+    http.get(CREDENTIAL_URL, async () => {
       if (errorResponse?.message && errorResponse?.status)
         return HttpResponse.json(
           { message: errorResponse?.message },
           { status: errorResponse.status },
         );
+
+      if (wait) await wait;
 
       return HttpResponse.json(response);
     }),

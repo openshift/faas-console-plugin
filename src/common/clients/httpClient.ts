@@ -1,6 +1,5 @@
-import { consoleFetch, consoleFetchJSON } from '@openshift-console/dynamic-plugin-sdk';
+import { consoleFetch, consoleFetchJSON, HttpError } from '@openshift-console/dynamic-plugin-sdk';
 import { AUTH_EXPIRED_EVENT } from '../types';
-import { resolveErrorStatus } from '../utils/utils';
 
 export function customFetch(
   url: string,
@@ -17,6 +16,10 @@ export function customFetchJSON<T>(url: string, method = 'GET', options: Request
     () =>
       consoleFetchJSON(url, method, { ...options, headers: plain(options.headers) }) as Promise<T>,
   );
+}
+
+export function resolveErrorStatus(err: unknown): number | undefined {
+  return err instanceof HttpError ? err.code : undefined;
 }
 
 async function announcingAuthExpired<T>(attempt: () => Promise<T>): Promise<T> {

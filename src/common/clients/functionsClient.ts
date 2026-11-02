@@ -1,5 +1,5 @@
-import { isAllNamespacesKey } from '@openshift-console/dynamic-plugin-sdk';
-import { AppError, HttpError } from '../errors';
+import { HttpError, isAllNamespacesKey } from '@openshift-console/dynamic-plugin-sdk';
+import { AppError } from '../errors';
 import { customFetch, customFetchJSON } from './httpClient';
 import { createSSEEventSource } from '../transport/sseEventSource';
 import {
@@ -88,7 +88,7 @@ export function receiveWorkflowRunEvents(
   });
 
   es.addEventListener('error', (e) => {
-    if (e instanceof HttpError) errorCbk(`Server error (${e.status})`);
+    if (e instanceof HttpError) errorCbk(`Server error (${e.code ?? 'unknown'})`);
     else {
       const detail = e instanceof Error ? e.message : 'unknown error';
       errorCbk(`Connection to the server was lost: ${detail}. Reconnecting...`);

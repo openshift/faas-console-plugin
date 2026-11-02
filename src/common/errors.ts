@@ -1,12 +1,3 @@
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    statusText: string,
-  ) {
-    super(`HTTP ${status}: ${statusText}`);
-  }
-}
-
 export interface AppError {
   message: string;
   code?: number;
@@ -19,4 +10,8 @@ export class ClusterError extends Error {
   ) {
     super(`Deployment error. Reason: ${reason}.`);
   }
+}
+
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
