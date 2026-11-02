@@ -123,16 +123,15 @@ Go + `net/http` standard library. Key dependencies:
 
 ### Dependency Rules
 
-- `handler` imports `cluster`, `functions`, `scm`, `config` — never the reverse
+- `handler` imports `cluster`, `functions`, `scm`, `config`, `identity` (for `ErrUnauthenticated` only), never the reverse
 - `cluster` and `functions` both import `kube` for connection setup, and have no knowledge of each other
 - `kube` imports only `k8s.io/client-go/rest`; it depends on no other backend package
 - `cluster` is for provisioning and cluster introspection (write RBAC/SA, request tokens, check namespace existence); `functions` is for the function lifecycle (list and scaffold generation). Both talk to the cluster but answer different questions, so they stay separate rather than sharing one client interface
 - `scm` has no knowledge of cluster or functions
 - `functions` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
 - `config` is imported by `handler`, `functions`, and `main` only; it owns runtime configuration and package-level wiring
-- `identity` is a leaf next to `kube`: it imports `kube` and nothing else from the backend. It is about OpenShift identity, not SCM, so it sits at the top level rather than under the package that happens to use it most
-- `scm/credentials` imports `identity` because a stored token is meaningless without the user it belongs to, and it owns the `identity.Resolver`. `handler` hands it the raw bearer token and gets a credential back, so it never holds an `identity.User` and never mediates between the two. `handler` imports `identity` only for `ErrUnauthenticated`, which is an OpenShift concept and does not belong behind an SCM package
-- `scm/credentials` sits under `scm` because that is what it stores tokens for, but it imports neither `scm` nor `cluster` nor anything HTTP. The handlers that store and read the token live in `handler`, which is what keeps it free of the SCM dependency it would otherwise need to verify a PAT. Callers name it `scmCredentials` rather than `credentials`, so the variable never reads as cluster credentials
+- `identity` imports `kube` and nothing else from the backend
+- `scm/credentials` imports `identity` but not `scm`, `cluster`, or HTTP
 
 ### Key Decisions
 

@@ -22,7 +22,7 @@ Not every test double is a mock. Use the correct term:
 | Term | Purpose | Examples |
 |------|---------|----------|
 | **Stub** | Returns canned responses, no behaviour verification | Backend: `scm.ClientStub`, `cluster.ClientStub`. Frontend: `listFunctionsStub`, `getFilesStub`, `putFilesStub` (MSW handlers), `useK8sWatchResourceStub` |
-| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewClientset` / `fake.NewSimpleClientset` (in-memory K8s client). No frontend fake: nothing about the connection lives in the browser to fake |
+| **Fake** | Working implementation with shortcuts (e.g., in-memory store) | Backend: `fake.NewClientset` / `fake.NewSimpleClientset` (in-memory K8s client) |
 | **Mock** | Asserts expectations inside the double | Use sparingly. Prefer stubs with assertions in the test body. |
 | **Spy** | Records calls for later assertion | Not currently used. Prefer asserting on observable output. |
 
@@ -74,9 +74,9 @@ Tests replace external dependencies at two boundaries using test doubles:
 
 **Backend API (MSW).** `functionsClient.ts` and `authClient.ts` call the Go backend over HTTP via `httpClient.ts`. MSW intercepts these requests at the network level, so tests exercise the real client code (URL construction, headers, error handling) without replacing it. Test doubles are set up per test via helpers in `src/common/testing/functionsClientStub.ts` and `src/common/testing/authClientStub.ts`.
 
-Nothing about the connection lives in the browser, so a test puts a component in the connected state by stubbing the GET rather than by seeding storage. That also makes connection asynchronous: `AuthProvider` renders a spinner instead of its children until the backend answers, so assertions on anything inside it need `findBy*`.
+Component tests that need a connected user call `fetchGithubUserStub()` from `authClientStub.ts` before rendering. `AuthProvider` fetches the credential on mount and shows a spinner until the backend answers, so assertions on anything inside it need `findBy*` or `waitFor`.
 
-All HTTP clients go through `httpClient.ts`, which wraps the SDK's `consoleFetch`/`consoleFetchJSON`. The mock boundary for tests is that SDK layer: `vi.mock` replaces the SDK's fetch functions with `consoleFetchStub`/`consoleFetchJSONStub` from `sdkTestDoubles.tsx`, which bridge to real `fetch` so MSW can intercept. The real `httpClient` logic (auth-expiry events, header handling, error mapping) stays in the test path. Client unit tests (`httpClient.test.ts`, `authClient.test.ts`) mock one layer down instead: `authClient` tests replace `httpClient`, and `httpClient` tests replace the SDK fetch functions with `vi.fn()` doubles to control rejection shapes directly.
+All HTTP clients go through `httpClient.ts`, which wraps the SDK's `consoleFetch`/`consoleFetchJSON`. Use `consoleFetchStub`/`consoleFetchJSONStub` from `sdkTestDoubles.tsx`, which bridge to real `fetch` so MSW can intercept. The real `httpClient` logic (auth-expiry events, header handling, error mapping) stays in the test path.
 
 **OCP SDK (test doubles via `vi.mock`).** The OCP dynamic plugin SDK provides hooks like `useK8sWatchResource` and `useActiveNamespace`, plus UI components like `DocumentTitle` and `ListPageHeader`, that only work inside the console shell, and the fetch wrappers `httpClient` builds on. Tests replace them with self-written stubs from `src/common/testing/sdkTestDoubles.tsx`, injected through `vi.mock('@openshift-console/dynamic-plugin-sdk')`. The SDK mock contains the fetch stubs alongside the hook and UI component stubs; tests that only need HTTP provide just the fetch stubs. Do not spread `importOriginal()` in this factory: the real SDK imports SCSS, which cannot compile in the test environment. The hook stubs accept raw K8s resource fixtures (Knative Services, Deployments) and let the real hooks derive status, replicas, and URL. This catches shape mismatches at test time instead of hiding them behind pre-computed return values.
 
@@ -167,12 +167,8 @@ vi.mock('react-i18next', () => ({
 // available inside the vi.mock factory (which is hoisted above imports)
 const sdkTestDoubles = await vi.hoisted(async () => import('../../common/testing/sdkTestDoubles'));
 
-// Fetch stubs keep the real httpClient logic in the test path; hook and UI
-// stubs replace what only works inside the console shell. Tests that need
-// only HTTP provide just the two fetch stubs.
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  consoleFetch: sdkTestDoubles.consoleFetchStub,
-  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
+  HttpError: sdkTestDoubles.HttpError,
   useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
   useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
   // ... remaining SDK exports as simple stubs
@@ -228,11 +224,7 @@ Test double stubs live next to their interfaces:
 
 Choose test doubles at the package boundary:
 
-**Interface-level stubs** (handler tests) - `scm.ClientStub`, `cluster.ClientStub`, and `functions.ClientStub` implement their respective interfaces with function fields. Each test sets only the fields it exercises; unset fields return happy-path defaults. `withSCMStub` swaps `config.SCMRegistry`, `withClusterStub` swaps `newClusterClient`, and `withFunctionsClient` swaps `newFunctionsClient` for the duration of the test. Most handler tests call handlers directly to verify request parsing, error mapping, and response codes; workflow watch tests also use `httptest.NewServer` to verify streaming over HTTP.
-
-**Credential providers** (handler and routing tests): inject `withCredentialProviderStub` (`credentials.MapProvider`) for successful lookups or `withCredentialProviderError` (`credentials.ProviderStub`) for failures, wherever the code under test resolves credentials itself: `RequireCredential`, the credential POST/DELETE handlers, the workflow watch handler, and the routing tests. Assert returned account data, HTTP statuses, and SSE events rather than Secret counts or captured calls. Store tests exercise identity binding and expiry with a fake Kubernetes client; handler tests do not inspect that storage.
-
-**Protected handlers and routing** (handler and main package tests): handlers behind `RequireCredential` are unit-tested directly, without wrapping them in the middleware. Endpoint request helpers such as `listRequest`, `createFunctionRequest`, and `filesRequest` build requests with `httptest.NewRequestWithContext(testCredentialContext(), ...)`, so the validated credential and caller token arrive in context and that setup stays out of individual specs. `RequireCredential` itself is tested only in `handler/credential_middleware_test.go`, against a stub downstream handler, covering missing or malformed bearer headers, each credential lookup failure with its status mapping, and context propagation. The routing tests in `backend/main_test.go` drive the real `newMux` through `serveRoute`/`serveRouteAs` helpers: credential save, use, and delete across callers; the routes outside the middleware (credential POST/DELETE, health, static files, workflow SSE); the credential GET 404; and file path parameters through the nested mux. Credential POST/DELETE provider failures and workflow SSE error framing stay in their own handler tests, because those routes resolve credentials without `RequireCredential`.
+**Interface-level stubs** (handler tests) - `scm.ClientStub`, `cluster.ClientStub`, and `functions.ClientStub` implement their respective interfaces with function fields. Each test sets only the fields it exercises; unset fields return happy-path defaults. `withSCMStub` swaps `config.SCMRegistry`, `withClusterStub` swaps `newClusterClient`, and `withFunctionsClient` swaps `newFunctionsClient` for the duration of the test. `withCredentialProviderStub` and `withCredentialProviderError` inject `credentials.MapProvider` or `credentials.ProviderStub` for credential lookups. No `httptest.NewServer`, no real HTTP client stack - handler tests verify request parsing, error mapping, and response codes only.
 
 **`fake.NewSimpleClientset`** (cluster package tests) - `k8s.io/client-go/kubernetes/fake` implements `kubernetes.Interface` without any HTTP. Use reactors to simulate errors and pre-populate objects to simulate existing state. This is the client-go idiomatic approach.
 

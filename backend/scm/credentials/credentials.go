@@ -1,4 +1,4 @@
-// Package auth keeps SCM credentials in Kubernetes Secrets instead of the
+// Package credentials keeps SCM credentials in Kubernetes Secrets instead of the
 // browser. Callers hand it the OpenShift bearer token the console proxy
 // forwarded and get a credential back; resolving that token to a user, and
 // keying the Secret by it, is this package's own business. The credential
