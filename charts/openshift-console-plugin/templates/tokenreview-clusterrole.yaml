@@ -1,0 +1,13 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ template "openshift-console-plugin.tokenReviewName" . }}
+  labels:
+    {{- include "openshift-console-plugin.labels" . | nindent 4 }}
+rules:
+  # The backend resolves console-forwarded bearer tokens with TokenReview,
+  # asking the API server who a token belongs to under its own identity.
+  # Cluster-scoped because tokenreviews are a cluster-scoped resource.
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]

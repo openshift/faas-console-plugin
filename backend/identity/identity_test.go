@@ -11,6 +11,9 @@ import (
 	. "github.com/onsi/gomega"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
 )
 
 var _ = Describe("User.Matches", func() {
@@ -44,25 +47,27 @@ var _ = Describe("User.Matches", func() {
 })
 
 var _ = Describe("Resolve", func() {
+	// A real clientset against a stubbed API server, because TokenReview is
+	// the resolver's contract with the API server, not just an HTTP call.
+	newResolverAgainst := func(handler http.HandlerFunc) Resolver {
+		server := httptest.NewServer(handler)
+		DeferCleanup(server.Close)
+		client, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
+		Expect(err).NotTo(HaveOccurred())
+		return NewResolver(client)
+	}
+
 	It("rejects a previously accepted token after the API server revokes it", func() {
 		var revoked atomic.Bool
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resolver := newResolverAgainst(func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			if revoked.Load() {
-				w.WriteHeader(http.StatusUnauthorized)
-				_ = json.NewEncoder(w).Encode(metav1.Status{
-					Status: metav1.StatusFailure, Reason: metav1.StatusReasonUnauthorized, Code: http.StatusUnauthorized,
-				})
-				return
-			}
-			_ = json.NewEncoder(w).Encode(authenticationv1.SelfSubjectReview{
-				Status: authenticationv1.SelfSubjectReviewStatus{
-					UserInfo: authenticationv1.UserInfo{Username: "alice", UID: "uid-1"},
+			_ = json.NewEncoder(w).Encode(authenticationv1.TokenReview{
+				Status: authenticationv1.TokenReviewStatus{
+					Authenticated: !revoked.Load(),
+					User:          authenticationv1.UserInfo{Username: "alice", UID: "uid-1"},
 				},
 			})
-		}))
-		DeferCleanup(server.Close)
-		resolver := NewResolver(server.URL, nil)
+		})
 
 		user, err := resolver.ResolveUserIdentity(context.Background(), "console-token")
 		Expect(err).NotTo(HaveOccurred())
@@ -73,8 +78,21 @@ var _ = Describe("Resolve", func() {
 		Expect(err).To(MatchError(ErrUnauthenticated))
 	})
 
+	It("reports API failures without logging the caller out", func() {
+		resolver := newResolverAgainst(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(metav1.Status{
+				Status: metav1.StatusFailure, Code: http.StatusInternalServerError,
+			})
+		})
+
+		_, err := resolver.ResolveUserIdentity(context.Background(), "console-token")
+		Expect(err).To(HaveOccurred())
+		Expect(err).NotTo(MatchError(ErrUnauthenticated))
+	})
+
 	It("rejects an empty token instead of calling the API server", func() {
-		resolver := NewResolver("https://api.example.com:6443", nil)
+		resolver := NewResolver(fake.NewClientset())
 
 		_, err := resolver.ResolveUserIdentity(context.Background(), "")
 		Expect(err).To(MatchError(ErrUnauthenticated))

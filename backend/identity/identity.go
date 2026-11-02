@@ -8,9 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/openshift/faas-console-plugin/backend/kube"
 	authenticationv1 "k8s.io/api/authentication/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -34,13 +32,12 @@ type Resolver interface {
 	ResolveUserIdentity(ctx context.Context, token string) (User, error)
 }
 
-func NewResolver(host string, caCert []byte) Resolver {
-	return &reviewResolver{host: host, caCert: caCert}
+func NewResolver(client kubernetes.Interface) Resolver {
+	return &reviewResolver{client: client}
 }
 
 type reviewResolver struct {
-	host   string
-	caCert []byte
+	client kubernetes.Interface
 }
 
 func (r *reviewResolver) ResolveUserIdentity(ctx context.Context, token string) (User, error) {
@@ -48,28 +45,25 @@ func (r *reviewResolver) ResolveUserIdentity(ctx context.Context, token string) 
 		return User{}, fmt.Errorf("%w: no bearer token", ErrUnauthenticated)
 	}
 
-	cfg, err := kube.UserConfig(r.host, token, r.caCert)
+	// TokenReview asks "who is this token?" with the backend's own
+	// ServiceAccount, so no per-caller client needs to be built.
+	review, err := r.client.AuthenticationV1().TokenReviews().Create(
+		ctx,
+		&authenticationv1.TokenReview{Spec: authenticationv1.TokenReviewSpec{Token: token}},
+		metav1.CreateOptions{},
+	)
 	if err != nil {
-		return User{}, fmt.Errorf("build rest config: %w", err)
+		// A failed review here means the backend cannot reach the API server or
+		// lacks the RBAC to create tokenreviews, which is not the caller's fault.
+		return User{}, fmt.Errorf("token review: %w", err)
 	}
-	client, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return User{}, fmt.Errorf("create kubernetes client: %w", err)
-	}
-
-	review, err := client.AuthenticationV1().SelfSubjectReviews().Create(ctx, &authenticationv1.SelfSubjectReview{}, metav1.CreateOptions{})
-	if err != nil {
-		// A refused token and an unreachable API server both fail here, and only
-		// the first one means the caller should be logged out.
-		if apierrors.IsUnauthorized(err) || apierrors.IsForbidden(err) {
-			return User{}, fmt.Errorf("%w: %v", ErrUnauthenticated, err)
-		}
-		return User{}, fmt.Errorf("self subject review: %w", err)
+	if !review.Status.Authenticated {
+		return User{}, fmt.Errorf("%w: token review returned unauthenticated", ErrUnauthenticated)
 	}
 
-	user := User{Username: review.Status.UserInfo.Username, UID: review.Status.UserInfo.UID}
+	user := User{Username: review.Status.User.Username, UID: review.Status.User.UID}
 	if user.Username == "" {
-		return User{}, fmt.Errorf("%w: self subject review returned no username", ErrUnauthenticated)
+		return User{}, fmt.Errorf("%w: token review returned no username", ErrUnauthenticated)
 	}
 
 	return user, nil
