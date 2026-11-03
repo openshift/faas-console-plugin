@@ -218,7 +218,7 @@ Test double stubs live next to their interfaces:
 | `scm/client.go` (`ClientStub`) | Stub for `scm.Client` with function fields for each method (GetUser, ListRepos, PushFiles, etc.) |
 | `cluster/client.go` (`ClientStub`) | Stub for `cluster.Client` with function fields for RBAC and token operations |
 | `functions/client.go` (`ClientStub`) | Stub for `functions.Client` with a function field for List |
-| `handler/common_test.go` | Injection helpers: `withSCMStub`, `withClusterStub`, `withFunctionsClient` swap the production factory for a test stub via `DeferCleanup`; credential fixtures: `testCredentialContext` builds the request context `RequireCredential` would produce, `withCredentialProviderStub`/`withCredentialProviderError` build provider doubles, `authenticate` sets the bearer header |
+| `handler/common_test.go` | Injection helpers: `withSCMStub`, `withClusterStub`, `withFunctionsClient` swap the production factory for a test stub via `DeferCleanup`; credential fixtures: `testOCPTokenContext` and `testCredentialContext` build the request contexts `RequireOCPToken` and `RequireSCMCredential` would produce, `withCredentialProviderStub`/`withCredentialProviderError` build provider doubles, `authenticate` sets the bearer header |
 
 ### Backend Test Double Strategy
 

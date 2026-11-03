@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -91,7 +90,7 @@ func main() {
 
 	mux := newMux(h, scmCredentials, static)
 
-	muxHandler := loggingMiddleware(mux)
+	muxHandler := handler.LoggingMiddleware(mux)
 
 	_, certErr := os.Stat(*certFile)
 	_, keyErr := os.Stat(*keyFile)
@@ -134,18 +133,21 @@ func main() {
 func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.FS) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
-	mux.HandleFunc("POST /api/v1/scm/github/credential", h.HandleSaveSCMCredential)
-	mux.HandleFunc("DELETE /api/v1/scm/github/credential", h.HandleDeleteSCMCredential)
-	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials)))
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
-	protected := http.NewServeMux()
-	protected.HandleFunc("GET /api/v1/scm/github/credential", h.HandleGetSCMCredential)
-	protected.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
-	protected.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
-	protected.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
-	protected.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
-	mux.Handle("/api/v1/", handler.RequireCredential(protected, scmCredentials))
+	withCredential := func(next http.HandlerFunc) http.Handler {
+		return handler.RequireSCMCredential(next, scmCredentials)
+	}
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/v1/scm/github/credential", h.HandleGetSCMCredential)
+	api.HandleFunc("POST /api/v1/scm/github/credential", h.HandleSaveSCMCredential)
+	api.HandleFunc("DELETE /api/v1/scm/github/credential", h.HandleDeleteSCMCredential)
+	api.Handle("GET /api/v1/func/list", withCredential(h.HandleListFunctions))
+	api.Handle("GET /api/v1/func/{owner}/{name}/files", withCredential(h.HandleGetFiles))
+	api.Handle("PUT /api/v1/func/{owner}/{name}/files", withCredential(h.HandlePutFiles))
+	api.Handle("POST /api/v1/func/create", withCredential(h.HandleFuncCreate))
+	api.Handle("GET /api/v1/func/workflow-run/watch", withCredential(handler.WorkflowRunWatch()))
+	mux.Handle("/api/v1/", handler.RequireOCPToken(api))
 	return mux
 }
 
@@ -158,19 +160,4 @@ func readCACert(path string) ([]byte, error) {
 		return nil, fmt.Errorf("read CA certificate %q: %w", path, err)
 	}
 	return caCert, nil
-}
-
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
-		defer func() {
-			if rec := recover(); rec != nil {
-				log.Printf("panic: %v", rec)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"message": "internal server error"})
-			}
-		}()
-		next.ServeHTTP(w, r)
-	})
 }

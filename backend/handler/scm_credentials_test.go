@@ -15,6 +15,7 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 )
 
 var _ = Describe("POST /api/v1/scm/github/credential", func() {
@@ -101,28 +102,17 @@ var _ = Describe("POST /api/v1/scm/github/credential", func() {
 
 		Expect(w.Code).To(Equal(http.StatusServiceUnavailable))
 	})
-
-	It("returns 401 when the console forwarded no user token", func() {
-		h := &Handlers{scmCredentials: withCredentialProviderStub()}
-		req := saveTokenRequest("ghp_valid")
-		req.Header.Del("Authorization")
-		w := httptest.NewRecorder()
-
-		h.HandleSaveSCMCredential(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
-	})
 })
 
 var _ = Describe("GET /api/v1/scm/github/credential", func() {
 	getRequest := func() *http.Request {
-		return httptest.NewRequestWithContext(testCredentialContext(), http.MethodGet, "/api/v1/scm/github/credential", nil)
+		return httptest.NewRequestWithContext(testOCPTokenContext(), http.MethodGet, "/api/v1/scm/github/credential", nil)
 	}
 
 	// The whole point of keying on identity alone: a browser that has never
 	// seen this credential is connected by its OpenShift token and nothing else.
 	It("reports the GitHub account behind a stored credential", func() {
-		h := &Handlers{}
+		h := &Handlers{scmCredentials: withCredentialProviderStub()}
 		w := httptest.NewRecorder()
 
 		h.HandleGetSCMCredential(w, getRequest())
@@ -137,7 +127,7 @@ var _ = Describe("GET /api/v1/scm/github/credential", func() {
 	// The stored token answers requests on the backend; handing it back to the
 	// browser would undo the entire reason it lives in a Secret.
 	It("never returns the token itself", func() {
-		h := &Handlers{}
+		h := &Handlers{scmCredentials: withCredentialProviderStub()}
 		w := httptest.NewRecorder()
 
 		h.HandleGetSCMCredential(w, getRequest())
@@ -145,31 +135,30 @@ var _ = Describe("GET /api/v1/scm/github/credential", func() {
 		Expect(w.Body.String()).NotTo(ContainSubstring("test-pat"))
 	})
 
+	// 404, not 401: the frontend reads 404 as "ask for a PAT", while 401
+	// would disconnect a caller who is merely not connected yet.
+	DescribeTable("reports lookup failures",
+		func(cause error, code int) {
+			h := failingCredentialHandler(cause)
+			w := httptest.NewRecorder()
+
+			h.HandleGetSCMCredential(w, getRequest())
+
+			Expect(w.Code).To(Equal(code))
+		},
+		Entry("unconnected account", credentials.ErrNoCredential, http.StatusNotFound),
+		Entry("rejected OpenShift token", identity.ErrUnauthenticated, http.StatusUnauthorized),
+		Entry("unavailable store", errors.New("cluster unavailable"), http.StatusServiceUnavailable),
+	)
+
 })
 
 var _ = Describe("DELETE /api/v1/scm/github/credential", func() {
-	DescribeTable("rejects requests without a usable bearer token",
-		func(authorization string) {
-			h := &Handlers{scmCredentials: withCredentialProviderStub()}
-			req := httptest.NewRequest(http.MethodDelete, "/api/v1/scm/github/credential", nil)
-			req.Header.Set("Authorization", authorization)
-			w := httptest.NewRecorder()
-
-			h.HandleDeleteSCMCredential(w, req)
-
-			Expect(w.Code).To(Equal(http.StatusUnauthorized))
-		},
-		Entry("missing header", ""),
-		Entry("empty bearer token", "Bearer "),
-		Entry("wrong authentication scheme", "Basic credentials"),
-	)
-
 	It("returns 204 when the credential provider is unavailable", func() {
 		h := failingCredentialHandler(errors.New("token rejected by the API server"))
 		w := httptest.NewRecorder()
 
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/api/v1/scm/github/credential", nil)
-		authenticate(req)
+		req := httptest.NewRequestWithContext(testOCPTokenContext(), http.MethodDelete, "/api/v1/scm/github/credential", nil)
 
 		h.HandleDeleteSCMCredential(w, req)
 
@@ -184,7 +173,5 @@ func failingCredentialHandler(cause error) *Handlers {
 func saveTokenRequest(pat string) *http.Request {
 	body, err := json.Marshal(map[string]string{"pat": pat})
 	Expect(err).NotTo(HaveOccurred())
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/scm/github/credential", bytes.NewBuffer(body))
-	authenticate(req)
-	return req
+	return httptest.NewRequestWithContext(testOCPTokenContext(), http.MethodPost, "/api/v1/scm/github/credential", bytes.NewBuffer(body))
 }

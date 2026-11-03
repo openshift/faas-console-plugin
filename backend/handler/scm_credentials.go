@@ -12,14 +12,7 @@ import (
 )
 
 func (h *Handlers) HandleSaveSCMCredential(w http.ResponseWriter, r *http.Request) {
-	// Gate before anything else: the PAT below is sent to the SCM provider,
-	// and an unauthenticated caller must not be able to make the backend do
-	// that for them.
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
+	ocpToken := ocpTokenFrom(r.Context())
 
 	var req struct {
 		PAT string `json:"pat"`
@@ -72,16 +65,22 @@ func (h *Handlers) HandleSaveSCMCredential(w http.ResponseWriter, r *http.Reques
 // HandleGetSCMCredential answers with the credential's public representation:
 // which SCM account it belongs to, never the token itself.
 func (h *Handlers) HandleGetSCMCredential(w http.ResponseWriter, r *http.Request) {
-	credential := credentialFrom(r.Context())
+	credential, err := h.scmCredentials.Get(r.Context(), ocpTokenFrom(r.Context()))
+	if err != nil {
+		// Not 401: the frontend reads 404 as "ask for a PAT" and 401 as an
+		// authentication failure that disconnects.
+		if errors.Is(err, credentials.ErrNoCredential) {
+			writeError(w, http.StatusNotFound, "no stored credential")
+			return
+		}
+		writeAuthError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, githubAccount(credential.Owner, credential.AvatarURL))
 }
 
 func (h *Handlers) HandleDeleteSCMCredential(w http.ResponseWriter, r *http.Request) {
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "authentication required")
-		return
-	}
+	ocpToken := ocpTokenFrom(r.Context())
 
 	// Nothing to revoke if the caller cannot be identified. The browser
 	// disconnects regardless, so this is not worth failing the request over.

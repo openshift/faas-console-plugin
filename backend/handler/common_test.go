@@ -15,8 +15,14 @@ import (
 
 const testOCPToken = "ocp-token"
 
+// testOCPTokenContext is what RequireOCPToken hands to the next handler.
+func testOCPTokenContext() context.Context {
+	return context.WithValue(context.Background(), ocpTokenKey{}, testOCPToken)
+}
+
+// testCredentialContext is what RequireSCMCredential hands to the next handler.
 func testCredentialContext() context.Context {
-	return context.WithValue(context.Background(), credentialKey{}, requestCredential{
+	return context.WithValue(testOCPTokenContext(), credentialKey{}, requestCredential{
 		Credential: credentials.Credential{Owner: "tester", Token: "test-pat", Type: credentials.CredentialTypePAT},
 		ocpToken:   testOCPToken,
 	})

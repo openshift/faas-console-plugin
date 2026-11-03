@@ -43,9 +43,10 @@ export interface SSEEvent {
 // Migration path to native EventSource:
 // - Once the backend uses HTTP-only session cookies instead of PAT headers,
 //   native EventSource can be used (no custom headers needed).
-// - The 'error' listener would lose the HttpError context. Auth errors must
-//   then be detected via 'app-error' events sent by the backend before the
-//   connection closes. The backend already sends these.
+// - The 'error' listener would lose the HttpError context. The backend rejects
+//   a missing credential with a plain 401 before the stream opens, so it would
+//   then have to send an 'app-error' event instead for auth errors to stay
+//   detectable.
 // - The consumer API (addEventListener, close) stays the same.
 //
 export function createSSEEventSource(url: string, options: SSEEventSourceOptions): SSEEventSource {

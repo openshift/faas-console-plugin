@@ -61,6 +61,31 @@ describe('receiveWorkflowRunEvents', () => {
     expect(errors).toHaveLength(1);
   });
 
+  // The backend middleware rejects a missing credential before the stream
+  // opens, so auth failures also arrive as plain HTTP statuses.
+  it.each([401, 403])('reports auth error and stops on %i HTTP response', async (status) => {
+    using timer = timerFake();
+    workflowWatchStub({ errorResponse: { status } });
+
+    const errors: string[] = [];
+    const data: WorkflowRunRecord[] = [];
+
+    close = receiveWorkflowRunEvents(
+      (msg) => data.push(msg),
+      (errMsg) => errors.push(errMsg),
+    );
+
+    await waitFor(() => expect(errors).toHaveLength(1));
+    expect(errors[0]).toBe('Authentication expired. Reconnect to GitHub and refresh.');
+
+    // If close() wasn't called, the transport would reconnect and deliver more errors.
+    workflowWatchStub({ snapshot: { 'a/b': { status: 'InProgress' } } });
+
+    await timer.advance(5000);
+    expect(data).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+  });
+
   it('passes app-error message through to errorCbk for non-auth errors', async () => {
     workflowWatchStub({ appError: { message: 'rate limited', code: 429 } });
 
