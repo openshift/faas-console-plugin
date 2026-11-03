@@ -13,7 +13,7 @@ See `docs/design/` for full design specs.
 - Ask before starting a new task or making a design decision.
 - Once actively implementing, keep going without asking. Only stop to ask when blocked by sandbox, permissions, or ambiguous requirements.
 - Always show Jira issue content (epic, story, comment) for review before creating or updating. Never push to Jira without approval.
-- Default values for new issues: Assignee = unassigned, Priority = Normal, Status = Backlog. Always ask about labels before creating. Ask if defaults should be changed before creating.
+- Default values for new issues: Assignee = unassigned, Priority = Normal, Status = New for unrefined work or Backlog for refined work. Always ask about labels before creating. Ask if defaults should be changed before creating.
 
 ## Writing Style
 
@@ -31,5 +31,5 @@ No em dashes (`—`). Use commas, periods, or parentheses instead.
 | `docs/plans/completed/` | Finished plans |
 | `.dev-env.json` | Dev server ports (backendPort, pluginPort, consolePort), written by hack/dev.sh |
 | `.dev-logs/` | Dev server log files (backend.log, webpack.log, console.log) |
-| `docs/AGILE.md` | Agile workflow, ceremonies, iteration process |
+| `docs/WAYS_OF_WORKING.md` | PM roles and rotation, issue tracking, ceremonies, iteration process |
 | `docs/references/ocp-dynamic-plugin-reference.md` | OCP dynamic plugin mechanics, i18n, extension points |

@@ -4,7 +4,7 @@ import { FAKE_GH_PAT } from './constants';
 
 interface DevEnv {
   fakeGithubPort?: number;
-  clusterAPIURL?: string;
+  clusterID?: string;
 }
 
 function readDevEnv(): DevEnv {
@@ -26,13 +26,13 @@ export function fakeGithubUrl(): string {
   return `http://localhost:${env.fakeGithubPort}`;
 }
 
-export function clusterAPIURL(): string {
-  if (process.env.CLUSTER_API_URL) return process.env.CLUSTER_API_URL;
+export function clusterID(): string {
+  if (process.env.CLUSTER_ID) return process.env.CLUSTER_ID;
   const env = readDevEnv();
-  if (!env.clusterAPIURL) {
-    throw new Error('clusterAPIURL not found in .dev-env.json. Start dev with: make dev-fake-gh');
+  if (!env.clusterID) {
+    throw new Error('clusterID not found in .dev-env.json. Start dev with: make dev-fake-gh');
   }
-  return env.clusterAPIURL;
+  return env.clusterID;
 }
 
 export interface SeedFile {
@@ -69,7 +69,7 @@ export async function seedRepo(
   const url = fakeGithubUrl();
   const kubeconfigExpireAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   const mergedVariables = {
-    CLUSTER_API_URL: clusterAPIURL(),
+    CLUSTER_ID: clusterID(),
     KUBECONFIG_EXPIRE_AT: kubeconfigExpireAt,
     ...variables,
   };

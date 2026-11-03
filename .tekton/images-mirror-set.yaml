@@ -21,5 +21,11 @@ spec:
     - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-operator-sources-objectbucket
     source: registry.redhat.io/openshift-serverless-tech-preview/objectbucket-notifications-adapter-rhel9
   - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-adapter-kafka
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-adapter-kafka-rhel9
+  - mirrors:
+    - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-func-cli-artifacts
+    source: registry.redhat.io/openshift-serverless-tech-preview/functions-func-cli-artifacts-rhel9
+  - mirrors:
     - quay.io/redhat-user-workloads/ocp-serverless-tenant/functions-operator-bundle
     source: registry.redhat.io/openshift-serverless-tech-preview/functions-operator-bundle

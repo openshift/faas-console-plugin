@@ -142,7 +142,7 @@ var _ = Describe("API routes", func() {
 })
 
 func testMux(provider credentials.Provider) *http.ServeMux {
-	h := handler.New(nil, "", "", 0, provider)
+	h := handler.New(nil, "", "", "test-cluster-id", 0, provider)
 	return newMux(h, provider, fstest.MapFS{"index.html": {Data: []byte("static content")}})
 }
 

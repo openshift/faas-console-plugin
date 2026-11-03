@@ -40,7 +40,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 
 	doCreate := func(setup func()) *httptest.ResponseRecorder {
 		setup()
-		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
+		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443", clusterID: "test-cluster-id-abc123"}
 		req := createFunctionRequest(bytes.NewBuffer(validBody()))
 
 		w := httptest.NewRecorder()
@@ -95,6 +95,7 @@ var _ = Describe("POST /api/v1/func/create", func() {
 		})
 		h := &Handlers{
 			externalAPIServerURL: "https://api.test-cluster.example.com:6443",
+			clusterID:            "test-cluster-id-abc123",
 			saTokenExpiry:        7 * 24 * 60 * 60,
 		}
 		req := createFunctionRequest(bytes.NewBuffer(validBody()))

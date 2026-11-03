@@ -108,7 +108,7 @@ write_dev_env() {
   "pluginPort": $PLUGIN_PORT,
   "consolePort": $CONSOLE_PORT,
   "fakeGithubPort": $FAKE_GH_PORT,
-  "clusterAPIURL": "$KUBE_API_SERVER"
+  "clusterID": "$CLUSTER_ID"
 }
 EOF
   else
@@ -133,6 +133,11 @@ resolve_kube_api_server() {
   export KUBE_API_SERVER=$(oc whoami --show-server)
 }
 
+resolve_cluster_id() {
+  log::info "Resolving cluster ID..."
+  export CLUSTER_ID=$(oc get clusterversion version -o jsonpath='{.spec.clusterID}')
+}
+
 backend_gh_flag() {
   if $FAKE_GH; then
     echo "--gh-api-url http://localhost:$FAKE_GH_PORT"
@@ -154,7 +159,13 @@ start_backend() {
   make build-backend
   (cd backend && go build -buildvcs=false -o ../bin/errserver ./cmd/errserver)
   log::info "Starting Go backend..."
-  ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
+  ./bin/plugin-backend \
+    --http-port "$BACKEND_PORT" \
+    --kube-root-ca-path "$CA_FILE" \
+    --kube-host "$KUBE_API_SERVER" \
+    --external-api-server-url "$KUBE_API_SERVER" \
+    --cluster-id "$CLUSTER_ID" \
+    $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
 
@@ -174,6 +185,7 @@ restart_backend() {
   stop_backend
   extract_cluster_ca
   resolve_kube_api_server
+  resolve_cluster_id
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"
   log::info "Backend restarted on port $BACKEND_PORT."
@@ -206,7 +218,13 @@ start_backend_watcher() {
 
       if $build_ok; then
         mv bin/plugin-backend-tmp bin/plugin-backend
-        ./bin/plugin-backend --http-port "$BACKEND_PORT" --kube-root-ca-path "$CA_FILE" --kube-host "$KUBE_API_SERVER" --external-api-server-url "$KUBE_API_SERVER" $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
+        ./bin/plugin-backend \
+          --http-port "$BACKEND_PORT" \
+          --kube-root-ca-path "$CA_FILE" \
+          --kube-host "$KUBE_API_SERVER" \
+          --external-api-server-url "$KUBE_API_SERVER" \
+          --cluster-id "$CLUSTER_ID" \
+          $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
       else
@@ -330,6 +348,7 @@ main() {
   stop_dev
   resolve_kube_api_server
   ensure_credentials_namespace
+  resolve_cluster_id
   write_dev_env
   extract_cluster_ca
   trap 'stop_dev' EXIT INT TERM

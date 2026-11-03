@@ -5,7 +5,7 @@ import { deleteRepoOnFakeGithub, seedRepo } from '../../helpers/fakegithub';
 
 const OTHER_CLUSTER_REPO = 'func-from-other-cluster';
 const RUNTIME = 'go';
-const OTHER_CLUSTER_API_URL = 'https://api.other-cluster.example.com:6443';
+const OTHER_CLUSTER_ID = 'other-cluster-id-xyz789';
 
 test.describe('Cluster filter', () => {
   test.beforeAll(async () => {
@@ -21,7 +21,7 @@ test.describe('Cluster filter', () => {
           content: `name: ${OTHER_CLUSTER_REPO}\nruntime: ${RUNTIME}\nnamespace: ${PRESEEDED_FUNC_NAMESPACE}\n`,
         },
       ],
-      { CLUSTER_API_URL: OTHER_CLUSTER_API_URL },
+      { CLUSTER_ID: OTHER_CLUSTER_ID },
     );
   });
 
@@ -29,7 +29,7 @@ test.describe('Cluster filter', () => {
     await deleteRepoOnFakeGithub(E2E_USER, OTHER_CLUSTER_REPO);
   });
 
-  test('does not show functions whose CLUSTER_API_URL points to a different cluster', async ({
+  test('does not show functions whose CLUSTER_ID belongs to a different cluster', async ({
     page,
   }) => {
     await test.step('navigate to functions list', async () => {

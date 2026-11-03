@@ -24,7 +24,7 @@ KUBE_API_SERVER ?= https://api.example.com:6443
 
 .PHONY: help install-frontend build-frontend lint-frontend unit-frontend type-check test-e2e verify \
         install-backend build-backend build-fakegithub unit-backend lint-backend fmt-backend \
-        image manifests deploy undeploy deploy-dev setup-serverless \
+        image deploy undeploy deploy-dev setup-serverless \
         dev dev-% \
         build lint unit e2e
 
@@ -123,13 +123,6 @@ image: ## Build container image
 	$(CONTAINER_CMD) build --platform $(PLATFORM) -t $(IMAGE_TAG) .
 
 ##@ Cluster
-
-manifests: ## Render Helm chart to backend/static/plugin.yaml
-	helm template $(PLUGIN_NAME) charts/openshift-console-plugin \
-		-n $(NAMESPACE) \
-		--set "plugin.image=$(IMAGE)" \
-		--set "plugin.apiServerURL=$(KUBE_API_SERVER)" \
-		> $(BACKEND_DIR)/static/plugin.yaml
 
 deploy: ## Deploy plugin to cluster (defaults to quay.io latest image)
 	hack/deploy.sh

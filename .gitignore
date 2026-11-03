@@ -60,6 +60,5 @@ demo/pdf-transcriber/.env
 
 # Built binaries
 /bin
-pages/plugin.yaml
-backend/static/index.html
-backend/static/plugin.yaml
+/backend/static/*
+!/backend/static/.gitkeep

@@ -6,6 +6,16 @@
 {{- if and $infra (not $apiServerURL) }}
   {{- fail "Infrastructure CR exists but apiServerURL is empty; set plugin.apiServerURL to override" }}
 {{- end }}
+{{- $clusterID := .Values.plugin.clusterID | default "" }}
+{{- if not $clusterID }}
+  {{- $clusterVersion := lookup "config.openshift.io/v1" "ClusterVersion" "" "version" }}
+  {{- if and $clusterVersion $clusterVersion.spec }}
+    {{- $clusterID = (index $clusterVersion.spec "clusterID" | default "") }}
+  {{- end }}
+{{- end }}
+{{- if not $clusterID }}
+  {{- fail "clusterID could not be determined; set plugin.clusterID to override" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,6 +50,7 @@ spec:
           args:
             - "--https-port={{ .Values.plugin.port }}"
             - "--external-api-server-url={{ $apiServerURL }}"
+            - "--cluster-id={{ $clusterID }}"
             {{- if .Values.plugin.ghApiUrl }}
             - "--gh-api-url={{ .Values.plugin.ghApiUrl }}"
             {{- end }}

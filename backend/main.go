@@ -27,7 +27,7 @@ const (
 	defaultConsolePluginNamespace = "console-functions-plugin"
 )
 
-//go:embed static/*
+//go:embed all:static/*
 var staticFiles embed.FS
 
 func main() {
@@ -38,6 +38,7 @@ func main() {
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
 	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
+	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
 	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
 	flag.Parse()
@@ -54,6 +55,10 @@ func main() {
 
 	if *kubeAPIServer == "" {
 		log.Fatal("--external-api-server-url is required")
+	}
+
+	if *clusterID == "" {
+		log.Fatal("--cluster-id is required")
 	}
 
 	static, err := fs.Sub(staticFiles, "static")
@@ -86,7 +91,7 @@ func main() {
 	}
 	log.Printf("Storing SCM credentials as Secrets in namespace %q", namespace)
 
-	h := handler.New(caCert, *kubeHost, *kubeAPIServer, saTokenExpiryParsed, scmCredentials)
+	h := handler.New(caCert, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed, scmCredentials)
 
 	mux := newMux(h, scmCredentials, static)
 
