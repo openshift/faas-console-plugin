@@ -176,7 +176,7 @@ The consequence worth stating plainly is unchanged. Anyone who can reach the con
 
 **One TTL, and a 401 that means one thing**
 
-`credentialTTL` (7d) is absolute and not sliding: it caps how long a stored credential can be used before the user supplies it again. Credentials past it are dropped when their owner next comes back (`dropSecretIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
+A stored credential expires when its token does: `POST` records the expiry GitHub reports in the `GitHub-Authentication-Token-Expiration` header, so the user is not asked to reconnect while the token still works. Tokens created without an expiry have no header and fall back to `credentialTTL` (7d). Either way the expiry is absolute and not sliding. Credentials past it are dropped when their owner next comes back (`dropSecretIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
 
 The credential is one resource with three verbs:
 
@@ -190,7 +190,7 @@ The caller's SCM credential is one resource with three verbs, named for what it 
 
 The frontend holds no auth state of its own. `AuthProvider` calls `GET /api/v1/scm/github/credential` on mount, and renders a spinner rather than its children until the answer arrives, so a user whose PAT is already stored is connected having typed nothing and nothing below ever has to reason about "not connected yet". `customFetch` does not retry: a 401 fires `AUTH_EXPIRED_EVENT` and `AuthProvider` clears its state. That is why a rejected PAT is a 403 and not a 401, which would disconnect a user over a typo.
 
-Credentials past `credentialTTL` are dropped when their owner next comes back (`dropSecretIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
+Credentials past their expiry are dropped when their owner next comes back (`dropSecretIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
 
 The identity comes from the console proxy, which is declared `authorization: UserToken` and forwards the console user's bearer token in `Authorization`. That token is opaque, so `identity.Resolver` asks the API server who it belongs to with a `SelfSubjectReview` (the call behind `oc auth whoami`), which every authenticated user may create; reading `users.user.openshift.io` would need a `ClusterRole` the backend does not have. Every credential save, read, and delete repeats this check, so a token rejected by the API server cannot continue reaching stored SCM credentials through a cached identity. The Secret is accessed with the backend's own ServiceAccount, which cannot establish whether the caller's console token is still valid on its own.
 

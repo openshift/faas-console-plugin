@@ -111,11 +111,15 @@ func branchRef(branch string) string {
 }
 
 func (c *ghClient) GetUser(ctx context.Context) (*scm.User, error) {
-	user, _, err := c.client.Users.Get(ctx, "")
+	user, resp, err := c.client.Users.Get(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", mapErr(err))
 	}
-	return &scm.User{Login: user.GetLogin(), AvatarURL: user.GetAvatarURL()}, nil
+	return &scm.User{
+		Login:          user.GetLogin(),
+		AvatarURL:      user.GetAvatarURL(),
+		TokenExpiresAt: resp.TokenExpiration.Time,
+	}, nil
 }
 
 func (c *ghClient) ListRepos(ctx context.Context) ([]scm.Repo, error) {

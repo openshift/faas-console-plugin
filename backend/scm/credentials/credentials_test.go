@@ -92,6 +92,24 @@ var _ = Describe("Store", func() {
 			Expect(credential).To(Equal(rotated))
 		})
 
+		// Keeping it longer would only hold a dead token; dropping it sooner
+		// would force a reconnect while the token still works.
+		It("keeps the credential until the token expires", func() {
+			expiresAt := time.Now().Add(30 * 24 * time.Hour).Truncate(time.Second)
+			expiring := alicePAT
+			expiring.ExpiresAt = expiresAt
+
+			Expect(store.Save(ctx, aliceToken, expiring)).To(Succeed())
+
+			Expect(readSecretData(store, alice).ExpiresAt).To(BeTemporally("==", expiresAt))
+		})
+
+		It("falls back to the default lifetime for a token with no expiry", func() {
+			Expect(store.Save(ctx, aliceToken, alicePAT)).To(Succeed())
+
+			Expect(readSecretData(store, alice).ExpiresAt).To(BeTemporally("~", time.Now().Add(credentialTTL), time.Minute))
+		})
+
 		It("stores the secret in the configured namespace", func() {
 			Expect(store.Save(ctx, aliceToken, alicePAT)).To(Succeed())
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -37,6 +38,21 @@ var _ = Describe("POST /api/v1/scm/github/credential", func() {
 		Expect(resp).To(HaveKeyWithValue("login", "alice-gh"))
 		Expect(resp).To(HaveKeyWithValue("avatarUrl", "https://example.com/avatar"))
 		Expect(resp).To(HaveLen(2)) // login, avatarUrl and nothing else
+	})
+
+	It("saves the credential with the token's expiry", func() {
+		expiresAt := time.Date(2026, 11, 26, 9, 42, 22, 0, time.UTC)
+		withSCMStub(&scm.ClientStub{
+			OnGetUser: func(ctx context.Context) (*scm.User, error) {
+				return &scm.User{Login: "alice-gh", TokenExpiresAt: expiresAt}, nil
+			},
+		})
+		provider := withCredentialProviderStub()
+		h := &Handlers{scmCredentials: provider}
+
+		h.HandleSaveSCMCredential(httptest.NewRecorder(), saveTokenRequest("ghp_valid"))
+
+		Expect(provider[testOCPToken].ExpiresAt).To(Equal(expiresAt))
 	})
 
 	It("returns 400 when no token was sent", func() {

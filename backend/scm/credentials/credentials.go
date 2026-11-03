@@ -39,6 +39,10 @@ type Credential struct {
 	AvatarURL string
 	Token     string // the PAT or OAuth token itself
 	Type      string // CredentialTypePAT or CredentialTypeOAuth
+	// ExpiresAt is when the token stops working, or zero when the SCM
+	// provider did not say. Save keeps the credential until then, falling
+	// back to credentialTTL.
+	ExpiresAt time.Time
 }
 
 type Store struct {
@@ -76,13 +80,17 @@ func (s *Store) Save(ctx context.Context, ocpToken string, cred Credential) erro
 	if err != nil {
 		return fmt.Errorf("save credential: resolve OpenShift user: %w", err)
 	}
+	expiresAt := cred.ExpiresAt
+	if expiresAt.IsZero() {
+		expiresAt = time.Now().Add(credentialTTL)
+	}
 	return s.writeSecret(ctx, user, secretData{
 		Token:     cred.Token,
 		Type:      cred.Type,
 		Owner:     cred.Owner,
 		AvatarURL: cred.AvatarURL,
 		User:      user,
-		ExpiresAt: time.Now().Add(credentialTTL),
+		ExpiresAt: expiresAt,
 	})
 }
 

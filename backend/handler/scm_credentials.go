@@ -57,6 +57,7 @@ func (h *Handlers) HandleSaveSCMCredential(w http.ResponseWriter, r *http.Reques
 		AvatarURL: user.AvatarURL,
 		Token:     req.PAT,
 		Type:      credentials.CredentialTypePAT,
+		ExpiresAt: user.TokenExpiresAt,
 	})
 	if err != nil {
 		// writeAuthError splits these: a refused identity is the caller's
