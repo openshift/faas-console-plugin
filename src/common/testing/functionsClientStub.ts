@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
-import { FileEntry, FunctionMetadata, WorkflowRunRecord } from '../types';
+import { CreateFunctionRequest, FileEntry, FunctionMetadata, WorkflowRunRecord } from '../types';
 
 // -----------------------------------------------------------------------------
 // Test Doubles ----------------------------------------------------------------
@@ -152,4 +152,31 @@ export function receiveWorkflowRunEventsStub({
       return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
     }),
   );
+}
+
+export function createFunctionStub({
+  errorResponse,
+  wait,
+}: {
+  errorResponse?: { message: string; status: number };
+  wait?: Promise<void>;
+} = {}): CreateFunctionRequest[] {
+  const requests: CreateFunctionRequest[] = [];
+
+  server.use(
+    http.post(`${BACKEND_API}/api/v1/func/create`, async ({ request }) => {
+      if (errorResponse?.message && errorResponse?.status)
+        return HttpResponse.json(
+          { message: errorResponse?.message },
+          { status: errorResponse.status },
+        );
+
+      if (wait) await wait;
+
+      requests.push((await request.json()) as CreateFunctionRequest);
+      return new HttpResponse(null, { status: 201 });
+    }),
+  );
+
+  return requests;
 }

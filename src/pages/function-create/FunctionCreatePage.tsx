@@ -5,19 +5,18 @@ import {
   useK8sWatchResource,
   WatchK8sResource,
 } from '@openshift-console/dynamic-plugin-sdk';
-import { Alert, PageSection } from '@patternfly/react-core';
-import { useContext, useEffect, useMemo, useState } from 'react';
+import { Alert, Bullseye, PageSection, Spinner } from '@patternfly/react-core';
+import { useContext, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
+import { createFunction } from '../../common/clients/functionsClient';
+import { useNamespaceOptions } from '../../common/clients/useNamespaceOptions';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
-import { CreateFunctionForm } from './components/CreateFunctionForm';
-import { CreateFunctionFormData } from './types';
-
-import { createFunction } from '../../common/clients/functionsClient';
-import { EnvVar } from '../../common/types';
-import { K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from './types';
 import { errorMessage } from '../../common/errors';
+import { EnvVar } from '../../common/types';
+import { CreateFunctionForm } from './components/CreateFunctionForm';
+import { CreateFunctionFormData, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from './types';
 
 export default function FunctionCreatePage() {
   return (
@@ -37,7 +36,10 @@ function FunctionCreatePageContent() {
     isAuthenticated,
     secrets,
     configMaps,
-    onNamespaceChange,
+    canCreateNamespaces,
+    namespaces,
+    setNamespaceWatchField,
+    namespacesLoaded,
   } = useFunctionCreatePage();
 
   return (
@@ -52,16 +54,23 @@ function FunctionCreatePageContent() {
             {error}
           </Alert>
         )}
-        {isAuthenticated && (
-          <CreateFunctionForm
-            secrets={secrets}
-            configMaps={configMaps}
-            onSubmit={handleSubmit}
-            onCancel={handleCancel}
-            onNamespaceChange={onNamespaceChange}
-            isSubmitting={isSubmitting}
-          />
-        )}
+        {isAuthenticated &&
+          (!namespacesLoaded ? (
+            <Bullseye>
+              <Spinner aria-label={t('Loading')} size="lg" />
+            </Bullseye>
+          ) : (
+            <CreateFunctionForm
+              secrets={secrets}
+              configMaps={configMaps}
+              onSubmit={handleSubmit}
+              onCancel={handleCancel}
+              setNamespaceWatchField={setNamespaceWatchField}
+              isSubmitting={isSubmitting}
+              canCreateNamespaces={canCreateNamespaces}
+              namespaces={namespaces}
+            />
+          ))}
       </PageSection>
     </>
   );
@@ -73,18 +82,37 @@ function useFunctionCreatePage(): {
   isSubmitting: boolean;
   isAuthenticated: boolean;
   error: string | null;
+  canCreateNamespaces: boolean;
+  namespaces: string[];
+  namespacesLoaded: boolean;
   handleSubmit: (data: CreateFunctionFormData) => Promise<void>;
   handleCancel: () => void;
-  onNamespaceChange: (namespace: string) => void;
+  setNamespaceWatchField: (namespace: string) => void;
 } {
+  const { t } = useTranslation('plugin__console-functions-plugin');
   const navigate = useNavigate();
   const isAuthenticated = useContext(AuthContext).isAuthenticated;
-  const [namespace, setNamespace] = useState('');
-  const debouncedNamespace = useDebouncedValue(namespace, 300);
-  const { secrets, configMaps } = useSecretsAndConfigMaps(debouncedNamespace);
+
+  const {
+    canCreateNamespaces,
+    namespaces,
+    loaded: namespacesLoaded,
+    error: namespacesError,
+  } = useNamespaceOptions();
+
+  const [namespaceWatchField, setNamespaceWatchField] = useState('');
+
+  const {
+    secrets,
+    configMaps,
+    error: clusterResourcesError,
+  } = useSecretsAndConfigMaps(namespaceWatchField);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const clusterResourcesErrorMessage =
+    namespacesError || clusterResourcesError ? t('Error loading cluster resources') : null;
 
   const handleSubmit = async (data: CreateFunctionFormData) => {
     setIsSubmitting(true);
@@ -116,13 +144,16 @@ function useFunctionCreatePage(): {
 
   return {
     isSubmitting,
-    error,
+    error: error || clusterResourcesErrorMessage,
     handleSubmit,
     handleCancel,
+    setNamespaceWatchField,
     isAuthenticated,
     secrets,
     configMaps,
-    onNamespaceChange: setNamespace,
+    canCreateNamespaces,
+    namespaces,
+    namespacesLoaded,
   };
 }
 
@@ -163,31 +194,22 @@ function toEnvVars(
   return result.length > 0 ? result : undefined;
 }
 
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debounced;
-}
-
 function useSecretsAndConfigMaps(namespace?: string): {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
+  error: Error | undefined;
 } {
   const secretConfig = useMemo(() => newDataWatchConfig('Secret', namespace), [namespace]);
   const configMapConfig = useMemo(() => newDataWatchConfig('ConfigMap', namespace), [namespace]);
 
-  const [rawSecrets] = useK8sWatchResource<K8sResourceKind[]>(secretConfig);
-  const [rawConfigMaps] = useK8sWatchResource<K8sResourceKind[]>(configMapConfig);
+  const [rawSecrets, , secretsError] = useK8sWatchResource<K8sResourceKind[]>(secretConfig);
+  const [rawConfigMaps, , configMapsError] =
+    useK8sWatchResource<K8sResourceKind[]>(configMapConfig);
 
   const secrets = useMemo(() => toKeyedResources(rawSecrets), [rawSecrets]);
   const configMaps = useMemo(() => toKeyedResources(rawConfigMaps), [rawConfigMaps]);
 
-  return { secrets, configMaps };
+  return { secrets, configMaps, error: secretsError || configMapsError };
 }
 
 function newDataWatchConfig(kind: string, namespace?: string): WatchK8sResource | null {
