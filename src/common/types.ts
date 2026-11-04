@@ -1,7 +1,7 @@
 import { AppError } from './errors';
 
-export const PAT_KEY = 'func-console-pat';
-export const USER_KEY = 'func-console-user';
+export const AUTH_EXPIRED_EVENT = 'auth-expired';
+
 export const PROXY_BASE = '/api/proxy/plugin/console-functions-plugin/backend';
 
 export const FUNCTION_NAME_LABEL = 'function.knative.dev/name';

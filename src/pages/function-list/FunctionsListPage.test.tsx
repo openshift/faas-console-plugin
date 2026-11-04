@@ -1,7 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useParams } from 'react-router';
-import { authenticateGithubFake, logoutGithubFake } from '../../common/testing/authFake';
+import {
+  fetchGithubUserStub,
+  noGithubUserStub,
+  disconnectGithubUserStub,
+  connectGithubUserStub,
+} from '../../common/testing/authClientStub';
 import {
   listFunctionsStub,
   receiveWorkflowRunEventsStub,
@@ -24,6 +29,9 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  HttpError: sdkTestDoubles.HttpError,
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
   NamespaceBar: () => null,
   DocumentTitle: ({ children }: { children: string }) => children,
   ListPageHeader: ({ title, children }: { title: string; children?: React.ReactNode }) => (
@@ -32,8 +40,6 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
       {children}
     </>
   ),
-  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONFake,
-  consoleFetch: sdkTestDoubles.consoleFetchFake,
   SuccessStatus: ({ title }: { title: string }) => <span>Success: {title}</span>,
   ErrorStatus: ({ title }: { title: string }) => <span>Error: {title}</span>,
   InfoStatus: ({ title }: { title: string }) => <span>Info: {title}</span>,
@@ -48,17 +54,40 @@ describe('FunctionsListPage', () => {
   const funcName = 'my-func';
 
   beforeEach(() => {
-    logoutGithubFake();
-    authenticateGithubFake();
+    fetchGithubUserStub();
   });
 
   afterEach(() => {
-    server.resetHandlers();
     act(() => sdkTestDoubles.reset());
+    server.resetHandlers();
   });
 
-  afterAll(() => {
-    logoutGithubFake();
+  // End to end through the real AuthProvider: a stored credential means the
+  // page comes up connected, with no PAT prompt in the user's way.
+  it('connects automatically when the backend already holds a credential', async () => {
+    listFunctionsStub();
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('twoGiants')).toBeInTheDocument();
+    expect(screen.queryByText('Personal Access Token')).not.toBeInTheDocument();
+  });
+
+  it('prompts for a PAT when the backend holds nothing', async () => {
+    noGithubUserStub();
+    listFunctionsStub();
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Personal Access Token')).toBeInTheDocument();
   });
 
   describe('Visible page elements and loading states', () => {
@@ -102,7 +131,7 @@ describe('FunctionsListPage', () => {
       expect(await screen.findByText(funcName)).toBeInTheDocument();
     });
 
-    it('renders UserAvatar in header', () => {
+    it('shows the signed-in user in the header', async () => {
       listFunctionsStub();
 
       render(
@@ -111,7 +140,7 @@ describe('FunctionsListPage', () => {
         </MemoryRouter>,
       );
 
-      expect(screen.getByText('twoGiants')).toBeInTheDocument();
+      expect(await screen.findByText('twoGiants')).toBeInTheDocument();
     });
 
     it('renders the setup guide button in the list description', async () => {
@@ -125,6 +154,26 @@ describe('FunctionsListPage', () => {
 
       expect(await screen.findByRole('button', { name: 'View setup guide.' })).toBeInTheDocument();
     });
+  });
+
+  it('clears the listed functions when the user disconnects', async () => {
+    listFunctionsStub({ responses: [functionMetadata({ repoName: funcName })] });
+    sdkTestDoubles.setWatchFixtures(sdkTestDoubles.funcFixture(funcName));
+    disconnectGithubUserStub();
+
+    render(
+      <MemoryRouter>
+        <FunctionsListPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(funcName)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /twoGiants/ }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect' }));
+
+    await waitFor(() => expect(screen.queryByText(funcName)).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Connect to GitHub' })).toBeInTheDocument();
   });
 
   describe('Auth and general error', () => {
@@ -143,7 +192,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('does not call backend API when not authenticated', async () => {
-      logoutGithubFake();
+      noGithubUserStub();
       render(
         <MemoryRouter>
           <FunctionsListPage />
@@ -155,8 +204,8 @@ describe('FunctionsListPage', () => {
       ).toBeInTheDocument();
     });
 
-    it('empty state receives hint and isCreateDisabled when not authenticated', async () => {
-      logoutGithubFake();
+    it('disables creating a function while not authenticated', async () => {
+      noGithubUserStub();
       render(
         <MemoryRouter>
           <FunctionsListPage />
@@ -170,7 +219,7 @@ describe('FunctionsListPage', () => {
     });
 
     it('shows error alert when listing functions fails', async () => {
-      listFunctionsStub({ errorResponse: { message: 'Bad credentials', status: 401 } });
+      listFunctionsStub({ errorResponse: { message: 'Failed to list functions', status: 500 } });
 
       render(
         <MemoryRouter>
@@ -178,11 +227,13 @@ describe('FunctionsListPage', () => {
         </MemoryRouter>,
       );
 
-      expect(await screen.findByText(/Bad credentials/)).toBeInTheDocument();
+      expect(await screen.findByText(/Failed to list functions/)).toBeInTheDocument();
     });
 
     it('resets functions when user reconnects', async () => {
       listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-a' })] });
+      disconnectGithubUserStub();
+      connectGithubUserStub();
 
       render(
         <MemoryRouter>
@@ -194,8 +245,9 @@ describe('FunctionsListPage', () => {
 
       listFunctionsStub({ responses: [functionMetadata({ repoName: 'fn-b', name: 'fn-b' })] });
 
-      // Click avatar to open PAT modal
-      await userEvent.setup().click(screen.getByRole('button', { name: 'twoGiants' }));
+      await userEvent.click(screen.getByRole('button', { name: /twoGiants/ }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'Disconnect' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Connect to GitHub' }));
 
       // Enter PAT and submit
       await userEvent.setup().type(screen.getByLabelText('Personal Access Token'), 'ghp_new');
@@ -1091,7 +1143,7 @@ describe('FunctionsListPage', () => {
         );
       });
 
-      it('displays build watcher error alert with message when stream fails', async () => {
+      it('shows an error alert when the workflow run stream fails', async () => {
         listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
         receiveWorkflowRunEventsStub({
           errorResponse: { message: 'Service Unavailable', status: 503 },
@@ -1109,7 +1161,7 @@ describe('FunctionsListPage', () => {
         });
       });
 
-      it('clears build watcher error alert when stream recovers', async () => {
+      it('clears the stream error alert when the stream recovers', async () => {
         using timer = timerFake();
         listFunctionsStub({ responses: [functionMetadata({ repoName: 'my-repo' })] });
         // Initial endpoint response is an error

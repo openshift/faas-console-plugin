@@ -43,7 +43,7 @@ type Client interface {
 // When host is non-empty (dev/test) it is used as the API server URL directly.
 // When host is empty the standard in-cluster config is used (pod env vars + SA files).
 func New(host, token string, caCert []byte) (Client, error) {
-	cfg, err := kube.RESTConfig(host, token, caCert)
+	cfg, err := kube.UserConfig(host, token, caCert)
 	if err != nil {
 		return nil, err
 	}

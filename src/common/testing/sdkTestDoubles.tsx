@@ -1,6 +1,12 @@
 import { K8sResourceKind, WatchK8sResource } from '@openshift-console/dynamic-plugin-sdk';
+import { HttpError } from '@openshift-console/dynamic-plugin-sdk/lib/utils/error/http-error';
 import { ReactNode, useSyncExternalStore } from 'react';
 import { FUNCTION_NAME_LABEL, REVISION_LABEL } from '../types';
+
+// The real SDK class, re-exported so vi.mock factories can provide it under
+// the same name the SDK exports (tests that mock the SDK module must supply
+// every export the production code imports, this one included).
+export { HttpError };
 
 // START: global helpers -------------------------------------------------------
 export function reset() {
@@ -8,6 +14,29 @@ export function reset() {
   setActiveNamespace('demo');
 }
 // END: global helpers ---------------------------------------------------------
+
+// START: consoleFetch / consoleFetchJSON stubs ---------------------------------
+// These bridge the SDK's console fetch wrappers to real fetch so MSW can
+// intercept. Mocking at this boundary keeps httpClient.ts (auth-expiry
+// events, header handling, error mapping) in the test path.
+
+export async function consoleFetchStub(url: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(new URL(url, 'http://localhost').href, options);
+  if (res.ok) return res;
+
+  const json = await res.json().catch(() => undefined);
+  throw new HttpError(json?.message ?? res.statusText, res.status, res, json);
+}
+
+export async function consoleFetchJSONStub<T>(
+  url: string,
+  method = 'GET',
+  options?: RequestInit,
+): Promise<T> {
+  const res = await consoleFetchStub(url, { ...options, method });
+  return res.json();
+}
+// END: consoleFetch / consoleFetchJSON stubs -----------------------------------
 
 // START: useK8sWatchResourceStub ----------------------------------------------
 type WatchFixtures = {
@@ -250,21 +279,3 @@ export const useDeleteModalStub = (
   };
 };
 // END: useDeleteModalStub -----------------------------------------------------
-
-// START: consoleFetchJSONFake ------------------------------------------------
-export const consoleFetchJSONFake = async (
-  url: string,
-  _method?: string,
-  options?: RequestInit,
-) => {
-  const res = await fetch(new URL(url, 'http://localhost').href, options);
-  const json = await res.json();
-  if (!res.ok) throw json;
-  return json;
-};
-// END: consoleFetchJSONFake --------------------------------------------------
-
-// START: consoleFetchFake ------------------------------------------------
-export const consoleFetchFake = async (url: string, options?: RequestInit) =>
-  fetch(new URL(url, 'http://localhost').href, options);
-// END: consoleFetchFake --------------------------------------------------

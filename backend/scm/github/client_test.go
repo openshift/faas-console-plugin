@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -38,6 +39,30 @@ var _ = Describe("GitHub SCM client", func() {
 			Expect(authHeader).To(Equal("Bearer test-pat"))
 			Expect(user.Login).To(Equal("alice"))
 			Expect(user.AvatarURL).To(Equal("https://example.com/avatar"))
+		})
+
+		It("reports when the token expires", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("GitHub-Authentication-Token-Expiration", "2026-11-26 09:42:22 UTC")
+				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+			})
+
+			user, err := cl.GetUser(context.Background())
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(user.TokenExpiresAt).To(BeTemporally("==", time.Date(2026, 11, 26, 9, 42, 22, 0, time.UTC)))
+		})
+
+		// GitHub omits the header for tokens created without an expiry.
+		It("reports no expiry for a token that never expires", func() {
+			cl := newClient(func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+			})
+
+			user, err := cl.GetUser(context.Background())
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(user.TokenExpiresAt.IsZero()).To(BeTrue())
 		})
 
 		It("returns an unauthorized error when the token is invalid", func() {

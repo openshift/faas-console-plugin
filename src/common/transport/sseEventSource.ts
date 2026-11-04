@@ -1,4 +1,4 @@
-import { HttpError } from '../errors';
+import { HttpError } from '@openshift-console/dynamic-plugin-sdk';
 
 interface SSEEventSourceOptions {
   fetchFn: (url: string, init: RequestInit, timeout: number) => Promise<Response>;
@@ -21,8 +21,7 @@ export interface SSEEvent {
 // createSSEEventSource is a custom implementation of the browser's EventSource
 // API (https://developer.mozilla.org/en-US/docs/Web/API/EventSource). We cannot
 // use native EventSource because it does not support custom headers or a custom
-// fetch function, which we need to pass the SCM token and to use consoleFetch
-// (the OpenShift Console SDK's fetch wrapper).
+// fetch function, which we need to use the authenticated console fetch wrapper.
 //
 // Similarities with native EventSource:
 // - addEventListener('open', ...) fires on successful connection.
@@ -48,6 +47,7 @@ export interface SSEEvent {
 //   then be detected via 'app-error' events sent by the backend before the
 //   connection closes. The backend already sends these.
 // - The consumer API (addEventListener, close) stays the same.
+//
 export function createSSEEventSource(url: string, options: SSEEventSourceOptions): SSEEventSource {
   const eventListeners = new Map<string, Array<(e: SSEEvent) => void>>();
   const browserErrorListeners: Array<(e: Error) => void> = [];
@@ -98,7 +98,7 @@ export function createSSEEventSource(url: string, options: SSEEventSourceOptions
           0, // no timeout; the default ~60s would abort this long-lived stream
         );
 
-        if (!res.ok) throw new HttpError(res.status, res.statusText);
+        if (!res.ok) throw new HttpError(res.statusText, res.status, res);
 
         if (!res.body) continue;
 
@@ -120,7 +120,10 @@ export function createSSEEventSource(url: string, options: SSEEventSourceOptions
       } catch (err) {
         if (!isReceiving) return;
 
-        const _err = err instanceof Error ? err : new Error(String(err) || 'Unknown error');
+        const _err =
+          err instanceof HttpError || err instanceof Error
+            ? err
+            : new Error(String(err) || 'Unknown error');
 
         notify(browserErrorListeners, _err);
       }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -15,12 +14,18 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
+	"github.com/openshift/faas-console-plugin/backend/identity"
+	"github.com/openshift/faas-console-plugin/backend/kube"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/scm/github"
 	"github.com/openshift/faas-console-plugin/backend/tlsreload"
 )
 
-const defaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+const (
+	defaultCAPath                 = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+	defaultConsolePluginNamespace = "console-functions-plugin"
+)
 
 //go:embed all:static/*
 var staticFiles embed.FS
@@ -31,10 +36,10 @@ func main() {
 	certFile := flag.String("cert", "/var/cert/tls.crt", "TLS certificate file")
 	keyFile := flag.String("key", "/var/cert/tls.key", "TLS key file")
 	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
-	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL for dev/test (empty uses in-cluster config)")
+	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL (empty uses in-cluster config)")
 	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
 	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
-	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL (for testing with fake server)")
+	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
 	flag.Parse()
 
@@ -69,22 +74,28 @@ func main() {
 		}
 	}
 
-	h, err := handler.New(*caPath, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed)
+	cfg, err := kube.ComponentConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", h.HandleHealthz)
-	mux.HandleFunc("GET /api/v1/auth/user", h.HandleGetUser)
-	mux.HandleFunc("GET /api/v1/func/list", h.HandleListFunctions)
-	mux.HandleFunc("GET /api/v1/func/{owner}/{name}/files", h.HandleGetFiles)
-	mux.HandleFunc("PUT /api/v1/func/{owner}/{name}/files", h.HandlePutFiles)
-	mux.HandleFunc("POST /api/v1/func/create", h.HandleFuncCreate)
-	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch())
-	mux.Handle("/", http.FileServer(http.FS(static)))
+	namespace := kube.Namespace(defaultConsolePluginNamespace)
+	caCert, err := readCACert(*caPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	muxHandler := loggingMiddleware(mux)
+	scmCredentials, err := credentials.NewStore(cfg, namespace, identity.NewResolver(*kubeHost, caCert))
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Storing SCM credentials as Secrets in namespace %q", namespace)
+
+	h := handler.New(caCert, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed, scmCredentials)
+
+	mux := newMux(h, scmCredentials, static)
+
+	muxHandler := handler.LoggingMiddleware(mux)
 
 	_, certErr := os.Stat(*certFile)
 	_, keyErr := os.Stat(*keyFile)
@@ -124,17 +135,35 @@ func main() {
 	}
 }
 
-func loggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
-		defer func() {
-			if rec := recover(); rec != nil {
-				log.Printf("panic: %v", rec)
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusInternalServerError)
-				json.NewEncoder(w).Encode(map[string]string{"message": "internal server error"})
-			}
-		}()
-		next.ServeHTTP(w, r)
-	})
+func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.FS) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", h.HandleHealthz)
+	// SSE reports failures inside the stream, so it checks the caller itself.
+	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials)))
+	mux.Handle("/", http.FileServer(http.FS(static)))
+
+	withCredential := func(next http.HandlerFunc) http.Handler {
+		return handler.RequireSCMCredential(next, scmCredentials)
+	}
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/v1/scm/github/credential", h.HandleGetSCMCredential)
+	api.HandleFunc("POST /api/v1/scm/github/credential", h.HandleSaveSCMCredential)
+	api.HandleFunc("DELETE /api/v1/scm/github/credential", h.HandleDeleteSCMCredential)
+	api.Handle("GET /api/v1/func/list", withCredential(h.HandleListFunctions))
+	api.Handle("GET /api/v1/func/{owner}/{name}/files", withCredential(h.HandleGetFiles))
+	api.Handle("PUT /api/v1/func/{owner}/{name}/files", withCredential(h.HandlePutFiles))
+	api.Handle("POST /api/v1/func/create", withCredential(h.HandleFuncCreate))
+	mux.Handle("/api/v1/", handler.RequireOCPToken(api))
+	return mux
+}
+
+func readCACert(path string) ([]byte, error) {
+	if path == "" {
+		return nil, nil
+	}
+	caCert, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read CA certificate %q: %w", path, err)
+	}
+	return caCert, nil
 }

@@ -46,7 +46,7 @@ function FunctionEditPageContent() {
     <>
       <DocumentTitle>{t('Edit function')}</DocumentTitle>
       <ListPageHeader title={`${t('Edit function')}`}>
-        <UserAvatar enableReconnect={false} />
+        <UserAvatar />
       </ListPageHeader>
       <PageSection>
         <EditToolbar hasChanges={state.hasChanges} onSave={state.saveFiles} />

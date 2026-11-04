@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 var (
@@ -67,6 +68,9 @@ func (r Repo) FullName() string { return r.Owner + "/" + r.Name }
 type User struct {
 	Login     string `json:"login"`
 	AvatarURL string `json:"avatarUrl"`
+	// TokenExpiresAt is when the token used to fetch the user stops working,
+	// or zero when the provider did not say (a token that never expires).
+	TokenExpiresAt time.Time `json:"-"`
 }
 
 type FileEntry struct {

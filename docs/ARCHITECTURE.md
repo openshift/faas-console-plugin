@@ -62,9 +62,10 @@ Arrows mean "imports / depends on."
 
 ### Clients
 
-`common/clients/` contains thin wrappers around external APIs:
+`common/clients/` contains thin wrappers around external APIs. Two forms:
 
-- **Plain async functions** (e.g., `functionsClient.ts`) -- stateless fetch wrappers and SSE stream consumers that page hooks call.
+- **`httpClient.ts`** -- the single fetch boundary. Wraps the SDK's `consoleFetch`/`consoleFetchJSON` with 401 -> `AUTH_EXPIRED_EVENT` dispatch and header flattening. All HTTP clients import `customFetch`/`customFetchJSON` from here, never from the SDK directly.
+- **Plain async functions** (e.g., `functionsClient.ts`, `authClient.ts`) -- stateless fetch wrappers and SSE stream consumers that hooks call, built on `httpClient`.
 
 ### Hooks
 
@@ -115,18 +116,22 @@ Go + `net/http` standard library. Key dependencies:
 | `handler` | HTTP handlers: input validation, orchestration, error mapping |
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
 | `scm/github` | go-github implementation of `scm.Client` |
+| `scm/credentials` | SCM tokens (GitHub PAT today, OAuth later) stored as Secrets in the backend's own namespace, each bound to the `identity.User` that created it |
+| `identity` | Who the caller is: turns the console-forwarded user token into an `identity.User` (username + UID) via `SelfSubjectReview` on every request |
 | `config` | Runtime configuration, package-level wiring vars (`SCMRegistry`), constants, and service account token expiry parsing |
 | `tlsreload` | Reloads the serving cert/key from disk on change (fsnotify plus a poll fallback), swapping an atomic `*tls.Certificate` via `GetCertificate` so rotated certs are served without a restart |
 
 ### Dependency Rules
 
-- `handler` imports `cluster`, `functions`, `scm`, `config` — never the reverse
+- `handler` imports `cluster`, `functions`, `scm`, `config`, `identity` (for `ErrUnauthenticated` only), never the reverse
 - `cluster` and `functions` both import `kube` for connection setup, and have no knowledge of each other
 - `kube` imports only `k8s.io/client-go/rest`; it depends on no other backend package
 - `cluster` is for provisioning and cluster introspection (write RBAC/SA, request tokens, check namespace existence); `functions` is for the function lifecycle (list and scaffold generation). Both talk to the cluster but answer different questions, so they stay separate rather than sharing one client interface
 - `scm` has no knowledge of cluster or functions
 - `functions` imports `scm` only for `scm.Platform` and `scm.FileEntry` types
 - `config` is imported by `handler`, `functions`, and `main` only; it owns runtime configuration and package-level wiring
+- `identity` imports `kube` and nothing else from the backend
+- `scm/credentials` imports `identity` but not `scm`, `cluster`, or HTTP
 
 ### Key Decisions
 
@@ -153,6 +158,9 @@ The backend requests service account tokens with a configurable lifetime, set by
 **TLS serving certificate reloaded at runtime by an fsnotify + poll hybrid**
 The OCP service CA operator rotates the serving cert/key automatically. `tlsreload.Reloader` watches the mounted pair with fsnotify and atomically swaps the cached `*tls.Certificate` served via `tls.Config.GetCertificate`, so a rotation is picked up without restarting the pod. A poll ticker running every 30 seconds operates alongside the watcher as a safety net for events fsnotify can miss, in particular the atomic `..data` symlink swap Kubernetes uses for mounted secrets: when a watched file is removed or renamed the watch is re-added to the new file, and the poll guarantees the change is eventually observed regardless. Polling stays active during watcher setup failures and the 3-second watcher restart delays. Watcher events and poll ticks are processed on one goroutine, so `reload` and its content hash remain serialized and the swap needs only a plain atomic `Store` (no mutex). fsnotify was promoted from an existing indirect dependency; the heavier `k8s.io/apiserver/dynamiccertificates` and `controller-runtime/certwatcher` (which pulls in Prometheus) were avoided. Reloads are content-hashed to skip re-parsing when the pair is unchanged, and the last valid pair is retained when an update is incomplete or invalid.
 
+**SCM credentials are stored on the backend per OpenShift user**
+The PAT does not stay in the browser. `POST /api/v1/scm/github/credential` verifies it with GitHub and stores it in a Secret in the backend's own namespace, named after a hash of the caller's OpenShift identity, which `identity.Resolver` establishes with a `SelfSubjectReview` of the console-forwarded token on every save, read, and delete. `RequireOCPToken` guards the `/api/v1/` routes and `RequireSCMCredential` resolves the credential for the function routes; workflow SSE checks the caller itself so its failures stay `app-error` frames. A credential expires when GitHub says its token does, or after `credentialTTL` (30d) for tokens without an expiry. A 401 always means "connect to GitHub" and is the only status the frontend disconnects on; the credential GET answers 404 when nothing is stored. Details and rationale: [SCM credential storage design](design/2026-11-04-SRVOCF-1110-scm-credential-storage-design.md).
+
 **SCM is abstracted behind a registry**
 `scm.Registry` maps `scm.Platform` → `scm.ClientFactory`. The active registry lives at `config.SCMRegistry`, a package-level var that tests swap out via `withSCMMock`. Handlers never reference a concrete SCM client type. The platform is currently resolved statically (`scm.DefaultPlatform = GitHub`), but the registry is designed to support dynamic platform selection — the handler can later derive the platform from the request body or header without changes to the registry or client implementations.
 
@@ -178,4 +186,4 @@ Using `List` all namespaces and then checking membership was rejected: `Namespac
 
 
 **Handlers are stateless**
-`Handlers` holds only static configuration, including the requested service account token lifetime. Cluster clients are request-scoped, authenticated with the caller's OCP bearer token, and created only when an operation needs cluster access. There is no shared connection, credential, or session.
+`Handlers` holds only static configuration, including the requested service account token lifetime. Cluster clients are request-scoped, authenticated with the caller's OCP bearer token, and created only when an operation needs cluster access. There is no shared connection or credential.

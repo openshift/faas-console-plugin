@@ -12,7 +12,9 @@ import { receiveWorkflowRunEvents } from './functionsClient';
 const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
 
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  consoleFetch: sdkTestDoubles.consoleFetchFake,
+  HttpError: sdkTestDoubles.HttpError,
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));
 
 describe('receiveWorkflowRunEvents', () => {

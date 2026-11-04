@@ -1,9 +1,16 @@
 import { http, HttpResponse } from 'msw';
+import { HttpError } from '@openshift-console/dynamic-plugin-sdk';
 import { server } from '../testing/mswServer';
 import { timerFake } from '../testing/timerFake';
 import { AsyncQueue } from '../testing/AsyncQueue';
-import { HttpError } from '../errors';
 import { createSSEEventSource, SSEEventSource, SSEEvent } from './sseEventSource';
+
+// vi.mock is hoisted above imports, so regular imports aren't available in the factory.
+const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
+
+vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
+  HttpError: sdkTestDoubles.HttpError,
+}));
 
 describe('createSSEEventSource', () => {
   const TEST_URL =
@@ -165,7 +172,7 @@ describe('createSSEEventSource', () => {
 
       const error = await errors.dequeue();
       expect(error).toBeInstanceOf(HttpError);
-      expect((error as HttpError).status).toBe(401);
+      expect((error as HttpError).code).toBe(401);
     });
 
     it('reconnects on transient 5xx errors', async () => {
@@ -192,11 +199,24 @@ describe('createSSEEventSource', () => {
 
       const error = await errors.dequeue();
       expect(error).toBeInstanceOf(HttpError);
-      expect((error as HttpError).status).toBe(500);
+      expect((error as HttpError).code).toBe(500);
 
       await timer.advance(3100);
 
       expect(await events.dequeue()).toBe('{"a/b":{"status":"InProgress"}}');
+    });
+
+    it('reports the HTTP status when the fetch wrapper rejects a response', async () => {
+      using es = createEventSource(TEST_URL, {
+        fetchFn: async () => {
+          throw new HttpError('Service Unavailable', 503);
+        },
+      });
+      using errors = captureErrors(es);
+
+      const error = await errors.dequeue();
+      expect(error).toBeInstanceOf(HttpError);
+      expect((error as HttpError).code).toBe(503);
     });
 
     it('reconnects after 401 (transport always reconnects, consumer decides)', async () => {
@@ -223,7 +243,7 @@ describe('createSSEEventSource', () => {
 
       const error = await errors.dequeue();
       expect(error).toBeInstanceOf(HttpError);
-      expect((error as HttpError).status).toBe(401);
+      expect((error as HttpError).code).toBe(401);
 
       await timer.advance(3100);
 
@@ -368,7 +388,7 @@ describe('createSSEEventSource', () => {
 
   function createEventSource(
     url: string = TEST_URL,
-    opts?: { reconnectDelayMs?: number },
+    opts?: { reconnectDelayMs?: number; fetchFn?: typeof fetch },
   ): SSEEventSource & Disposable {
     const source = createSSEEventSource(url, {
       fetchFn: (u, init) => fetch(u, init),

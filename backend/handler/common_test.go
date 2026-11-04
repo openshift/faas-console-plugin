@@ -1,13 +1,52 @@
 package handler
 
 import (
+	"context"
+	"net/http"
+
 	. "github.com/onsi/ginkgo/v2"
 
 	"github.com/openshift/faas-console-plugin/backend/cluster"
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 )
+
+const testOCPToken = "ocp-token"
+
+// testOCPTokenContext is what RequireOCPToken hands to the next handler.
+func testOCPTokenContext() context.Context {
+	return context.WithValue(context.Background(), ocpTokenKey{}, testOCPToken)
+}
+
+// testCredentialContext is what RequireSCMCredential hands to the next handler.
+func testCredentialContext() context.Context {
+	return context.WithValue(testOCPTokenContext(), credentialKey{}, requestCredential{
+		Credential: credentials.Credential{Owner: "tester", Token: "test-pat", Type: credentials.CredentialTypePAT},
+		ocpToken:   testOCPToken,
+	})
+}
+
+func withCredentialProviderStub() credentials.MapProvider {
+	return credentials.MapProvider{
+		testOCPToken: {Owner: "tester", Token: "test-pat", Type: credentials.CredentialTypePAT},
+	}
+}
+
+func withCredentialProviderError(err error) credentials.Provider {
+	return credentials.ProviderStub{
+		OnSave: func(context.Context, string, credentials.Credential) error { return err },
+		OnGet: func(context.Context, string) (credentials.Credential, error) {
+			return credentials.Credential{}, err
+		},
+		OnDelete: func(context.Context, string) error { return err },
+	}
+}
+
+func authenticate(req *http.Request) {
+	req.Header.Set("Authorization", "Bearer "+testOCPToken)
+}
 
 func withSCMStub(stub scm.Client) {
 	orig := config.SCMRegistry
