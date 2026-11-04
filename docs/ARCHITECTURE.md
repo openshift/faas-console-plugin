@@ -176,7 +176,7 @@ The consequence worth stating plainly is unchanged. Anyone who can reach the con
 
 **One TTL, and a 401 that means one thing**
 
-A stored credential expires when its token does: `POST` records the expiry GitHub reports in the `GitHub-Authentication-Token-Expiration` header, so the user is not asked to reconnect while the token still works. Tokens created without an expiry have no header and fall back to `credentialTTL` (7d). Either way the expiry is absolute and not sliding. Credentials past it are dropped when their owner next comes back (`dropSecretIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
+A stored credential expires when its token does: `POST` records the expiry GitHub reports in the `GitHub-Authentication-Token-Expiration` header, so the user is not asked to reconnect while the token still works. Tokens created without an expiry have no header and fall back to `credentialTTL` (30d). Either way the expiry is absolute and not sliding. Credentials past it are dropped when their owner next comes back (`dropSecretIfExpired`). There is no background sweep and writes are last-write-wins, so a credential whose owner never returns stays until its Secret is removed by other means, and concurrent writes to one user's Secret resolve by whoever lands last. Both are deliberate for a tech preview.
 
 The credential is one resource with three verbs:
 

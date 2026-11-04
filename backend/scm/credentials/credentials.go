@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	credentialTTL       = 7 * 24 * time.Hour
+	credentialTTL       = 30 * 24 * time.Hour
 	secretNamePrefix    = "scm-cred-"
 	secretDataKey       = "credential"
 	CredentialTypePAT   = "pat"
@@ -39,9 +39,6 @@ type Credential struct {
 	AvatarURL string
 	Token     string // the PAT or OAuth token itself
 	Type      string // CredentialTypePAT or CredentialTypeOAuth
-	// ExpiresAt is when the token stops working, or zero when the SCM
-	// provider did not say. Save keeps the credential until then, falling
-	// back to credentialTTL.
 	ExpiresAt time.Time
 }
 
