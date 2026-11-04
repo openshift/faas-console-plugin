@@ -89,7 +89,9 @@ var _ = Describe("Store", func() {
 
 			credential, err := store.Get(ctx, aliceToken)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(credential).To(Equal(rotated))
+			Expect(credential.Token).To(Equal(rotated.Token))
+			Expect(credential.Owner).To(Equal(rotated.Owner))
+			Expect(credential.Type).To(Equal(rotated.Type))
 		})
 
 		// Keeping it longer would only hold a dead token; dropping it sooner
@@ -180,6 +182,21 @@ var _ = Describe("Store", func() {
 			Expect(credential.Type).To(Equal(CredentialTypePAT))
 			Expect(credential.Owner).To(Equal("alice-gh"))
 			Expect(credential.AvatarURL).To(Equal("https://avatars/alice"))
+		})
+
+		// Without it, saving a credential that was read back would see a zero
+		// expiry and silently cut a long-lived PAT down to credentialTTL.
+		It("keeps the token's expiry across a read and re-save", func() {
+			expiresAt := time.Now().Add(90 * 24 * time.Hour).Truncate(time.Second)
+			expiring := alicePAT
+			expiring.ExpiresAt = expiresAt
+			Expect(store.Save(ctx, aliceToken, expiring)).To(Succeed())
+
+			credential, err := store.Get(ctx, aliceToken)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.Save(ctx, aliceToken, credential)).To(Succeed())
+
+			Expect(readSecretData(store, alice).ExpiresAt).To(BeTemporally("==", expiresAt))
 		})
 
 		It("reports ErrNoCredential for a user with nothing stored", func() {

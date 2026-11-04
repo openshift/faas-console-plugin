@@ -110,6 +110,7 @@ func (s *Store) Get(ctx context.Context, ocpToken string) (Credential, error) {
 		AvatarURL: data.AvatarURL,
 		Token:     data.Token,
 		Type:      data.Type,
+		ExpiresAt: data.ExpiresAt,
 	}, nil
 }
 
