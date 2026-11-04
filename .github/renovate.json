@@ -7,7 +7,7 @@
   "enabledManagers": ["tekton", "gomod", "npm", "dockerfile"],
   "timezone": "UTC",
   "schedule": ["before 7am"],
-  "minimumReleaseAge": "90 days",
+  "minimumReleaseAge": "60 days",
   "lockFileMaintenance": {
     "enabled": true
   },
@@ -75,13 +75,7 @@
     },
     {
       "groupName": "react",
-      "matchPackageNames": [
-        "react",
-        "react-dom",
-        "react-redux",
-        "react-router",
-        "react-i18next"
-      ],
+      "matchPackageNames": ["react", "react-dom", "react-redux", "react-router", "react-i18next"],
       "enabled": false
     },
     {
@@ -99,11 +93,7 @@
         "/^registry\\.redhat\\.io\\//"
       ],
       "minimumReleaseAge": "0 days",
-      "addLabels": [
-        "ok-to-test",
-        "approved",
-        "lgtm"
-      ]
+      "addLabels": ["ok-to-test", "approved", "lgtm"]
     }
   ]
 }
