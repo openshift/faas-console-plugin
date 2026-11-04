@@ -113,10 +113,9 @@ var _ = Describe("API routes", func() {
 		Entry("read credential", http.MethodGet, "/api/v1/scm/github/credential"),
 		Entry("delete credential", http.MethodDelete, "/api/v1/scm/github/credential"),
 		Entry("list functions", http.MethodGet, "/api/v1/func/list"),
-		Entry("watch workflow runs", http.MethodGet, "/api/v1/func/workflow-run/watch"),
 	)
 
-	It("keeps health and static files outside the credential middleware", func() {
+	It("keeps health, static files, and workflow SSE outside the credential middleware", func() {
 		provider := credentials.ProviderStub{OnGet: func(context.Context, string) (credentials.Credential, error) {
 			return credentials.Credential{}, errors.New("cluster unavailable")
 		}}
@@ -125,19 +124,23 @@ var _ = Describe("API routes", func() {
 		Expect(serveRoute(mux, http.MethodGet, "/healthz", "").Code).To(Equal(http.StatusOK))
 		Expect(serveRoute(mux, http.MethodGet, "/", "").Body.String()).To(Equal("static content"))
 		Expect(serveRoute(mux, http.MethodGet, "/api/v1/scm/github/credential", "").Code).To(Equal(http.StatusServiceUnavailable))
+		watch := serveRoute(mux, http.MethodGet, "/api/v1/func/workflow-run/watch", "")
+		Expect(watch.Code).To(Equal(http.StatusOK))
+		Expect(watch.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+		Expect(watch.Body.String()).To(ContainSubstring(`"code":503`))
 	})
 
-	// The stream never opens without a credential, so the failure is a plain
-	// HTTP status like every other route rather than an in-stream app-error.
-	It("answers workflow SSE credential failures before the stream opens", func() {
-		provider := credentials.ProviderStub{OnGet: func(context.Context, string) (credentials.Credential, error) {
-			return credentials.Credential{}, errors.New("cluster unavailable")
-		}}
+	// The stream reports a missing token as an app-error frame, which
+	// RequireOCPToken would turn into a plain HTTP 401.
+	It("keeps workflow SSE outside the OpenShift token middleware", func() {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/func/workflow-run/watch", nil)
+		w := httptest.NewRecorder()
 
-		watch := serveRoute(testMux(provider), http.MethodGet, "/api/v1/func/workflow-run/watch", "")
+		testMux(credentials.ProviderStub{}).ServeHTTP(w, req)
 
-		Expect(watch.Code).To(Equal(http.StatusServiceUnavailable))
-		Expect(watch.Header().Get("Content-Type")).To(Equal("application/json"))
+		Expect(w.Code).To(Equal(http.StatusOK))
+		Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+		Expect(w.Body.String()).To(ContainSubstring(`"code":401`))
 	})
 })
 

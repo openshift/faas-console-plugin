@@ -138,6 +138,8 @@ func main() {
 func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.FS) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
+	// SSE reports failures inside the stream, so it checks the caller itself.
+	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials)))
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	withCredential := func(next http.HandlerFunc) http.Handler {
@@ -151,7 +153,6 @@ func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.
 	api.Handle("GET /api/v1/func/{owner}/{name}/files", withCredential(h.HandleGetFiles))
 	api.Handle("PUT /api/v1/func/{owner}/{name}/files", withCredential(h.HandlePutFiles))
 	api.Handle("POST /api/v1/func/create", withCredential(h.HandleFuncCreate))
-	api.Handle("GET /api/v1/func/workflow-run/watch", withCredential(handler.WorkflowRunWatch()))
 	mux.Handle("/api/v1/", handler.RequireOCPToken(api))
 	return mux
 }

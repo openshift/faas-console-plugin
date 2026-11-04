@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/functions"
+	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
+	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/ticker"
 )
 
@@ -36,9 +39,9 @@ type ErrorDTO struct {
 
 // WorkflowRunWatch returns an HTTP handler that streams workflow run status over SSE.
 //
-// Request: GET behind RequireOCPToken and RequireSCMCredential, which answer a
-// missing token or credential with a plain HTTP error before the stream opens.
-// WithSCMFactory and WithHeartbeatTickerFactory are test seams.
+// Request: GET with the OpenShift bearer token forwarded by the console proxy.
+// Credential lookup failures are sent as app-error events. WithCredentialsProvider
+// wires credential lookup; WithSCMFactory and WithHeartbeatTickerFactory are test seams.
 //
 // Requests that can be flushed get 200 and text/event-stream. A
 // ResponseWriter that is not an http.Flusher gets 500 and a JSON error,
@@ -53,7 +56,7 @@ type ErrorDTO struct {
 //	  error?: {message, code?}, absent when that repo polled cleanly
 //	app-error: {message, code?}
 //	  message: user-facing text
-//	  code?:   the HTTP status the response would have carried, 403 or 502
+//	  code?:   the HTTP status the response would have carried, 401, 403, 502 or 503
 //
 // Between frames the handler sends an SSE comment as a keepalive, every 15
 // seconds by default. It is a comment, not an event, and no listener fires
@@ -62,7 +65,8 @@ type ErrorDTO struct {
 // A failure confined to one repo, such as a rate limit, rides in that repo's
 // error field and the stream goes on. A failure affecting the whole watch
 // emits app-error, and whether the stream survives depends on when it
-// happens: a rejected SCM credential (403) or failed repo discovery (502)
+// happens: a missing or rejected caller credential (401), a credential store
+// failure (503), a rejected SCM credential (403) or failed repo discovery (502)
 // ends the stream, while anything raised once the loop is running leaves it
 // open and lets the client decide whether to reconnect. Otherwise the stream
 // runs until the client disconnects or the request context is cancelled.
@@ -74,6 +78,7 @@ func WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
 		heartbeatFactory: func() ticker.Ticker {
 			return ticker.New(defaultHeartbeat)
 		},
+		credProvider: emptyCredProv{},
 	}
 	for _, opt := range opts {
 		opt(&cfg)
@@ -103,7 +108,23 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 
 	ew := eventWriter{out: w}
 
-	client := wc.newSCMClient(credentialFrom(r.Context()).Token)
+	ocpToken, ok := extractOCPToken(r)
+	if !ok {
+		ew.writeHTTPError(http.StatusUnauthorized, "authentication required")
+		return
+	}
+	credential, err := wc.credProvider.Get(r.Context(), ocpToken)
+	if err != nil {
+		if errors.Is(err, identity.ErrUnauthenticated) || errors.Is(err, credentials.ErrNoCredential) {
+			ew.writeHTTPError(http.StatusUnauthorized, "authentication required")
+			return
+		}
+		slog.Error("workflow run watch: credential lookup failed", "err", err)
+		ew.writeHTTPError(http.StatusServiceUnavailable, "credential store unavailable")
+		return
+	}
+
+	client := wc.newSCMClient(credential.Token)
 	ctx := r.Context()
 
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
@@ -155,12 +176,30 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 type watchConfig struct {
 	newSCMClient     scm.ClientFactory
 	heartbeatFactory ticker.Factory
+	credProvider     CredentialProvider
+}
+
+type CredentialProvider interface {
+	// Get returns the SCM credential for the given OpenShift token.
+	Get(ctx context.Context, ocpToken string) (credentials.Credential, error)
+}
+
+type emptyCredProv struct{}
+
+func (e emptyCredProv) Get(ctx context.Context, ocpToken string) (credentials.Credential, error) {
+	return credentials.Credential{}, credentials.ErrNoCredential
 }
 
 type WatchOption func(*watchConfig)
 
 func WithSCMFactory(f scm.ClientFactory) WatchOption {
 	return func(c *watchConfig) { c.newSCMClient = f }
+}
+
+func WithCredentialsProvider(credProvider CredentialProvider) WatchOption {
+	return func(w *watchConfig) {
+		w.credProvider = credProvider
+	}
 }
 
 func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {

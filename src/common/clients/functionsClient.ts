@@ -61,10 +61,9 @@ export async function putFiles(
  * and delivers workflow run updates via eventCbk. Errors (connection failures
  * and backend app-errors) are surfaced via errorCbk as a message string.
  *
- * Auth errors are handled internally: when the backend reports an auth failure,
- * as a 401/403 response before the stream opens or as an app-error event once it
- * runs, the connection closes itself. The consumer is notified via errorCbk but
- * does not need to manage the connection lifecycle.
+ * Auth errors are handled internally: when the backend reports an auth failure
+ * via an app-error event, the connection closes itself. The consumer is
+ * notified via errorCbk but does not need to manage the connection lifecycle.
  *
  * Returns a close function to tear down the connection.
  */
@@ -80,20 +79,16 @@ export function receiveWorkflowRunEvents(
     eventCbk(JSON.parse(e.data) as WorkflowRunRecord);
   });
 
-  const stopOnAuthError = () => {
-    errorCbk('Authentication expired. Reconnect to GitHub and refresh.');
-    es.close();
-  };
-
   es.addEventListener('app-error', (e) => {
     const parsed = JSON.parse(e.data) as AppError;
-    if (parsed.code === 401 || parsed.code === 403) stopOnAuthError();
-    else errorCbk(parsed.message);
+    if (parsed.code === 401 || parsed.code === 403) {
+      errorCbk('Authentication expired. Reconnect to GitHub and refresh.');
+      es.close();
+    } else errorCbk(parsed.message);
   });
 
   es.addEventListener('error', (e) => {
-    if (e instanceof HttpError && (e.code === 401 || e.code === 403)) stopOnAuthError();
-    else if (e instanceof HttpError) errorCbk(`Server error (${e.code ?? 'unknown'})`);
+    if (e instanceof HttpError) errorCbk(`Server error (${e.code ?? 'unknown'})`);
     else {
       const detail = e instanceof Error ? e.message : 'unknown error';
       errorCbk(`Connection to the server was lost: ${detail}. Reconnecting...`);

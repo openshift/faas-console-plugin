@@ -17,6 +17,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openshift/faas-console-plugin/backend/handler"
+	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/ticker"
@@ -34,14 +35,14 @@ var _ = Describe("WorkflowRunWatch", func() {
 		req.Header.Set("X-SCM-Token", "untrusted-pat")
 		w := httptest.NewRecorder()
 
-		withCredential(handler.WorkflowRunWatch(handler.WithSCMFactory(func(token string) scm.Client {
+		handler.WorkflowRunWatch(handler.WithCredentialsProvider(workflowCredentialProvider()), handler.WithSCMFactory(func(token string) scm.Client {
 			return &scm.ClientStub{OnWatchWorkflowRuns: func(context.Context, string) (scm.WorkflowWatch, error) {
 				if token != "test-pat" {
 					return nil, scm.ErrUnauthorized
 				}
 				return watch, nil
 			}}
-		})), workflowCredentialProvider())(w, req)
+		}))(w, req)
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
@@ -51,6 +52,57 @@ var _ = Describe("WorkflowRunWatch", func() {
 	})
 
 	Describe("early failures", func() {
+		It("sends a 401 app-error event when no credential provider is configured", func() {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/watch", nil)
+			authenticate(req)
+			w := httptest.NewRecorder()
+
+			handler.WorkflowRunWatch()(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+			Expect(receiveWTO(readWorkflowEventStream(w.Body))).To(Equal(workflowEvent{
+				appError: &handler.ErrorDTO{Message: "authentication required", Code: new(http.StatusUnauthorized)},
+			}))
+		})
+
+		DescribeTable("reports credential lookup failures as SSE events",
+			func(cause error, code int, message string) {
+				provider := credentials.ProviderStub{
+					OnGet: func(context.Context, string) (credentials.Credential, error) {
+						return credentials.Credential{}, cause
+					},
+				}
+				req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+				authenticate(req)
+				w := httptest.NewRecorder()
+
+				handler.WorkflowRunWatch(handler.WithCredentialsProvider(provider))(w, req)
+
+				Expect(w.Code).To(Equal(http.StatusOK))
+				Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+				Expect(receiveWTO(readWorkflowEventStream(w.Body))).To(Equal(workflowEvent{
+					appError: &handler.ErrorDTO{Message: message, Code: new(code)},
+				}))
+			},
+			Entry("no stored credential", credentials.ErrNoCredential, http.StatusUnauthorized, "authentication required"),
+			Entry("rejected OpenShift token", fmt.Errorf("resolve caller: %w", identity.ErrUnauthenticated), http.StatusUnauthorized, "authentication required"),
+			Entry("unavailable credential store", errors.New("cluster unavailable"), http.StatusServiceUnavailable, "credential store unavailable"),
+		)
+
+		It("sends a 401 app-error event without an OpenShift identity", func() {
+			req := httptest.NewRequest(http.MethodGet, "/watch", nil)
+			req.Header.Set("X-SCM-Token", "pat")
+			w := httptest.NewRecorder()
+			workflowRunWatchWithSCMClient(&scm.ClientStub{})(w, req)
+
+			Expect(w.Code).To(Equal(http.StatusOK))
+			Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
+			Expect(receiveWTO(readWorkflowEventStream(w.Body))).To(Equal(workflowEvent{
+				appError: &handler.ErrorDTO{Message: "authentication required", Code: new(http.StatusUnauthorized)},
+			}))
+		})
+
 		It("sends 403 app-error event when the stored credential is rejected during discovery", func() {
 			scmClient := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
@@ -354,14 +406,8 @@ data: {"status": "InProgress"}}
 // authentication. Any opts are applied after, so a spec can name its heartbeat.
 func workflowRunWatchWithSCMClient(scmClient scm.Client, opts ...handler.WatchOption) http.HandlerFunc {
 	withStub := handler.WithSCMFactory(func(string) scm.Client { return scmClient })
-	watch := handler.WorkflowRunWatch(append([]handler.WatchOption{withStub}, opts...)...)
-	return withCredential(watch, workflowCredentialProvider())
-}
-
-// withCredential puts next behind the middlewares newMux mounts it under, so
-// the bearer token authenticate sets resolves to provider's credential.
-func withCredential(next http.Handler, provider credentials.Provider) http.HandlerFunc {
-	return handler.RequireOCPToken(handler.RequireSCMCredential(next, provider)).ServeHTTP
+	withCP := handler.WithCredentialsProvider(workflowCredentialProvider())
+	return handler.WorkflowRunWatch(append([]handler.WatchOption{withStub, withCP}, opts...)...)
 }
 
 func receiveWTO(ch <-chan workflowEvent) workflowEvent {
