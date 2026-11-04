@@ -118,13 +118,22 @@ make setup-serverless # install Serverless operator + Knative Serving (optional)
 ### Setup
 
 ```shell
-make dev                 # build + start webpack + console container
-make dev-stop            # stop dev environment
-make dev-randomize-ports # start with random ports (when defaults are in use)
-make dev-fake-gh         # start with fake github server
+make dev                          # build + start webpack + console container
+make dev-stop                     # stop dev environment
+make dev-randomize-ports          # start with random ports (when defaults are in use)
+make dev-fake-gh                  # start with fake github server
+make dev-allow-version-mismatch   # start even if cluster version differs from plugin target
 ```
 
 Navigate to <http://localhost:9000> to see the running plugin.
+
+#### OCP version
+
+The plugin targets a specific OCP version declared in `consolePlugin.dependencies["@console/pluginAPI"]` in [package.json](package.json). That value is the single source of truth: the Makefile derives `OCP_VERSION` from it automatically to select the correct console image for local dev.
+
+`@console/pluginAPI` controls which shared modules the console exposes to the plugin via module federation - React, PatternFly, and react-router. The console only loads a plugin whose declared version matches its own, so a mismatch means the plugin will not load at all.
+
+`Mafefile` commands check that your logged-in cluster matches the target version and error on mismatch. For dev commands, `make dev-allow-version-mismatch` downgrades that to a warning when intentional cross-version testing is needed. Deploy commands treat a mismatch as always fatal since the cluster's own console enforces the version contract.
 
 ### Testing
 

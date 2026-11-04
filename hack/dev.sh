@@ -15,6 +15,7 @@ set -euo pipefail
 #   hack/dev.sh --stop                      Stop all dev processes
 #   hack/dev.sh --stop-backend              Stop only the backend
 #   hack/dev.sh --restart-backend           Rebuild and restart the backend
+#   hack/dev.sh --allow-version-mismatch    Allow cluster/target OCP version mismatch (warns instead of exiting)
 #
 # Via Make:
 #   make dev                                Start dev environment
@@ -22,12 +23,12 @@ set -euo pipefail
 #   make dev-stop                           Stop all dev processes
 #   make dev-stop-backend                   Stop only the backend
 #   make dev-restart-backend                Rebuild and restart the backend
+#   make dev-allow-version-mismatch         Allow cluster/target OCP version mismatch
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/log.sh"
 
 LOG_DIR=".dev-logs"
-CONSOLE_IMAGE="${CONSOLE_IMAGE:="quay.io/openshift/origin-console:latest"}"
 BACKEND_PORT=8080
 PLUGIN_PORT=9001
 CONSOLE_PORT=9000
@@ -35,6 +36,7 @@ FAKE_GH=false
 FAKE_GH_PORT=8090
 TIMEOUT=60
 PID_DIR=".dev-pids"
+CONTAINER_CMD=podman
 
 wait_for_port() {
   local port=$1
@@ -268,10 +270,10 @@ stop_console() {
 
   local cid
   cid=$(cat "$cidfile")
-  if podman stop "$cid" >/dev/null 2>&1; then
+  if $CONTAINER_CMD stop "$cid" >/dev/null 2>&1; then
     log::info "Stopped OpenShift console (container $cid)."
   fi
-  rm -f "$cidfile"
+  rm -f "$cidfile" "$PID_DIR/console.pid"
 }
 
 stop_dev() {
@@ -283,6 +285,11 @@ stop_dev() {
 }
 
 check_prerequisites() {
+  if [ -z "${OCP_VERSION:-}" ]; then
+    log::error "OCP_VERSION is not set. Run via 'make dev' or export OCP_VERSION first."
+    exit 1
+  fi
+
   if ! command -v oc &>/dev/null; then
     log::error "oc CLI not found. Install from https://console.redhat.com/openshift/downloads"
     exit 1
@@ -291,6 +298,16 @@ check_prerequisites() {
   if ! oc whoami &>/dev/null; then
     log::error "Not logged in to OpenShift. Run 'oc login' first."
     exit 1
+  fi
+
+  cluster_version=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null | grep -oE '^[0-9]+\.[0-9]+' || true)
+  if [ -n "$cluster_version" ] && [ "$cluster_version" != "$OCP_VERSION" ]; then
+    if [ "${ALLOW_VERSION_MISMATCH:-false}" = "true" ]; then
+      log::warn "Cluster version (${cluster_version}) differs from plugin compatible target (${OCP_VERSION}). The console image will be ${OCP_VERSION} so the plugin will load, but it is still discouraged."
+    else
+      log::error "Cluster version (${cluster_version}) differs from plugin compatible target (${OCP_VERSION}). Use --allow-version-mismatch to override."
+      exit 1
+    fi
   fi
 }
 
@@ -308,13 +325,38 @@ start_plugin() {
 }
 
 start_console() {
-  log::info "Starting OpenShift console..."
-  ./hack/start-console.sh \
-    --backend-port "$BACKEND_PORT" \
-    --plugin-port "$PLUGIN_PORT" \
-    --console-port "$CONSOLE_PORT" \
-    --cidfile "$PID_DIR/console.cid" \
-    >"$LOG_DIR/console.log" 2>&1 &
+  local console_image="quay.io/openshift/origin-console:${OCP_VERSION}"
+  local plugin_name="console-functions-plugin"
+  local plugin_host="host.containers.internal"
+  local cidfile="$PID_DIR/console.cid"
+  local bearer_token
+  bearer_token=$(oc whoami --show-token 2>/dev/null)
+  local proxy_config
+  proxy_config=$(printf '{"services":[{"consoleAPIPath":"/api/proxy/plugin/%s/backend/","endpoint":"http://%s:%s","authorize":true}]}' \
+    "$plugin_name" "$plugin_host" "$BACKEND_PORT")
+  local -a network_opts=("-p" "${CONSOLE_PORT}:9000")
+  if [[ "$KUBE_API_SERVER" == *"crc.testing"* ]]; then
+    network_opts+=("--add-host" "api.crc.testing:host-gateway")
+  fi
+
+  log::info "Starting OpenShift console (${console_image})..."
+
+  $CONTAINER_CMD run --pull always --rm \
+    --platform linux/amd64 \
+    --cidfile "$cidfile" \
+    "${network_opts[@]}" \
+    --env BRIDGE_USER_AUTH=disabled \
+    --env BRIDGE_K8S_MODE=off-cluster \
+    --env BRIDGE_K8S_AUTH=bearer-token \
+    --env BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true \
+    --env BRIDGE_USER_SETTINGS_LOCATION=localstorage \
+    --env "BRIDGE_I18N_NAMESPACES=plugin__${plugin_name}" \
+    --env "BRIDGE_PLUGINS=${plugin_name}=http://${plugin_host}:${PLUGIN_PORT}" \
+    --env "BRIDGE_PLUGIN_PROXY=${proxy_config}" \
+    --env "BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=$KUBE_API_SERVER" \
+    --env "BRIDGE_K8S_AUTH_BEARER_TOKEN=$bearer_token" \
+    "$console_image" \
+    >>"$LOG_DIR/console.log" 2>&1 &
   echo $! > "$PID_DIR/console.pid"
 }
 
@@ -379,8 +421,11 @@ for arg in "$@"; do
     --randomize-ports)
       RANDOMIZE_PORTS=true
       ;;
+    --allow-version-mismatch)
+      ALLOW_VERSION_MISMATCH=true
+      ;;
     *)
-      echo "Usage: $0 [--stop] [--stop-backend] [--restart-backend] [--randomize-ports] [--fake-gh]"
+      echo "Usage: $0 [--stop] [--stop-backend] [--restart-backend] [--randomize-ports] [--fake-gh] [--allow-version-mismatch]"
       exit 1
       ;;
   esac
