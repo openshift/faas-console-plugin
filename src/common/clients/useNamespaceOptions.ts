@@ -1,47 +1,39 @@
-import {
-  K8sResourceKind,
-  useAccessReview,
-  useK8sWatchResource,
-  WatchK8sResource,
-} from '@openshift-console/dynamic-plugin-sdk';
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
+import { NamespaceOptions } from '../types';
+import { errorMessage } from '../errors';
+import { getNamespaces } from './functionsClient';
 
-const PROJECT_CONFIG: WatchK8sResource = {
-  groupVersionKind: { group: 'project.openshift.io', version: 'v1', kind: 'Project' },
-  isList: true,
-};
-
-interface UseNamespaceOptionsResult {
-  canCreateNamespaces: boolean;
-  namespaces: string[];
+interface UseNamespaceOptionsResult extends NamespaceOptions {
   loaded: boolean;
-  error: Error;
+  error?: string;
 }
 
-// The namespace choices a user is allowed to deploy into. This is deliberately separate
-// from useCluster: a caller has to resolve its target namespace from these options before
-// it can open a namespace-scoped watch, so the two cannot be one hook.
+const EMPTY: NamespaceOptions = { namespaces: [], canCreateNamespaces: false };
+
+// The namespace choices a user is allowed to deploy into, as decided by the backend.
 export function useNamespaceOptions(): UseNamespaceOptionsResult {
-  const [canCreateNamespaces, accessLoading] = useAccessReview({
-    group: '',
-    resource: 'namespaces',
-    verb: 'create',
-  });
+  const [options, setOptions] = useState<NamespaceOptions>(EMPTY);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string>();
 
-  const [projects, projectsLoaded, projectsError] =
-    useK8sWatchResource<K8sResourceKind[]>(PROJECT_CONFIG);
+  useEffect(() => {
+    let ignore = false;
 
-  const namespaces = useMemo(() => {
-    return (projects ?? [])
-      .map((p) => p.metadata?.name)
-      .filter((name): name is string => Boolean(name))
-      .sort();
-  }, [projects]);
+    getNamespaces()
+      .then((result) => {
+        if (!ignore) setOptions(result);
+      })
+      .catch((err) => {
+        if (!ignore) setError(errorMessage(err));
+      })
+      .finally(() => {
+        if (!ignore) setLoaded(true);
+      });
 
-  return {
-    canCreateNamespaces,
-    namespaces,
-    loaded: !accessLoading && projectsLoaded,
-    error: projectsError,
-  };
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  return { ...options, loaded, error };
 }

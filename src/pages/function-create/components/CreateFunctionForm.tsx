@@ -22,7 +22,7 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
-import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../../common/context/AuthProvider';
 import {
@@ -185,19 +185,14 @@ function useCreateFunctionForm(initialNamespace: string) {
   };
 }
 
-function selectableNamespaces(canCreateNamespaces: boolean, namespaces: string[]): string[] {
-  return canCreateNamespaces ? namespaces : namespaces.filter((ns) => !isSystemNamespace(ns));
-}
-
 function resolveInitialNamespace(
   canCreateNamespaces: boolean,
   namespaces: string[],
   activeNamespace: string,
 ): string {
-  const selectable = selectableNamespaces(canCreateNamespaces, namespaces);
-
-  if (activeNamespace && selectable.includes(activeNamespace)) return activeNamespace;
-  if (!canCreateNamespaces && selectable.length === 1) return selectable[0];
+  // The backend has already left out the namespaces this user may not pick.
+  if (activeNamespace && namespaces.includes(activeNamespace)) return activeNamespace;
+  if (!canCreateNamespaces && namespaces.length === 1) return namespaces[0];
   return '';
 }
 
@@ -305,7 +300,7 @@ function NamespaceInput({
   setNamespaceWatchField,
 }: NamespaceInputProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { handleNamespaceChange, selectable, soleNamespace, namespaceMissing } = useNamespaceInput({
+  const { handleNamespaceChange, soleNamespace, namespaceMissing } = useNamespaceInput({
     canCreateNamespaces,
     namespaces,
     value,
@@ -313,7 +308,7 @@ function NamespaceInput({
     setNamespaceWatchField,
   });
 
-  if (!canCreateNamespaces && !selectable.length) {
+  if (!canCreateNamespaces && !namespaces.length) {
     return (
       <FormGroup label={t('Namespace')}>
         <NamespaceAlert
@@ -350,7 +345,7 @@ function NamespaceInput({
           aria-label={t('Namespace')}
         >
           <FormSelectOption value="" label={t('Select...')} isPlaceholder hidden />
-          {selectable.map((ns) => (
+          {namespaces.map((ns) => (
             <FormSelectOption key={ns} value={ns} label={ns} />
           ))}
         </FormSelect>
@@ -404,21 +399,15 @@ const useNamespaceInput = ({
     }, 500);
   };
 
-  const selectable = useMemo(
-    () => selectableNamespaces(canCreateNamespaces, namespaces),
-    [canCreateNamespaces, namespaces],
-  );
-
   // With a single choice there is nothing to pick, so the field is rendered read-only. It
   // was seeded into the form when it mounted, so there is nothing to keep in sync here.
-  const soleNamespace = !canCreateNamespaces && selectable.length === 1 ? selectable[0] : null;
+  const soleNamespace = !canCreateNamespaces && namespaces.length === 1 ? namespaces[0] : null;
 
   const namespaceMissing =
     canCreateNamespaces && !!value && namespaces.length > 0 && !namespaces.includes(value);
 
   return {
     handleNamespaceChange,
-    selectable,
     soleNamespace,
     namespaceMissing,
   };

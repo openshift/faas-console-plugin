@@ -63,3 +63,8 @@ export interface WorkflowRun {
   url?: string;
   error?: AppError;
 }
+
+export interface NamespaceOptions {
+  namespaces: string[];
+  canCreateNamespaces: boolean;
+}

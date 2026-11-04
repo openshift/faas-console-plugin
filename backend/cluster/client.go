@@ -13,6 +13,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -37,6 +38,8 @@ type Client interface {
 	DeleteImageBuilderBinding(ctx context.Context, namespace string) error
 	RequestToken(ctx context.Context, namespace string, saTokenExpirty int64) (*authenticationv1.TokenRequestStatus, error)
 	CheckNamespace(ctx context.Context, namespace string) error
+	ListProjects(ctx context.Context) ([]string, error)
+	CanCreateNamespaces(ctx context.Context) (bool, error)
 }
 
 // New creates a cluster client authenticated with token.
@@ -52,11 +55,16 @@ func New(host, token string, caCert []byte) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
-	return &k8sClient{clientset: clientset}, nil
+	dynamicClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create dynamic client: %w", err)
+	}
+	return &k8sClient{clientset: clientset, dynamic: dynamicClient}, nil
 }
 
 type k8sClient struct {
 	clientset kubernetes.Interface
+	dynamic   dynamic.Interface
 }
 
 func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
@@ -221,6 +229,8 @@ type ClientStub struct {
 	OnDeleteRole                func(ctx context.Context, namespace string) error
 	OnDeleteRoleBinding         func(ctx context.Context, namespace string) error
 	OnDeleteImageBuilderBinding func(ctx context.Context, namespace string) error
+	OnListProjects              func(ctx context.Context) ([]string, error)
+	OnCanCreateNamespaces       func(ctx context.Context) (bool, error)
 }
 
 func (s *ClientStub) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
@@ -294,6 +304,20 @@ func (s *ClientStub) DeleteImageBuilderBinding(ctx context.Context, namespace st
 		return s.OnDeleteImageBuilderBinding(ctx, namespace)
 	}
 	return nil
+}
+
+func (s *ClientStub) ListProjects(ctx context.Context) ([]string, error) {
+	if s.OnListProjects != nil {
+		return s.OnListProjects(ctx)
+	}
+	return nil, nil
+}
+
+func (s *ClientStub) CanCreateNamespaces(ctx context.Context) (bool, error) {
+	if s.OnCanCreateNamespaces != nil {
+		return s.OnCanCreateNamespaces(ctx)
+	}
+	return false, nil
 }
 
 func roleBody(namespace string) *rbacv1.Role {

@@ -1,77 +1,44 @@
-import { renderHook } from '@testing-library/react';
-import {
-  projectFixture,
-  reset,
-  setWatchFixtures,
-  useAccessReviewStub,
-  useK8sWatchResourceStub,
-} from '../testing/sdkTestDoubles';
+import { renderHook, waitFor } from '@testing-library/react';
+import { getNamespacesStub } from '../testing/functionsClientStub';
 import { useNamespaceOptions } from './useNamespaceOptions';
 
+const sdkTestDoubles = await vi.hoisted(async () => import('../testing/sdkTestDoubles'));
+
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  useAccessReview: useAccessReviewStub,
-  useK8sWatchResource: useK8sWatchResourceStub,
+  HttpError: sdkTestDoubles.HttpError,
+  consoleFetch: sdkTestDoubles.consoleFetchStub,
+  consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));
 
 describe('useNamespaceOptions', () => {
-  afterEach(() => {
-    reset();
+  it('is not loaded while the backend has not answered', () => {
+    getNamespacesStub({ wait: new Promise(() => {}) });
+
+    const { result } = renderHook(() => useNamespaceOptions());
+
+    expect(result.current.loaded).toBe(false);
+    expect(result.current.namespaces).toEqual([]);
   });
 
-  describe('canCreateNamespaces', () => {
-    it('is true when the user can create namespaces', () => {
-      setWatchFixtures({ canCreate: true });
+  it('returns the namespaces and access the backend reports', async () => {
+    getNamespacesStub({ namespaces: ['team-a', 'team-b'], canCreateNamespaces: true });
 
-      const { result } = renderHook(() => useNamespaceOptions());
+    const { result } = renderHook(() => useNamespaceOptions());
 
-      expect(result.current.canCreateNamespaces).toBe(true);
-    });
-
-    it('is false when the user cannot create namespaces', () => {
-      setWatchFixtures({ canCreate: false, projects: [projectFixture('team-a')] });
-
-      const { result } = renderHook(() => useNamespaceOptions());
-
-      expect(result.current.canCreateNamespaces).toBe(false);
-    });
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.namespaces).toEqual(['team-a', 'team-b']);
+    expect(result.current.canCreateNamespaces).toBe(true);
+    expect(result.current.error).toBeUndefined();
   });
 
-  describe('namespaces', () => {
-    it('returns the accessible namespaces sorted', () => {
-      setWatchFixtures({
-        canCreate: false,
-        projects: [projectFixture('team-b'), projectFixture('team-a')],
-      });
+  it('reports an error and no namespaces when the backend fails', async () => {
+    getNamespacesStub({ errorResponse: { message: 'failed to list namespaces', status: 502 } });
 
-      const { result } = renderHook(() => useNamespaceOptions());
+    const { result } = renderHook(() => useNamespaceOptions());
 
-      expect(result.current.namespaces).toEqual(['team-a', 'team-b']);
-    });
-  });
-
-  describe('loaded', () => {
-    it('is not loaded while the access review is pending', () => {
-      setWatchFixtures({ accessLoading: true });
-
-      const { result } = renderHook(() => useNamespaceOptions());
-
-      expect(result.current.loaded).toBe(false);
-    });
-
-    it('is not loaded while the project watch is pending', () => {
-      setWatchFixtures({ projectsLoaded: false });
-
-      const { result } = renderHook(() => useNamespaceOptions());
-
-      expect(result.current.loaded).toBe(false);
-    });
-
-    it('is loaded once the review and the project watch complete', () => {
-      setWatchFixtures({ projects: [projectFixture('team-a')] });
-
-      const { result } = renderHook(() => useNamespaceOptions());
-
-      expect(result.current.loaded).toBe(true);
-    });
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.error).toBe('failed to list namespaces');
+    expect(result.current.namespaces).toEqual([]);
+    expect(result.current.canCreateNamespaces).toBe(false);
   });
 });

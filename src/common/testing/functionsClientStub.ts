@@ -180,3 +180,29 @@ export function createFunctionStub({
 
   return requests;
 }
+
+export function getNamespacesStub({
+  namespaces = [],
+  canCreateNamespaces = false,
+  errorResponse,
+  wait,
+}: {
+  namespaces?: string[];
+  canCreateNamespaces?: boolean;
+  errorResponse?: { message: string; status: number };
+  wait?: Promise<void>;
+} = {}) {
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/namespaces`, async () => {
+      if (wait) await wait;
+
+      if (errorResponse?.message && errorResponse?.status)
+        return HttpResponse.json(
+          { message: errorResponse?.message },
+          { status: errorResponse.status },
+        );
+
+      return HttpResponse.json({ namespaces, canCreateNamespaces });
+    }),
+  );
+}

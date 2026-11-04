@@ -6,6 +6,7 @@ import {
   CreateFunctionRequest,
   FileEntry,
   FunctionMetadata,
+  NamespaceOptions,
   PROXY_BASE,
   WorkflowRunRecord,
 } from '../types';
@@ -22,6 +23,15 @@ export async function listFunctions(namespace: string): Promise<FunctionMetadata
     : `?namespace=${encodeURIComponent(namespace)}`;
 
   return customFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`);
+}
+
+/**
+ * getNamespaces returns the namespaces the user may deploy a function into and
+ * whether the user may create namespaces. The backend leaves system namespaces
+ * out for users who cannot create namespaces.
+ */
+export async function getNamespaces(): Promise<NamespaceOptions> {
+  return customFetchJSON(`${PROXY_BASE}/api/v1/namespaces`);
 }
 
 export async function createFunction(data: CreateFunctionRequest): Promise<void> {

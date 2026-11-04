@@ -47,6 +47,13 @@
 - `CreateFunctionForm` now renders `<NamespaceField>` instead of the inline namespace FormGroup; `setField('namespace', ...)` (registry update + env-var reset + `onNamespaceChange`) still runs via the `onChange` callback.
 - Tests: `NamespaceField.test.tsx` covers every role branch and loading (SDK hooks mocked at the boundary). Existing form/page tests mock `useAccessReview` as admin so free-text behavior is unchanged. i18n strings extracted. All tests pass (237).
 
+### Task 5: Move namespace options to the backend (DONE)
+
+- `useCluster` was removed upstream, so the create page now watches Secrets and ConfigMaps itself.
+- New `GET /api/v1/namespaces` (`backend/handler/namespaces.go`) returns `{ namespaces, canCreateNamespaces }`. With the user's token it lists `project.openshift.io/v1` Projects (via the dynamic client, no new Go module) and runs a SelfSubjectAccessReview for `create namespaces`. System namespaces (`openshift`, `default`, `openshift-*`, `kube-*`, `knative-*`) are dropped for users who cannot create namespaces, and the list is sorted.
+- Frontend `getNamespaces()` in `functionsClient.ts` feeds `useNamespaceOptions`, which no longer uses `useAccessReview` or a Project watch. The form no longer filters namespaces itself.
+- `isSystemNamespace` stays in the frontend only for the warning shown when a user who can create namespaces types a system namespace (typed values never round-trip to the backend).
+
 ## Acceptance criteria (from Jira)
 
 - System namespace shows an inline warning; creation not blocked. (DONE)

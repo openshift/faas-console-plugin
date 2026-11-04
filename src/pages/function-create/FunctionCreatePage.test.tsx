@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { fetchGithubUserStub, noGithubUserStub } from '../../common/testing/authClientStub';
-import { createFunctionStub } from '../../common/testing/functionsClientStub';
+import { createFunctionStub, getNamespacesStub } from '../../common/testing/functionsClientStub';
 import FunctionCreatePage from './FunctionCreatePage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -29,7 +29,6 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
       {children}
     </>
   ),
-  useAccessReview: sdkTestDoubles.useAccessReviewStub,
   useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
   useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
 }));
@@ -58,7 +57,7 @@ describe('FunctionCreatePage', () => {
   });
 
   it('renders CreateFunctionForm for a user the backend already connected', async () => {
-    renderPage();
+    await renderPage();
 
     expect(await screen.findByRole('textbox', { name: /Owner/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Create/ })).toBeInTheDocument();
@@ -68,7 +67,7 @@ describe('FunctionCreatePage', () => {
     const user = userEvent.setup();
     createFunctionStub();
 
-    renderPage();
+    await renderPage();
 
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: /Create/ }));
@@ -82,7 +81,7 @@ describe('FunctionCreatePage', () => {
     const user = userEvent.setup();
     createFunctionStub({ errorResponse: { message: 'Backend error', status: 500 } });
 
-    renderPage();
+    await renderPage();
 
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: /Create/ }));
@@ -94,7 +93,7 @@ describe('FunctionCreatePage', () => {
     const user = userEvent.setup();
     const requests = createFunctionStub();
 
-    renderPage();
+    await renderPage();
 
     await fillForm(user);
     await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
@@ -112,9 +111,13 @@ describe('FunctionCreatePage', () => {
   });
 
   it('shows a spinner instead of the form until the namespaces have loaded', () => {
-    sdkTestDoubles.setWatchFixtures({ accessLoading: true });
+    getNamespacesStub({ wait: new Promise(() => {}) });
 
-    renderPage();
+    render(
+      <MemoryRouter>
+        <FunctionCreatePage />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /Namespace/ })).not.toBeInTheDocument();
@@ -122,14 +125,14 @@ describe('FunctionCreatePage', () => {
 
   it('renders UserAvatar in header', async () => {
     noGithubUserStub();
-    renderPage();
+    await renderPage();
 
     expect(await screen.findByTestId('user-avatar')).toBeInTheDocument();
   });
 
   it('hides form when the backend holds no credential', async () => {
     noGithubUserStub();
-    renderPage();
+    await renderPage();
 
     await waitFor(() =>
       expect(screen.queryByRole('textbox', { name: /Owner/ })).not.toBeInTheDocument(),
@@ -141,7 +144,7 @@ describe('FunctionCreatePage', () => {
       it('keeps every character the user types, without the debounce reverting it', async () => {
         const user = userEvent.setup();
 
-        renderPage();
+        await renderPage();
         const input = screen.getByRole('textbox', { name: /Namespace/ });
         await user.type(input, 'my-functions');
 
@@ -153,7 +156,7 @@ describe('FunctionCreatePage', () => {
         const user = userEvent.setup();
         asUserWhoCanCreateNamespaces('team-a');
 
-        renderPage();
+        await renderPage();
         await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'ghost');
 
         expect(screen.getByText(/does not exist/i)).toBeInTheDocument();
@@ -163,7 +166,7 @@ describe('FunctionCreatePage', () => {
         const user = userEvent.setup();
         asUserWhoCanCreateNamespaces('team-a');
 
-        renderPage();
+        await renderPage();
         await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
 
         expect(screen.queryByText(/does not exist/i)).not.toBeInTheDocument();
@@ -173,7 +176,7 @@ describe('FunctionCreatePage', () => {
         const user = userEvent.setup();
         asUserWhoCanCreateNamespaces();
 
-        renderPage();
+        await renderPage();
         await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'ghost');
 
         expect(screen.queryByText(/does not exist/i)).not.toBeInTheDocument();
@@ -183,7 +186,7 @@ describe('FunctionCreatePage', () => {
         const user = userEvent.setup();
         asUserWhoCanCreateNamespaces('team-a');
 
-        renderPage();
+        await renderPage();
         await fillForm(user, 'ghost');
 
         expect(screen.getByText(/does not exist/i)).toBeInTheDocument();
@@ -193,7 +196,7 @@ describe('FunctionCreatePage', () => {
       it('warns when a system namespace is typed', async () => {
         const user = userEvent.setup();
 
-        renderPage();
+        await renderPage();
         expect(screen.queryByText(/system namespace/i)).not.toBeInTheDocument();
         await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'openshift-monitoring');
 
@@ -203,7 +206,7 @@ describe('FunctionCreatePage', () => {
       it('does not warn about a system namespace for a normal namespace', async () => {
         const user = userEvent.setup();
 
-        renderPage();
+        await renderPage();
         await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'my-functions');
 
         expect(screen.queryByText(/system namespace/i)).not.toBeInTheDocument();
@@ -212,7 +215,7 @@ describe('FunctionCreatePage', () => {
       it('does not block Create for a system namespace', async () => {
         const user = userEvent.setup();
 
-        renderPage();
+        await renderPage();
         await fillForm(user);
 
         expect(screen.getByText(/system namespace/i)).toBeInTheDocument();
@@ -221,23 +224,14 @@ describe('FunctionCreatePage', () => {
     });
 
     describe('developer with no namespaces', () => {
-      it('explains that there is nothing to deploy into and offers no namespace control', () => {
+      it('explains that there is nothing to deploy into and offers no namespace control', async () => {
         asDeveloperWithNamespaces();
 
-        renderPage();
+        await renderPage();
 
         expect(screen.getByText(/no namespaces available/i)).toBeInTheDocument();
         expect(screen.queryByRole('textbox', { name: /Namespace/ })).not.toBeInTheDocument();
         expect(screen.queryByRole('combobox', { name: /Namespace/ })).not.toBeInTheDocument();
-      });
-
-      it('explains the same when the only accessible namespaces are system namespaces', () => {
-        asDeveloperWithNamespaces('openshift-monitoring', 'kube-system');
-
-        renderPage();
-
-        expect(screen.getByText(/no namespaces available/i)).toBeInTheDocument();
-        expect(screen.queryByRole('textbox', { name: /Namespace/ })).not.toBeInTheDocument();
       });
     });
 
@@ -245,7 +239,7 @@ describe('FunctionCreatePage', () => {
       it('derives the sole namespace, disables the field, and feeds the registry', async () => {
         asDeveloperWithNamespaces('team-a');
 
-        renderPage();
+        await renderPage();
 
         const input = screen.getByRole('textbox', { name: /Namespace/ });
         expect(input).toHaveValue('team-a');
@@ -255,21 +249,12 @@ describe('FunctionCreatePage', () => {
         await waitFor(() => expect(registryInput()).toHaveValue(`${REGISTRY}team-a`));
       });
 
-      it('derives the sole namespace after system namespaces are filtered out', async () => {
-        asDeveloperWithNamespaces('openshift-monitoring', 'team-a', 'kube-system');
-
-        renderPage();
-
-        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('team-a');
-        await waitFor(() => expect(registryInput()).toHaveValue(`${REGISTRY}team-a`));
-      });
-
       it('lets the user submit without touching the namespace field', async () => {
         const user = userEvent.setup();
         asDeveloperWithNamespaces('team-a');
         const requests = createFunctionStub();
 
-        renderPage();
+        await renderPage();
         await user.type(screen.getByRole('textbox', { name: /Repository/ }), 'my-repo');
         await user.type(screen.getByRole('textbox', { name: /Branch/ }), 'main');
         await user.type(screen.getByRole('textbox', { name: /^Name$/ }), 'my-func');
@@ -284,34 +269,21 @@ describe('FunctionCreatePage', () => {
     });
 
     describe('developer with several namespaces', () => {
-      it('offers a dropdown of the accessible namespaces', () => {
+      it('offers a dropdown of the accessible namespaces', async () => {
         asDeveloperWithNamespaces('team-a', 'team-b');
 
-        renderPage();
+        await renderPage();
 
         expect(screen.getByRole('combobox', { name: /Namespace/ })).toBeInTheDocument();
         expect(screen.getByRole('option', { name: 'team-a' })).toBeInTheDocument();
         expect(screen.getByRole('option', { name: 'team-b' })).toBeInTheDocument();
       });
 
-      it('leaves system namespaces out of the dropdown', () => {
-        asDeveloperWithNamespaces('team-a', 'openshift-monitoring', 'kube-system', 'team-b');
-
-        renderPage();
-
-        expect(screen.getByRole('option', { name: 'team-a' })).toBeInTheDocument();
-        expect(screen.getByRole('option', { name: 'team-b' })).toBeInTheDocument();
-        expect(
-          screen.queryByRole('option', { name: 'openshift-monitoring' }),
-        ).not.toBeInTheDocument();
-        expect(screen.queryByRole('option', { name: 'kube-system' })).not.toBeInTheDocument();
-      });
-
       it('applies the picked namespace to the form without warning about it', async () => {
         const user = userEvent.setup();
         asDeveloperWithNamespaces('team-a', 'team-b');
 
-        renderPage();
+        await renderPage();
         const dropdown = screen.getByRole('combobox', { name: /Namespace/ });
         await user.selectOptions(dropdown, 'team-a');
 
@@ -334,19 +306,22 @@ function asDeveloperWithNamespaces(...names: string[]) {
   setProjects(false, names);
 }
 
-function setProjects(canCreate: boolean, names: string[]) {
-  sdkTestDoubles.setWatchFixtures({
-    canCreate,
-    projects: names.map((name) => sdkTestDoubles.projectFixture(name)),
-  });
+function setProjects(canCreateNamespaces: boolean, namespaces: string[]) {
+  getNamespacesStub({ canCreateNamespaces, namespaces });
 }
 
-function renderPage() {
-  return render(
+// Renders the page and waits for the namespace options to arrive from the backend, since the
+// form is held back behind a spinner until then.
+async function renderPage() {
+  const view = render(
     <MemoryRouter>
       <FunctionCreatePage />
     </MemoryRouter>,
   );
+  await waitFor(() =>
+    expect(screen.queryByRole('progressbar', { name: 'Loading' })).not.toBeInTheDocument(),
+  );
+  return view;
 }
 
 // The form appears only once the backend has confirmed a stored credential,

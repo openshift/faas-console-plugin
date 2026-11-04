@@ -213,6 +213,7 @@ func newMux(shutdownCtx context.Context, h *handler.Handlers, scmCredentials cre
 	api.HandleFunc("POST /api/v1/scm/github/credential", h.HandleSaveSCMCredential)
 	api.HandleFunc("DELETE /api/v1/scm/github/credential", h.HandleDeleteSCMCredential)
 	api.Handle("GET /api/v1/func/list", withCredential(h.HandleListFunctions))
+	api.HandleFunc("GET /api/v1/namespaces", h.HandleListNamespaces)
 	api.Handle("GET /api/v1/func/{owner}/{name}/files", withCredential(h.HandleGetFiles))
 	api.Handle("PUT /api/v1/func/{owner}/{name}/files", withCredential(h.HandlePutFiles))
 	api.Handle("POST /api/v1/func/create", withCredential(h.HandleFuncCreate))
