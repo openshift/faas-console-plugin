@@ -12,7 +12,7 @@ require (
 	k8s.io/api v0.35.8
 	k8s.io/apimachinery v0.35.8
 	k8s.io/client-go v0.35.8
-	knative.dev/func v0.50.1-0.20260903102939-e3cccb21e68d
+	knative.dev/func v0.50.1-0.20260903102939-e3cccb21e68d // when bumping this version, check the code for static cli versions that may also need a bump (e.g. in backend/config/ci.go)
 	sigs.k8s.io/yaml v1.6.0
 )
 
