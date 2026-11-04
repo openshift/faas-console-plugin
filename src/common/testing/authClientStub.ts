@@ -38,14 +38,17 @@ export function connectGithubUserStub({
 export function fetchGithubUserStub({
   response = CONNECTED_ACCOUNT,
   errorResponse,
+  networkError,
   wait,
 }: {
   response?: Account;
   errorResponse?: ErrorResponse;
+  networkError?: true;
   wait?: Promise<void>;
 } = {}) {
   server.use(
     http.get(CREDENTIAL_URL, async () => {
+      if (networkError) return HttpResponse.error();
       if (errorResponse?.message && errorResponse?.status)
         return HttpResponse.json(
           { message: errorResponse?.message },

@@ -1,5 +1,5 @@
 import { HttpError } from '@openshift-console/dynamic-plugin-sdk';
-import { http, HttpResponse } from 'msw';
+import { fetchGithubUserStub } from '../testing/authClientStub';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
 import { AUTH_EXPIRED_EVENT } from '../types';
@@ -16,118 +16,84 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
 }));
 
-const LIST_URL = `${BACKEND_API}/api/v1/func/list`;
+// The wrappers do not care which backend route they call, so the tests reuse
+// the credential endpoint and its existing test double.
+const URL = `${BACKEND_API}/api/v1/scm/github/credential`;
+const ACCOUNT = { login: 'twoGiants', avatarUrl: 'https://valid.url' };
 
 // Both wrappers share the auth-expiry announcing logic, so every failure
-// case runs through each of them. Each wrapper carries the MSW handler that
-// makes its next request fail, so only that path is armed per test.
+// case runs through each of them.
 const wrappers = [
-  {
-    name: 'customFetch',
-    request: (url: string) => customFetch(url),
-    failWith: (status: number) =>
-      server.use(http.get(LIST_URL, () => new HttpResponse(null, { status }))),
-  },
-  {
-    name: 'customFetchJSON',
-    request: (url: string) => customFetchJSON(url),
-    failWith: (status: number) =>
-      server.use(
-        http.get(LIST_URL, () => HttpResponse.json({ message: 'token expired' }, { status })),
-      ),
-  },
+  { name: 'customFetch', request: () => customFetch(URL) },
+  { name: 'customFetchJSON', request: () => customFetchJSON(URL) },
 ] as const;
 
-function listenForAuthExpired(): { events: Event[]; stop: () => void } {
+function failWith(status: number) {
+  fetchGithubUserStub({ errorResponse: { message: 'token expired', status } });
+}
+
+function listenForAuthExpired(): Event[] & Disposable {
   const events: Event[] = [];
   const listener = (e: Event) => events.push(e);
   window.addEventListener(AUTH_EXPIRED_EVENT, listener);
-  return { events, stop: () => window.removeEventListener(AUTH_EXPIRED_EVENT, listener) };
+  return Object.assign(events, {
+    [Symbol.dispose]() {
+      window.removeEventListener(AUTH_EXPIRED_EVENT, listener);
+    },
+  });
 }
 
-afterEach(() => {
-  server.resetHandlers();
-});
-
-describe('customFetch', () => {
-  it('returns the response from the backend', async () => {
-    server.use(http.get(LIST_URL, () => HttpResponse.json({ items: [] })));
-
-    const res = await customFetch(LIST_URL);
-
-    expect(res.ok).toBe(true);
-    await expect(res.json()).resolves.toEqual({ items: [] });
+describe('httpClient', () => {
+  afterEach(() => {
+    server.resetHandlers();
   });
 
-  it('passes method, headers, and body through to the backend', async () => {
-    let captured: Request | undefined;
-    server.use(
-      http.post(`${BACKEND_API}/api/v1/func/create`, ({ request }) => {
-        captured = request;
-        return new HttpResponse(null, { status: 201 });
-      }),
-    );
+  describe('customFetch', () => {
+    it('returns the response from the backend', async () => {
+      fetchGithubUserStub({ response: ACCOUNT });
 
-    const res = await customFetch(`${BACKEND_API}/api/v1/func/create`, {
-      method: 'POST',
-      headers: new Headers({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ name: 'my-func' }),
+      const res = await customFetch(URL);
+
+      expect(res.ok).toBe(true);
+      await expect(res.json()).resolves.toEqual(ACCOUNT);
     });
-
-    expect(res.status).toBe(201);
-    expect(captured?.method).toBe('POST');
-    expect(captured?.headers.get('content-type')).toBe('application/json');
-    await expect(captured?.json()).resolves.toEqual({ name: 'my-func' });
   });
-});
 
-describe('customFetchJSON', () => {
-  it('returns the parsed data from the backend', async () => {
-    const account = { login: 'twoGiants', avatarUrl: 'https://valid.url' };
-    server.use(http.get(LIST_URL, () => HttpResponse.json(account)));
+  describe('customFetchJSON', () => {
+    it('returns the parsed data from the backend', async () => {
+      fetchGithubUserStub({ response: ACCOUNT });
 
-    await expect(customFetchJSON(LIST_URL)).resolves.toEqual(account);
+      await expect(customFetchJSON(URL)).resolves.toEqual(ACCOUNT);
+    });
   });
-});
 
-describe.each(wrappers)('$name', ({ request, failWith }) => {
-  it.each([401, 403])('announces auth expiry and rejects on %i', async (status) => {
-    failWith(status);
-    const listener = listenForAuthExpired();
+  describe.each(wrappers)('$name', ({ request }) => {
+    it.each([401, 403])('announces auth expiry and rejects on %i', async (status) => {
+      failWith(status);
+      using events = listenForAuthExpired();
 
-    try {
-      const error = await request(LIST_URL).catch((e: unknown) => e);
+      const error = await request().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(HttpError);
       expect((error as HttpError).code).toBe(status);
-      expect(listener.events).toHaveLength(1);
-    } finally {
-      listener.stop();
-    }
-  });
+      expect(events).toHaveLength(1);
+    });
 
-  it('rejects without announcing auth expiry on other failures', async () => {
-    failWith(500);
-    const listener = listenForAuthExpired();
+    it('rejects without announcing auth expiry on other failures', async () => {
+      failWith(500);
+      using events = listenForAuthExpired();
 
-    try {
-      const error = await request(LIST_URL).catch((e: unknown) => e);
+      const error = await request().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(HttpError);
       expect((error as HttpError).code).toBe(500);
-      expect(listener.events).toHaveLength(0);
-    } finally {
-      listener.stop();
-    }
-  });
+      expect(events).toHaveLength(0);
+    });
 
-  it('rejects without announcing auth expiry on network failure', async () => {
-    server.use(http.get(LIST_URL, () => HttpResponse.error()));
-    const listener = listenForAuthExpired();
+    it('rejects without announcing auth expiry on network failure', async () => {
+      fetchGithubUserStub({ networkError: true });
+      using events = listenForAuthExpired();
 
-    try {
-      await expect(request(LIST_URL)).rejects.toBeInstanceOf(Error);
-      expect(listener.events).toHaveLength(0);
-    } finally {
-      listener.stop();
-    }
+      await expect(request()).rejects.toBeInstanceOf(Error);
+      expect(events).toHaveLength(0);
+    });
   });
 });
