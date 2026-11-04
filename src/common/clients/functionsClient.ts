@@ -81,7 +81,7 @@ export function receiveWorkflowRunEvents(
 
   es.addEventListener('app-error', (e) => {
     const parsed = JSON.parse(e.data) as AppError;
-    if (parsed.code === 401 || parsed.code === 403) {
+    if (parsed.code === 401) {
       errorCbk('Authentication expired. Reconnect to GitHub and refresh.');
       es.close();
     } else errorCbk(parsed.message);

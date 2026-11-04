@@ -48,8 +48,9 @@ func New(caCert []byte, kubeHost, externalAPIServerURL, clusterID string, saToke
 	}
 }
 
-// writeAuthError is the only source of 401 on the request path, which is what
-// lets the frontend read that one status as "connect to GitHub".
+// A 401 always means "connect to GitHub": the OpenShift identity could not be
+// established, no credential is stored, or GitHub rejected the token. That
+// lets the frontend read the one status as a lost connection.
 func writeAuthError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, identity.ErrUnauthenticated),

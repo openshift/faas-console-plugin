@@ -38,9 +38,9 @@ describe('receiveWorkflowRunEvents', () => {
     expect(data[0]['alice/fn'].status).toBe('InProgress');
   });
 
-  it.each([401, 403])('reports auth error and stops on %i app-error', async (code) => {
+  it('reports auth error and stops on 401 app-error', async () => {
     using timer = timerFake();
-    workflowWatchStub({ appError: { message: 'token expired', code } });
+    workflowWatchStub({ appError: { message: 'token expired', code: 401 } });
 
     const errors: string[] = [];
     const data: WorkflowRunRecord[] = [];

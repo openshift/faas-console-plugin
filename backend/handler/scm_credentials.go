@@ -37,7 +37,7 @@ func (h *Handlers) HandleSaveSCMCredential(w http.ResponseWriter, r *http.Reques
 	user, err := scmClient.GetUser(r.Context())
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			writeError(w, http.StatusForbidden, "invalid SCM token")
+			writeError(w, http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("failed to verify pat with the scm provider", "err", err)

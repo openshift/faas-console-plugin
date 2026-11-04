@@ -103,7 +103,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 			}))
 		})
 
-		It("sends 403 app-error event when the stored credential is rejected during discovery", func() {
+		It("sends 401 app-error event when the stored credential is rejected during discovery", func() {
 			scmClient := &scm.ClientStub{
 				OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
 					return nil, scm.ErrUnauthorized
@@ -122,7 +122,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 			Expect(evt).To(Equal(workflowEvent{
 				appError: &handler.ErrorDTO{
 					Message: "invalid SCM token",
-					Code:    new(403),
+					Code:    new(401),
 				},
 			}))
 		})
@@ -349,7 +349,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 		}
 	})
 
-	It("sends a 403 app-error event when the watch fails with an auth error", func() {
+	It("sends a 401 app-error event when the watch fails with an auth error", func() {
 		ch := make(chan scm.WorkflowRunsEvent, 1)
 		scmClient := &scm.ClientStub{
 			OnWatchWorkflowRuns: func(ctx context.Context, workflowFilename string) (scm.WorkflowWatch, error) {
@@ -365,7 +365,7 @@ var _ = Describe("WorkflowRunWatch", func() {
 		Expect(evt).To(Equal(workflowEvent{
 			appError: &handler.ErrorDTO{
 				Message: "Authentication failed. Please check your access token.",
-				Code:    new(403),
+				Code:    new(401),
 			},
 		}))
 	})

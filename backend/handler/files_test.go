@@ -98,7 +98,7 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
 
-	It("returns 403 when the SCM token is invalid", func() {
+	It("returns 401 when the SCM token is invalid", func() {
 		withSCMStub(&scm.ClientStub{
 			OnGetFiles: func(ctx context.Context, owner, repo, ref string) ([]scm.FileEntry, error) {
 				return nil, scm.ErrUnauthorized
@@ -110,7 +110,7 @@ var _ = Describe("GET /api/v1/func/{owner}/{name}/files", func() {
 		h := &Handlers{}
 		h.HandleGetFiles(w, req)
 
-		Expect(w.Code).To(Equal(http.StatusForbidden))
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 502 when the SCM API is unavailable", func() {
@@ -258,7 +258,7 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
 
-	It("returns 403 when the SCM token is invalid", func() {
+	It("returns 401 when the SCM token is invalid", func() {
 		withClusterStub(&cluster.ClientStub{})
 		withValidPutSCMStub(&scm.ClientStub{
 			OnPushFiles: func(ctx context.Context, owner, repo, branch, message string, files []scm.FileEntry) error {
@@ -271,7 +271,7 @@ var _ = Describe("PUT /api/v1/func/{owner}/{name}/files", func() {
 		h := &Handlers{externalAPIServerURL: "https://api.test-cluster.example.com:6443"}
 		h.HandlePutFiles(w, req)
 
-		Expect(w.Code).To(Equal(http.StatusForbidden))
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 502 when the SCM API is unavailable", func() {

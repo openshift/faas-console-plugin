@@ -66,11 +66,7 @@ var _ = Describe("POST /api/v1/scm/github/credential", func() {
 		Expect(w.Code).To(Equal(http.StatusBadRequest))
 	})
 
-	// Not 401: the frontend reads that one status as "the connection is
-	// gone" and disconnects, which would throw away a working session over a
-	// mistyped PAT. The SCM provider refusing a token the user just supplied
-	// is the same class of problem as it refusing a stored one.
-	It("returns 403 when the SCM provider rejects the token", func() {
+	It("returns 401 when the SCM provider rejects the token", func() {
 		withSCMStub(&scm.ClientStub{
 			OnGetUser: func(ctx context.Context) (*scm.User, error) { return nil, scm.ErrUnauthorized },
 		})
@@ -79,7 +75,7 @@ var _ = Describe("POST /api/v1/scm/github/credential", func() {
 		h := &Handlers{scmCredentials: withCredentialProviderStub()}
 		h.HandleSaveSCMCredential(w, saveTokenRequest("ghp_bad"))
 
-		Expect(w.Code).To(Equal(http.StatusForbidden))
+		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 401 when the OpenShift token is rejected", func() {

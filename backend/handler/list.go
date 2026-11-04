@@ -85,7 +85,7 @@ func (h *Handlers) HandleListFunctions(w http.ResponseWriter, r *http.Request) {
 
 	// An invalid SCM token is a client error worth surfacing on its own.
 	if errors.Is(repoErr, scm.ErrUnauthorized) {
-		writeError(w, http.StatusForbidden, "invalid SCM token")
+		writeError(w, http.StatusUnauthorized, "invalid SCM token")
 		return
 	}
 	if repoErr != nil {

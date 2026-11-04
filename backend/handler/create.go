@@ -66,7 +66,7 @@ func (h *Handlers) HandleFuncCreate(w http.ResponseWriter, r *http.Request) {
 	if err := h.createFunction(r.Context(), req, credential.Token, credential.ocpToken); err != nil {
 		switch {
 		case errors.Is(err, scm.ErrUnauthorized):
-			writeError(w, http.StatusForbidden, "invalid SCM token")
+			writeError(w, http.StatusUnauthorized, "invalid SCM token")
 		case errors.Is(err, scm.ErrRepoExists):
 			writeError(w, http.StatusConflict, "repository already exists")
 		case errors.Is(err, errUpstream):

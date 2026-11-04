@@ -168,7 +168,7 @@ describe('UserAvatar', () => {
 
     it('shows error alert when the backend rejects the PAT', async () => {
       const user = userEvent.setup();
-      connectGithubUserStub({ errorResponse: { message: 'invalid SCM token', status: 403 } });
+      connectGithubUserStub({ errorResponse: { message: 'invalid SCM token', status: 401 } });
       noGithubUserStub();
       renderAvatar();
 
@@ -203,7 +203,7 @@ describe('UserAvatar', () => {
 
     it('clears PAT input and error on cancel', async () => {
       const user = userEvent.setup();
-      connectGithubUserStub({ errorResponse: { message: 'invalid SCM token', status: 403 } });
+      connectGithubUserStub({ errorResponse: { message: 'invalid SCM token', status: 401 } });
       noGithubUserStub();
       renderAvatar();
 

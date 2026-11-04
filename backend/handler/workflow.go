@@ -56,7 +56,7 @@ type ErrorDTO struct {
 //	  error?: {message, code?}, absent when that repo polled cleanly
 //	app-error: {message, code?}
 //	  message: user-facing text
-//	  code?:   the HTTP status the response would have carried, 401, 403, 502 or 503
+//	  code?:   the HTTP status the response would have carried, 401, 502 or 503
 //
 // Between frames the handler sends an SSE comment as a keepalive, every 15
 // seconds by default. It is a comment, not an event, and no listener fires
@@ -66,7 +66,7 @@ type ErrorDTO struct {
 // error field and the stream goes on. A failure affecting the whole watch
 // emits app-error, and whether the stream survives depends on when it
 // happens: a missing or rejected caller credential (401), a credential store
-// failure (503), a rejected SCM credential (403) or failed repo discovery (502)
+// failure (503), a rejected SCM credential (401) or failed repo discovery (502)
 // ends the stream, while anything raised once the loop is running leaves it
 // open and lets the client decide whether to reconnect. Otherwise the stream
 // runs until the client disconnects or the request context is cancelled.
@@ -130,7 +130,7 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 	watch, err := client.WatchWorkflowRuns(ctx, functions.WorkflowFilename)
 	if err != nil {
 		if errors.Is(err, scm.ErrUnauthorized) {
-			ew.writeHTTPError(http.StatusForbidden, "invalid SCM token")
+			ew.writeHTTPError(http.StatusUnauthorized, "invalid SCM token")
 			return
 		}
 		slog.Error("workflow run watch: watch workflow runs failed", "err", err)
@@ -288,7 +288,7 @@ func errorToMessage(err error) string {
 
 func errorToCode(err error) *int {
 	if errors.Is(err, scm.ErrUnauthorized) {
-		return new(403)
+		return new(http.StatusUnauthorized)
 	}
 	return nil
 }

@@ -68,23 +68,24 @@ describe('httpClient', () => {
   });
 
   describe.each(wrappers)('$name', ({ request }) => {
-    it.each([401, 403])('announces auth expiry and rejects on %i', async (status) => {
+    it('announces auth expiry and rejects on 401', async () => {
+      failWith(401);
+      using events = listenForAuthExpired();
+
+      const error = await request().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(HttpError);
+      expect((error as HttpError).code).toBe(401);
+      expect(events).toHaveLength(1);
+    });
+
+    // Only a 401 means "reconnect GitHub"; a 403 is about permissions.
+    it.each([403, 500])('rejects without announcing auth expiry on %i', async (status) => {
       failWith(status);
       using events = listenForAuthExpired();
 
       const error = await request().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(HttpError);
       expect((error as HttpError).code).toBe(status);
-      expect(events).toHaveLength(1);
-    });
-
-    it('rejects without announcing auth expiry on other failures', async () => {
-      failWith(500);
-      using events = listenForAuthExpired();
-
-      const error = await request().catch((e: unknown) => e);
-      expect(error).toBeInstanceOf(HttpError);
-      expect((error as HttpError).code).toBe(500);
       expect(events).toHaveLength(0);
     });
 
