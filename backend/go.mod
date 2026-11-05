@@ -3,10 +3,10 @@ module github.com/openshift/faas-console-plugin/backend
 go 1.26.0
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/go-github/v90 v90.0.0
 	github.com/onsi/ginkgo/v2 v2.32.1
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/gomega v1.43.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/sync v0.24.0
 	k8s.io/api v0.35.8
