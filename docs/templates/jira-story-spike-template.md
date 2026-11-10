@@ -1,4 +1,4 @@
-# Jira Story Template
+# Jira Story & Spike Template
 
 ```
 ### Summary

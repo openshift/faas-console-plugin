@@ -101,7 +101,8 @@ multiple smaller PRs before requesting review.
 We use Jira for planning and tracking. Issues are organized as:
 
 - **Epics** group related stories under a single initiative (see [epic template](templates/jira-epic-template.md))
-- **Stories** describe a unit of deliverable work (see [story template](templates/jira-story-template.md))
+- **Stories** describe a unit of deliverable work (see [story & spike template](templates/jira-story-spike-template.md))
+- **Spikes** are research work that delivers a document (see [story & spike template](templates/jira-story-spike-template.md))
 - **Bugs** describe a defect to fix (see [bug template](templates/jira-bug-template.md))
 - **Sub-tasks** break a story into smaller pieces when needed
 
@@ -136,6 +137,18 @@ Refinement converts a vague initiative into work an engineer can act on. A story
 - Blocked work should not be refined, defer until it is unblocked.
 - Refinement is ongoing.
 - Identify large stories during refinement and split them into subtasks with priorities (must-have / nice-to-have). Each subtask should be independently mergeable.
+
+**Estimation:**
+
+We prefer T-Shirt sizes, but this Jira configuration supports them only on epics. Stories use story points, following the Fibonacci sequence.
+
+Comparison of the two scales:
+
+| T-Shirt size | Story points |
+|-------------|--------------|
+| S | 1, 2, 3 |
+| M | 5, 8 |
+| L | 13+ |
 
 ### Async Review
 
