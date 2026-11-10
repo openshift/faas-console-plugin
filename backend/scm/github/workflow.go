@@ -74,9 +74,9 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 		runs := c.pollRuns(pollCtx, repos, workflowFilename, prevRuns)
 		emit(runs, nil)
 
-		poll := c.pollTickerFactory()
+		poll := c.newTicker(c.pollInterval)
 		defer poll.Stop()
-		rediscover := c.rediscoverTickerFactory()
+		rediscover := c.newTicker(c.rediscoverInterval)
 		defer rediscover.Stop()
 
 		for {

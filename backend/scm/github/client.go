@@ -17,32 +17,30 @@ import (
 
 type Option func(*ghClient)
 
-// WithWatchTickerFactories sets the factories for poll and rediscover tickers
-// in the WatchWorkflowRuns loop. Both must be non-nil.
-func WithWatchTickerFactories(poll, rediscover ticker.Factory) Option {
-	if poll == nil {
-		panic("poll factory must not be nil")
-	}
-	if rediscover == nil {
-		panic("rediscover factory must not be nil")
-	}
-	return func(c *ghClient) {
-		c.pollTickerFactory = poll
-		c.rediscoverTickerFactory = rediscover
-	}
-}
-
-// WithWatchPollInterval sets the interval between workflow run polls in the
-// WatchWorkflowRuns loop. It leaves the rediscover interval unchanged. The
-// interval must be positive.
 func WithWatchPollInterval(d time.Duration) Option {
 	if d <= 0 {
 		panic(fmt.Sprintf("watch poll interval must be positive, got %s", d))
 	}
 	return func(c *ghClient) {
-		c.pollTickerFactory = func() ticker.Ticker {
-			return ticker.New(d)
-		}
+		c.pollInterval = d
+	}
+}
+
+func WithWatchRediscoverInterval(d time.Duration) Option {
+	if d <= 0 {
+		panic(fmt.Sprintf("watch rediscover interval must be positive, got %s", d))
+	}
+	return func(c *ghClient) {
+		c.rediscoverInterval = d
+	}
+}
+
+func WithWatchTickerFactory(newTicker ticker.Factory) Option {
+	if newTicker == nil {
+		panic("newTicker must not be nil")
+	}
+	return func(c *ghClient) {
+		c.newTicker = newTicker
 	}
 }
 
@@ -71,13 +69,10 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
 	c := &ghClient{
-		client: client,
-		pollTickerFactory: func() ticker.Ticker {
-			return ticker.New(DefaultWatchPollInterval)
-		},
-		rediscoverTickerFactory: func() ticker.Ticker {
-			return ticker.New(defaultWatchRediscoverInterval)
-		},
+		client:             client,
+		newTicker:          ticker.New,
+		pollInterval:       DefaultWatchPollInterval,
+		rediscoverInterval: defaultWatchRediscoverInterval,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -89,8 +84,9 @@ type ghClient struct {
 	client *ghlib.Client
 	// Ticker factories for the WatchWorkflowRuns loop. Set once at construction
 	// and only read afterwards, including by the watch goroutine.
-	pollTickerFactory       ticker.Factory
-	rediscoverTickerFactory ticker.Factory
+	newTicker          ticker.Factory
+	pollInterval       time.Duration
+	rediscoverInterval time.Duration
 }
 
 func mapErr(err error) error {

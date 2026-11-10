@@ -76,8 +76,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	//   Snapshot changed, watch emits.
 	DescribeTable("revalidates each poll with If-None-Match so unchanged runs cost a free 304",
 		func(payload int) {
-			tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
-			_, rediscoverFactory := ticker.CreateFakeTickerFactory()
+
 			var counter atomic.Int32
 			var states = []struct {
 				etag       string
@@ -98,7 +97,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 					run:  map[string]any{"id": 43, "status": "completed", "conclusion": "success"},
 				},
 			}
-			cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+			cl, tickPoll, _ := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 				func(w http.ResponseWriter, r *http.Request) {
 					s := states[counter.Add(1)-1]
 					inm := r.Header.Get("If-None-Match")
@@ -141,7 +140,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 	It("returns an unauthorized error from the initial discovery", func() {
 		// Discovery fails before the watch loop starts, so the cadence is moot.
-		cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(), func(w http.ResponseWriter, r *http.Request) {
+		cl, _, _ := newClient(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"message": "Bad credentials"})
 		})
@@ -153,9 +152,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("streams an initial snapshot keyed by repo, then re-emits only on change", func() {
 		var mu sync.Mutex
 		runCalls := 0
-		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
-		_, rediscoverFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl, tickPoll, _ := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -185,9 +182,8 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("does not re-emit while the run is unchanged", func() {
-		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
 		var calls atomic.Int32
-		cl := newWatchClientWithFactories(pollFactory, ticker.SilentTickerFactory(), watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl, tickPoll, _ := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				if calls.Add(1) <= 2 {
 					writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
@@ -217,9 +213,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("carries a repo's last-known run forward across a transient poll error", func() {
 		var mu sync.Mutex
 		runCalls := 0
-		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
-		_, rediscoverFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl, tickPoll, _ := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
@@ -260,8 +254,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 	It("suppresses repeated identical transient failures from fresh upstream errors", func() {
 		var phase atomic.Int32
-		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(pollFactory, ticker.SilentTickerFactory(), watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl, tickPoll, _ := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				switch phase.Add(1) {
 				case 1:
@@ -300,9 +293,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("propagate error when token is revoked at rediscover", func() {
 		var mu sync.Mutex
 		userCalls := 0
-		_, pollFactory := ticker.CreateFakeTickerFactory()
-		tickRediscover, rediscoverFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
+		cl, _, tickRediscover := newClient(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				mu.Lock()
@@ -352,9 +343,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("picks up a newly discovered repo on the next rediscover", func() {
 		var mu sync.Mutex
 		repos := []map[string]any{repoItem("alice", "fn1", "main")}
-		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
-		tickRediscover, rediscoverFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
+		cl, tickPoll, tickRediscover := newClient(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
@@ -394,7 +383,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("treats a missing workflow file as a repo with no run", func() {
-		cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(), watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
+		cl, _, _ := newClient(watchFake("alice", []map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				// The func workflow file does not exist in this repo, so GitHub's
 				// by-file-name runs endpoint 404s. That is not a func repo error;
@@ -415,7 +404,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("stops polling when Stop() is called", func() {
-		cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(), watchFake("alice",
+		cl, _, _ := newClient(watchFake("alice",
 			[]map[string]any{repoItem("alice", "fn", "main")},
 			func(w http.ResponseWriter, r *http.Request) {
 				writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
@@ -446,9 +435,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	It("carries forward last-known run when workflow runs endpoint returns service unavailable", func() {
 		var mu sync.Mutex
 		callCount := 0
-		tickPoll, pollFactory := ticker.CreateFakeTickerFactory()
-		_, rediscoverFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
+		cl, tickPoll, _ := newClient(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
@@ -503,8 +490,6 @@ var _ = Describe("WatchWorkflowRuns", func() {
 	})
 
 	It("one status check failure does not break other", func() {
-		_, pollFactory := ticker.CreateFakeTickerFactory()
-		_, rediscoverFactory := ticker.CreateFakeTickerFactory()
 		repos := make([]map[string]any, 0, 100)
 		for i := range 100 {
 			repoName := fmt.Sprintf("fn-%03d-testing", i)
@@ -531,7 +516,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 			},
 		)
 
-		cl := newWatchClientWithFactories(pollFactory, rediscoverFactory, watchFake(
+		cl, _, _ := newClient(watchFake(
 			"alice",
 			repos,
 			handleRuns.ServeHTTP,
@@ -566,8 +551,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 	It("rediscovery error is cleared", func() {
 		var listCallCount atomic.Int32
-		tickRediscovery, rediscoverFactory := ticker.CreateFakeTickerFactory()
-		cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), rediscoverFactory, func(w http.ResponseWriter, r *http.Request) {
+		cl, _, tickRediscovery := newClient(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				_ = json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
@@ -673,7 +657,7 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 	DescribeTable("maps run status and conclusion to a workflow run status",
 		func(status, conclusion string, expected scm.WorkflowRunStatus) {
-			cl := newWatchClientWithFactories(ticker.SilentTickerFactory(), ticker.SilentTickerFactory(),
+			cl, _, _ := newClient(
 				watchFake(
 					"alice",
 					[]map[string]any{
@@ -713,13 +697,38 @@ var _ = Describe("WatchWorkflowRuns", func() {
 
 })
 
-// newWatchClient serves handler as GitHub and returns a client whose watch loop
-// uses ticker factories. Pass manual factories for explicit tick control, or
-// time-based factories for tests relying on actual timing.
-func newWatchClientWithFactories(pollFactory, rediscoverFactory ticker.Factory, handler http.HandlerFunc) scm.Client {
+// newClient returns SCM GH Client that runs against GH API served by the handler parameter.
+// The returned client does not do periodic workflow polling/rediscover based on an actual monotonic or wall clock.
+// The function also returns two functions that can trigger workflow poll/rediscover on demand.
+// This makes tests more efficient and deterministic.
+func newClient(handler http.HandlerFunc) (scm.Client, func(), func()) {
+	const (
+		pollInterval       = 1
+		rediscoverInterval = 2
+	)
+
+	tickPoll, newPollTicker := ticker.CreateFakeTickerFactory()
+	tickRediscover, newRediscoverTicker := ticker.CreateFakeTickerFactory()
+
+	opts := []github.Option{
+		github.WithWatchPollInterval(pollInterval),
+		github.WithWatchRediscoverInterval(rediscoverInterval),
+		github.WithWatchTickerFactory(func(d time.Duration) ticker.Ticker {
+			switch d {
+			case pollInterval:
+				return newPollTicker(0)
+			case rediscoverInterval:
+				return newRediscoverTicker(0)
+			}
+			Fail("unreachable")
+			return nil
+		}),
+	}
+
 	srv := httptest.NewServer(handler)
 	DeferCleanup(srv.Close)
-	return github.NewWithBaseURL("test-pat", srv.URL, github.WithWatchTickerFactories(pollFactory, rediscoverFactory))
+
+	return github.NewWithBaseURL("test-pat", srv.URL, opts...), tickPoll, tickRediscover
 }
 
 // watchFake routes the minimal endpoints WatchWorkflowRuns needs: the

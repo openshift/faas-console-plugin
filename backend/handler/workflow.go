@@ -75,9 +75,7 @@ func WorkflowRunWatch(opts ...WatchOption) http.HandlerFunc {
 		newSCMClient: func(pat string) scm.Client {
 			return config.SCMRegistry.Client(scm.DefaultPlatform, pat)
 		},
-		heartbeatFactory: func() ticker.Ticker {
-			return ticker.New(defaultHeartbeat)
-		},
+		newTicker:    ticker.New,
 		credProvider: emptyCredProv{},
 	}
 	for _, opt := range opts {
@@ -139,7 +137,7 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 	}
 	defer watch.Stop()
 
-	beat := wc.heartbeatFactory()
+	beat := wc.newTicker(defaultHeartbeat)
 	defer beat.Stop()
 
 	for {
@@ -174,9 +172,9 @@ func handleWorkflowRunWatch(w http.ResponseWriter, r *http.Request, wc watchConf
 }
 
 type watchConfig struct {
-	newSCMClient     scm.ClientFactory
-	heartbeatFactory ticker.Factory
-	credProvider     CredentialProvider
+	newSCMClient scm.ClientFactory
+	newTicker    ticker.Factory
+	credProvider CredentialProvider
 }
 
 type CredentialProvider interface {
@@ -206,7 +204,7 @@ func WithHeartbeatTickerFactory(f ticker.Factory) WatchOption {
 	if f == nil {
 		panic("heartbeat factory must not be nil")
 	}
-	return func(c *watchConfig) { c.heartbeatFactory = f }
+	return func(c *watchConfig) { c.newTicker = f }
 }
 
 type eventWriter struct {
