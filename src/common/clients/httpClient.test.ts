@@ -1,7 +1,6 @@
 import { HttpError } from '@openshift-console/dynamic-plugin-sdk';
 import { fetchGithubUserStub } from '../testing/authClientStub';
 import { BACKEND_API } from '../testing/constants';
-import { server } from '../testing/mswServer';
 import { AUTH_EXPIRED_EVENT } from '../types';
 import { customFetch, customFetchJSON } from './httpClient';
 
@@ -44,10 +43,6 @@ function listenForAuthExpired(): Event[] & Disposable {
 }
 
 describe('httpClient', () => {
-  afterEach(() => {
-    server.resetHandlers();
-  });
-
   describe('customFetch', () => {
     it('returns the response from the backend', async () => {
       fetchGithubUserStub({ response: ACCOUNT });

@@ -4,7 +4,6 @@ import {
   fetchGithubUserStub,
   noGithubUserStub,
 } from '../testing/authClientStub';
-import { server } from '../testing/mswServer';
 import { connectGithubUser, disconnectGithubUser, fetchGithubUser } from './authClient';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -19,10 +18,6 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 }));
 
 describe('authClient', () => {
-  afterEach(() => {
-    server.resetHandlers();
-  });
-
   describe('connectGithubUser', () => {
     it('maps the backend account to an AuthUser', async () => {
       connectGithubUserStub();

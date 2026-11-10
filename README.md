@@ -26,7 +26,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 |----------|-------------|
 | [PR Template](.github/pull_request_template.md) | Pull request description format |
 | [Jira Epic](docs/templates/jira-epic-template.md) | Template for creating Jira epics |
-| [Jira Story](docs/templates/jira-story-template.md) | Template for creating Jira stories |
+| [Jira Story & Spike](docs/templates/jira-story-spike-template.md) | Template for creating Jira stories and spikes |
 | [Jira Bug](docs/templates/jira-bug-template.md) | Template for filing Jira bugs |
 | [Retrospective](docs/templates/retro-template.md) | Template for retrospective entries |
 
