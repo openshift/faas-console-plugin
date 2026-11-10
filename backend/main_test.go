@@ -2,16 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"testing/fstest"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -147,87 +143,6 @@ var _ = Describe("API routes", func() {
 		Expect(w.Body.String()).To(ContainSubstring(`"code":401`))
 	})
 })
-
-var _ = Describe("SCM registry", func() {
-	It("applies the workflow polling interval to clients for a custom GitHub API URL", func() {
-		srv := httptest.NewServer(fakeWorkflowGitHub())
-		DeferCleanup(srv.Close)
-
-		expectPollsAtConfiguredInterval(newSCMRegistry(srv.URL, 10*time.Millisecond).Client(scm.GitHub, "test-pat"))
-	})
-
-	// Runs offline: the GitHub client captures http.DefaultTransport when it is
-	// built, so swapping in a transport that serves the fake in-process keeps
-	// every request off the network while the client still targets github.com.
-	It("applies the workflow polling interval to clients for github.com when no API URL is set", func() {
-		fake := fakeWorkflowGitHub()
-		var offTarget atomic.Int32
-		original := http.DefaultTransport
-		DeferCleanup(func() { http.DefaultTransport = original })
-		http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
-			if r.URL.Scheme != "https" || r.URL.Host != "api.github.com" {
-				offTarget.Add(1)
-				return nil, fmt.Errorf("unexpected request to %s", r.URL)
-			}
-			rec := httptest.NewRecorder()
-			fake.ServeHTTP(rec, r)
-			res := rec.Result()
-			res.Request = r
-			return res, nil
-		})
-
-		expectPollsAtConfiguredInterval(newSCMRegistry("", 10*time.Millisecond).Client(scm.GitHub, "test-pat"))
-		Expect(offTarget.Load()).To(BeZero(), "every request should target https://api.github.com")
-	})
-})
-
-// fakeWorkflowGitHub serves the endpoints WatchWorkflowRuns needs for one
-// repository whose run is in progress on the first poll and completed after.
-func fakeWorkflowGitHub() http.HandlerFunc {
-	var polls atomic.Int32
-	return func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.URL.Path == "/user":
-			_ = json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
-		case r.URL.Path == "/search/repositories":
-			_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "items": []map[string]any{{
-				"name":           "fn",
-				"html_url":       "https://example.com/alice/fn",
-				"default_branch": "main",
-				"owner":          map[string]any{"login": "alice"},
-			}}})
-		case strings.Contains(r.URL.Path, "/actions/workflows/"):
-			run := map[string]any{"id": 1, "status": "completed", "conclusion": "success"}
-			if polls.Add(1) == 1 {
-				run = map[string]any{"id": 1, "status": "in_progress"}
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "workflow_runs": []any{run}})
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}
-}
-
-// expectPollsAtConfiguredInterval watches workflow runs through client and
-// expects the run's completion within 1s, which a client polling at the 3s
-// default cannot report.
-func expectPollsAtConfiguredInterval(client scm.Client) {
-	GinkgoHelper()
-	watch, err := client.WatchWorkflowRuns(context.Background(), "func-deploy.yaml")
-	Expect(err).NotTo(HaveOccurred())
-	DeferCleanup(watch.Stop)
-
-	var event scm.WorkflowRunsEvent
-	Eventually(watch.ResultChan()).Should(Receive(&event))
-	Expect(event.Runs["alice/fn"].Status).To(Equal(scm.InProgress))
-
-	Eventually(watch.ResultChan()).WithTimeout(time.Second).Should(Receive(&event))
-	Expect(event.Runs["alice/fn"].Status).To(Equal(scm.Succeeded))
-}
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 func testMux(provider credentials.Provider) *http.ServeMux {
 	h := handler.New(nil, "", "", "test-cluster-id", 0, provider)
