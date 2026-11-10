@@ -32,6 +32,20 @@ func WithWatchTickerFactories(poll, rediscover ticker.Factory) Option {
 	}
 }
 
+// WithWatchPollInterval sets the interval between workflow run polls in the
+// WatchWorkflowRuns loop. It leaves the rediscover interval unchanged. The
+// interval must be positive.
+func WithWatchPollInterval(d time.Duration) Option {
+	if d <= 0 {
+		panic(fmt.Sprintf("watch poll interval must be positive, got %s", d))
+	}
+	return func(c *ghClient) {
+		c.pollTickerFactory = func() ticker.Ticker {
+			return ticker.New(d)
+		}
+	}
+}
+
 // New builds a client against github.com with default settings. It is not
 // variadic so it stays assignable to scm.ClientFactory, which is how the
 // registry wires it; use NewWithBaseURL to pass options.
@@ -42,7 +56,7 @@ func New(pat string) scm.Client {
 func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 	// Its own ETag cache, so responses are never served across PATs. Unchanged
 	// workflow run status comes back as a 304, which does NOT count against the
-	// primary rate limit, so the 3s poll loop stays nearly free. See
+	// primary rate limit, so the poll loop stays nearly free. See
 	// httpcache.NewETagCache.
 	httpClient := &http.Client{Transport: httpcache.NewETagCache(http.DefaultTransport), Timeout: 30 * time.Second}
 	clientOpts := []ghlib.ClientOptionsFunc{
@@ -59,7 +73,7 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 	c := &ghClient{
 		client: client,
 		pollTickerFactory: func() ticker.Ticker {
-			return ticker.New(defaultWatchPollInterval)
+			return ticker.New(DefaultWatchPollInterval)
 		},
 		rediscoverTickerFactory: func() ticker.Ticker {
 			return ticker.New(defaultWatchRediscoverInterval)

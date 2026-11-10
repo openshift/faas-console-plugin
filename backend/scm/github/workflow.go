@@ -17,16 +17,17 @@ import (
 )
 
 // Defaults for the WatchWorkflowRuns cadence, applied by NewWithBaseURL.
-// WithWatchIntervals overrides them per client.
+// WithWatchPollInterval overrides the poll interval per client.
 const (
-	defaultWatchPollInterval       = 3 * time.Second
+	DefaultWatchPollInterval       = 3 * time.Second
 	defaultWatchRediscoverInterval = 30 * time.Second
 )
 
 // WatchWorkflowRuns polls GitHub for the latest workflow run of the given workflow
 // file across the authenticated user's function repos (topic:serverless-function),
-// emitting snapshots when the status changes. Polls every 3s; rediscovers repos
-// (re-runs ListRepos to pick up new/deleted functions) every 30s. Uses ETag
+// emitting snapshots when the status changes. Polls at the client's poll interval
+// (DefaultWatchPollInterval unless set with WithWatchPollInterval); rediscovers
+// repos (re-runs ListRepos to pick up new/deleted functions) every 30s. Uses ETag
 // conditional requests (304s are rate-limit exempt) to reduce API consumption.
 //
 // Error handling: per-repo failures set WorkflowRun.Error and carry forward the
