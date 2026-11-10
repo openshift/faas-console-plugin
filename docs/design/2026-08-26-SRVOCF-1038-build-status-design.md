@@ -60,18 +60,20 @@ FunctionTable.tsx <── useFunctions <── functionsClient.ts <── sseEve
 | `src/pages/function-list/components/FunctionTable.tsx` | `StatusCell`, the merge table rendered |
 | `e2e/helpers/fakegithub.ts` | `setWorkflowRun` and reset helpers for e2e |
 
-Cadences, all hardcoded (no config or env override; changing one means editing
-the constant):
+Cadences, all hardcoded except the workflow run poll, which
+`--workflow-polling-interval` sets (changing any other means editing the constant):
 
 | Cadence | Value | Defined in |
 |---------|-------|------------|
-| Workflow run poll | 3s | `defaultWatchPollInterval`, `scm/github/workflow.go` |
+| Workflow run poll | 3s (default) | `DefaultWatchPollInterval`, `scm/github/workflow.go` |
 | Repo rediscovery | 30s | `defaultWatchRediscoverInterval`, `scm/github/workflow.go` |
 | SSE heartbeat | 15s | `defaultHeartbeat`, `handler/workflow.go` |
 | Client reconnect delay | 3s | `reconnectDelayMs` default, `sseEventSource.ts` |
 
-None of these is configurable at runtime: there is no flag, env var or API to
-change them, so retuning one means editing the constant. They are overridable
+Apart from the workflow run poll, none of these is configurable at runtime:
+there is no flag, env var or API to change them, so retuning one means editing
+the constant. The poll interval is set at startup by `--workflow-polling-interval`
+(a positive Go duration) through `github.WithWatchPollInterval`. All are overridable
 in-process, though, which is how tests reach them: `github.WithWatchTickerFactories`
 and `handler.WithHeartbeatTickerFactory` are exported options that replace the
 ticker driving a cadence (not its duration). On the frontend, `reconnectDelayMs`

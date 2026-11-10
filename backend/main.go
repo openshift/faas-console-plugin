@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
@@ -41,16 +42,17 @@ func main() {
 	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
 	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
+	workflowPollingInterval := flag.String("workflow-polling-interval", github.DefaultWatchPollInterval.String(), "interval between GitHub workflow run status polls, a positive duration such as 3s, 30s, or 1m")
 	flag.Parse()
 
+	pollInterval, err := config.ParseWorkflowPollingInterval(*workflowPollingInterval)
+	if err != nil {
+		log.Fatalf("Failed to parse --workflow-polling-interval=%s: %v", *workflowPollingInterval, err)
+	}
+
+	config.SCMRegistry = newSCMRegistry(*ghAPIURL, pollInterval)
 	if *ghAPIURL != "" {
-		baseURL := *ghAPIURL
-		config.SCMRegistry = scm.Registry{
-			scm.GitHub: func(pat string) scm.Client {
-				return github.NewWithBaseURL(pat, baseURL)
-			},
-		}
-		log.Printf("Using custom GitHub API URL: %s", baseURL)
+		log.Printf("Using custom GitHub API URL: %s", *ghAPIURL)
 	}
 
 	if *kubeAPIServer == "" {
@@ -132,6 +134,18 @@ func main() {
 		}
 		log.Printf("TLS certificate not found, listening on http://%s", ln.Addr())
 		log.Fatal(http.Serve(ln, muxHandler))
+	}
+}
+
+// newSCMRegistry returns the SCM client registry. ghAPIURL overrides the GitHub
+// API base URL (empty uses github.com), and pollInterval sets the
+// WatchWorkflowRuns poll cadence for every client.
+func newSCMRegistry(ghAPIURL string, pollInterval time.Duration) scm.Registry {
+	withPollInterval := github.WithWatchPollInterval(pollInterval)
+	return scm.Registry{
+		scm.GitHub: func(pat string) scm.Client {
+			return github.NewWithBaseURL(pat, ghAPIURL, withPollInterval)
+		},
 	}
 }
 

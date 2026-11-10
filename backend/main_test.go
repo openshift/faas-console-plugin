@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -141,6 +144,49 @@ var _ = Describe("API routes", func() {
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(w.Header().Get("Content-Type")).To(Equal("text/event-stream"))
 		Expect(w.Body.String()).To(ContainSubstring(`"code":401`))
+	})
+})
+
+var _ = Describe("SCM registry", func() {
+	It("applies the workflow polling interval to clients for a custom GitHub API URL", func() {
+		// The first poll sees the run in progress, later polls see it completed.
+		var polls atomic.Int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case r.URL.Path == "/user":
+				_ = json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
+			case r.URL.Path == "/search/repositories":
+				_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "items": []map[string]any{{
+					"name":           "fn",
+					"html_url":       "https://example.com/alice/fn",
+					"default_branch": "main",
+					"owner":          map[string]any{"login": "alice"},
+				}}})
+			case strings.Contains(r.URL.Path, "/actions/workflows/"):
+				run := map[string]any{"id": 1, "status": "completed", "conclusion": "success"}
+				if polls.Add(1) == 1 {
+					run = map[string]any{"id": 1, "status": "in_progress"}
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"total_count": 1, "workflow_runs": []any{run}})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		DeferCleanup(srv.Close)
+
+		client := newSCMRegistry(srv.URL, 10*time.Millisecond).Client(scm.GitHub, "test-pat")
+		watch, err := client.WatchWorkflowRuns(context.Background(), "func-deploy.yaml")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(watch.Stop)
+
+		var event scm.WorkflowRunsEvent
+		Eventually(watch.ResultChan()).Should(Receive(&event))
+		Expect(event.Runs["alice/fn"].Status).To(Equal(scm.InProgress))
+
+		// Within 1s the change is only seen if the client polls at the
+		// configured interval rather than the 3s default.
+		Eventually(watch.ResultChan()).WithTimeout(time.Second).Should(Receive(&event))
+		Expect(event.Runs["alice/fn"].Status).To(Equal(scm.Succeeded))
 	})
 })
 
