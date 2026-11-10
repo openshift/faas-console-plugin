@@ -601,35 +601,39 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		}
 	})
 
-	It("polls at the interval set by WithWatchPollInterval and keeps the rediscover interval", func() {
-		// Scripted by request count: the first poll sees the run in progress and
-		// later polls see it completed. Discovery finds "fn" first; any later
-		// search (a rediscovery) would also return "fn2".
-		var fnPolls, searches atomic.Int32
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	It("poll/rediscover interval wiring", func() {
+		var polls, discovers atomic.Int32
+		h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
 			case r.URL.Path == "/user":
 				json.NewEncoder(w).Encode(map[string]string{"login": "alice"})
 			case r.URL.Path == "/search/repositories":
+				p := polls.Load()
+				if p != 0 && p != 2 {
+					w.WriteHeader(http.StatusNotAcceptable)
+					w.Write([]byte(`{"message": "unexpected discover"}`))
+					return
+				}
 				repos := []map[string]any{repoItem("alice", "fn", "main")}
-				if searches.Add(1) > 1 {
+				if discovers.Add(1) > 1 {
 					repos = append(repos, repoItem("alice", "fn2", "main"))
 				}
 				json.NewEncoder(w).Encode(map[string]any{"total_count": len(repos), "items": repos})
 			case strings.Contains(r.URL.Path, "/repos/alice/fn/actions/workflows/"):
-				if fnPolls.Add(1) == 1 {
+				if polls.Add(1) == 1 {
 					writeRuns(w, map[string]any{"id": 1, "status": "in_progress"})
 					return
 				}
 				writeRuns(w, map[string]any{"id": 1, "status": "completed", "conclusion": "success"})
 			case strings.Contains(r.URL.Path, "/repos/alice/fn2/actions/workflows/"):
+				polls.Add(1)
 				writeRuns(w, map[string]any{"id": 2, "status": "completed", "conclusion": "success"})
 			default:
 				w.WriteHeader(http.StatusNotFound)
 			}
-		}))
-		DeferCleanup(srv.Close)
-		cl := github.NewWithBaseURL("test-pat", srv.URL, github.WithWatchPollInterval(10*time.Millisecond))
+		})
+
+		cl, tickPoll, tickRediscover := newClient(h)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		DeferCleanup(cancel)
@@ -640,19 +644,24 @@ var _ = Describe("WatchWorkflowRuns", func() {
 		first := receiveWTO(w.ResultChan())
 		Expect(first["alice/fn"].Status).To(Equal(scm.InProgress))
 
-		// receiveWTO waits 1s, so the change is only seen if the next poll runs
-		// at the configured interval rather than the 3s default.
+		go tickPoll()
 		second := receiveWTO(w.ResultChan())
 		Expect(second["alice/fn"].Status).To(Equal(scm.Succeeded))
+		Expect(second).To(HaveLen(1))
 
-		// A rediscovery would add "fn2" to the next snapshot. None arrives, so
-		// rediscovery keeps its own 30s interval.
-		Consistently(w.ResultChan()).WithTimeout(300 * time.Millisecond).ShouldNot(Receive())
+		go func() {
+			tickRediscover()
+			tickPoll()
+		}()
+		third := receiveWTO(w.ResultChan())
+		Expect(third["alice/fn2"].Status).To(Equal(scm.Succeeded))
 	})
 
-	It("rejects a non-positive poll interval", func() {
+	It("rejects a non-positive interval", func() {
 		Expect(func() { github.WithWatchPollInterval(0) }).To(PanicWith(ContainSubstring("must be positive")))
 		Expect(func() { github.WithWatchPollInterval(-time.Second) }).To(PanicWith(ContainSubstring("must be positive")))
+		Expect(func() { github.WithWatchRediscoverInterval(0) }).To(PanicWith(ContainSubstring("must be positive")))
+		Expect(func() { github.WithWatchRediscoverInterval(-time.Second) }).To(PanicWith(ContainSubstring("must be positive")))
 	})
 
 	DescribeTable("maps run status and conclusion to a workflow run status",
