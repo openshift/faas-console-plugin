@@ -40,7 +40,6 @@ var _ = Describe("ParseWorkflowPollingInterval", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(got).To(Equal(want))
 	},
-		Entry("empty value uses the 3s default", "", 3*time.Second),
 		Entry("flag default", "3s", 3*time.Second),
 		Entry("seconds", "10s", 10*time.Second),
 		Entry("minutes and seconds", "1m30s", 90*time.Second),
@@ -56,6 +55,7 @@ var _ = Describe("ParseWorkflowPollingInterval", func() {
 		)))
 		Expect(got).To(BeZero())
 	},
+		Entry("empty", ""),
 		Entry("malformed", "abc"),
 		Entry("missing unit", "10"),
 		Entry("unknown unit", "5x"),

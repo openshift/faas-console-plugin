@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/openshift/faas-console-plugin/backend/scm/github"
 )
 
 // ParseSATokenExpiry converts the --sa-token-expiry value into a token lifetime in
@@ -29,14 +27,7 @@ func ParseSATokenExpiry(s string) (int64, error) {
 	return secs, nil
 }
 
-// ParseWorkflowPollingInterval converts the --workflow-polling-interval value
-// into the interval between GitHub workflow run polls. The value is a positive
-// Go duration, e.g. 3s, 30s, or 1m. An empty value yields
-// github.DefaultWatchPollInterval.
 func ParseWorkflowPollingInterval(s string) (time.Duration, error) {
-	if s == "" {
-		return github.DefaultWatchPollInterval, nil
-	}
 	d, err := time.ParseDuration(s)
 	if err != nil || d <= 0 {
 		return 0, fmt.Errorf("invalid workflow polling interval %q: must be a positive duration such as 3s, 30s, or 1m", s)
