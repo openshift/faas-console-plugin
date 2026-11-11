@@ -48,6 +48,22 @@ func RequireSCMCredential(next http.Handler, scmCredentials credentials.Provider
 	})
 }
 
+// CancelOnShutdown answers "may this handler keep running while the server is
+// stopping?" for routes that run until the client goes away. Shutdown waits for
+// active connections to fall idle and never cancels a request itself, so a
+// stream holds the drain open for the whole budget. Wrap only those routes:
+// handlers that finish on their own should be left to finish, or a shutdown
+// tears their work in half.
+func CancelOnShutdown(shutdownCtx context.Context, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		stop := context.AfterFunc(shutdownCtx, cancel)
+		defer stop()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // LoggingMiddleware logs every request and turns a panic into a 500.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
