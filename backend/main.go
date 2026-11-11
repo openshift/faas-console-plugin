@@ -42,7 +42,7 @@ func main() {
 	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
 	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
-	workflowPollingInterval := flag.String("workflow-polling-interval", github.DefaultWatchPollInterval.String(), "interval between GitHub workflow run status polls, a positive duration such as 3s, 30s, or 1m")
+	workflowPollingInterval := flag.String("workflow-polling-interval", "3s", "interval between GitHub workflow run status polls, a positive duration such as 3s, 30s, or 1m")
 	flag.Parse()
 
 	pollInterval, err := config.ParseWorkflowPollingInterval(*workflowPollingInterval)

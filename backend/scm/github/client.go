@@ -71,7 +71,7 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 	c := &ghClient{
 		client:             client,
 		newTicker:          ticker.New,
-		pollInterval:       DefaultWatchPollInterval,
+		pollInterval:       defaultWatchPollInterval,
 		rediscoverInterval: defaultWatchRediscoverInterval,
 	}
 	for _, opt := range opts {
