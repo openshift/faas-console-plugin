@@ -12,6 +12,56 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 )
 
+var _ = Describe("CancelOnShutdown", func() {
+	// Serve next over a real connection, reporting when it is entered and when
+	// it gives up waiting on its request context.
+	serveBlocking := func(shutdownCtx context.Context) (returned chan struct{}) {
+		started, returned := make(chan struct{}), make(chan struct{})
+		wrapped := CancelOnShutdown(shutdownCtx, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			close(started)
+			<-r.Context().Done()
+			close(returned)
+		}))
+
+		srv := httptest.NewServer(wrapped)
+		DeferCleanup(srv.Close)
+		// Runs before srv.Close, which waits on outstanding requests. Dropping
+		// the connection releases a handler that is still blocked.
+		DeferCleanup(srv.CloseClientConnections)
+
+		go func() {
+			defer GinkgoRecover()
+			resp, err := http.Get(srv.URL)
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
+
+		Eventually(started).Should(BeClosed())
+		return returned
+	}
+
+	It("releases a handler that is waiting on its request context", func() {
+		shutdownCtx, shutdown := context.WithCancel(context.Background())
+		returned := serveBlocking(shutdownCtx)
+		// Registered after srv.Close, so cleanup unblocks the handler first.
+		DeferCleanup(shutdown)
+
+		// Nothing but shutdown should end it: the client is still connected.
+		Consistently(returned, "100ms").ShouldNot(BeClosed())
+
+		shutdown()
+
+		Eventually(returned).Should(BeClosed())
+	})
+
+	It("leaves the handler alone while the server is running", func() {
+		returned := serveBlocking(context.Background())
+
+		Consistently(returned, "100ms").ShouldNot(BeClosed())
+	})
+})
+
 var _ = Describe("RequireOCPToken", func() {
 	DescribeTable("rejects missing or malformed bearer authentication",
 		func(authorization string) {
