@@ -81,6 +81,23 @@ At the end of each cycle, outgoing role holders:
 - When done refining, grab the next ones
 - If a story is larger than expected, break it down, re-estimate, and refine new stories before moving them to Backlog
 
+### Refactoring workflow
+
+**Ground rules:**
+
+- Always refactor a little bit, in small PRs under the ticket's Jira issue ID.
+- Have a private refactoring backlog in your notes.
+
+**Workflow:**
+
+1. When you start a new ticket, spend one to two hours working through your
+   refactoring backlog and open the result as a separate PR.
+2. While developing or reviewing code, note refactoring candidates in your backlog.
+3. When the implementation is done, spend another one to two hours cleaning up
+   what the work touched and open another small PR.
+
+The most used refactorings are listed with examples in the [free first chapter](https://www.thoughtworks.com/content/dam/thoughtworks/documents/books/bk_Refactoring2-free-chapter_en.pdf) of *Refactoring 2nd Edition by Martin Fowler*.
+
 ### Mid-flight re-scoping
 
 When a story grows beyond its original estimate during development:
