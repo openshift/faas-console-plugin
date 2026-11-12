@@ -16,6 +16,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 | Guide | Description |
 |-------|-------------|
 | [Ways of Working](docs/WAYS_OF_WORKING.md) | PM roles and rotation, issue tracking, ceremonies, pull requests |
+| [Refactoring Workflow](docs/WAYS_OF_WORKING.md#refactoring-workflow) | How and when to refactor |
 | [Architecture](docs/ARCHITECTURE.md) | Layered architecture, dependency rules, and React patterns |
 | [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, commit conventions, CSS rules, and OCP plugin constraints |
 | [Testing](docs/TESTING.md) | TDD approach, test layers, mock strategy, and file conventions |
