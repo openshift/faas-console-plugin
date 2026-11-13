@@ -16,6 +16,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 | Guide | Description |
 |-------|-------------|
 | [Ways of Working](docs/WAYS_OF_WORKING.md) | PM roles and rotation, issue tracking, ceremonies, pull requests |
+| [Refactoring Workflow](docs/WAYS_OF_WORKING.md#refactoring-workflow) | How and when to refactor |
 | [Architecture](docs/ARCHITECTURE.md) | Layered architecture, dependency rules, and React patterns |
 | [Style Guide](docs/STYLEGUIDE.md) | Code style, naming conventions, commit conventions, CSS rules, and OCP plugin constraints |
 | [Testing](docs/TESTING.md) | TDD approach, test layers, mock strategy, and file conventions |
@@ -26,7 +27,7 @@ Built as an [OpenShift Console dynamic plugin](https://github.com/openshift/cons
 |----------|-------------|
 | [PR Template](.github/pull_request_template.md) | Pull request description format |
 | [Jira Epic](docs/templates/jira-epic-template.md) | Template for creating Jira epics |
-| [Jira Story](docs/templates/jira-story-template.md) | Template for creating Jira stories |
+| [Jira Story & Spike](docs/templates/jira-story-spike-template.md) | Template for creating Jira stories and spikes |
 | [Jira Bug](docs/templates/jira-bug-template.md) | Template for filing Jira bugs |
 | [Retrospective](docs/templates/retro-template.md) | Template for retrospective entries |
 
