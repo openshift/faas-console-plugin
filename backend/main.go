@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -11,6 +12,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/openshift/faas-console-plugin/backend/config"
 	"github.com/openshift/faas-console-plugin/backend/handler"
@@ -25,23 +29,43 @@ import (
 const (
 	defaultCAPath                 = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 	defaultConsolePluginNamespace = "console-functions-plugin"
+
+	shutdownTimeout = 5 * time.Second
 )
 
 //go:embed all:static/*
 var staticFiles embed.FS
 
 func main() {
-	httpPort := flag.Int("http-port", 8080, "HTTP server port")
-	httpsPort := flag.Int("https-port", 8443, "HTTPS server port")
-	certFile := flag.String("cert", "/var/cert/tls.crt", "TLS certificate file")
-	keyFile := flag.String("key", "/var/cert/tls.key", "TLS key file")
-	caPath := flag.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
-	kubeHost := flag.String("kube-host", "", "Kubernetes API server URL (empty uses in-cluster config)")
-	kubeAPIServer := flag.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
-	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
-	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
-	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
-	flag.Parse()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	err := run(ctx, os.Args[1:])
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "ERROR: %s\n", err.Error())
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, args []string) error {
+	fgs := flag.NewFlagSet("plugin-backend", flag.ContinueOnError)
+	httpPort := fgs.Int("http-port", 8080, "HTTP server port, used only when no TLS certificate is found")
+	httpsPort := fgs.Int("https-port", 8443, "HTTPS server port")
+	certFile := fgs.String("cert", "/var/cert/tls.crt", "TLS certificate file")
+	keyFile := fgs.String("key", "/var/cert/tls.key", "TLS key file")
+	caPath := fgs.String("kube-root-ca-path", defaultCAPath, "path to CA certificate for cluster TLS probe")
+	kubeHost := fgs.String("kube-host", "", "Kubernetes API server URL (empty uses in-cluster config)")
+	kubeAPIServer := fgs.String("external-api-server-url", "", "external Kubernetes API server URL embedded in generated kubeconfigs")
+	clusterID := fgs.String("cluster-id", "", "unique cluster identifier")
+	ghAPIURL := fgs.String("gh-api-url", "", "GitHub API base URL")
+	saTokenExpiry := fgs.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
+	err := fgs.Parse(args)
+	if errors.Is(err, flag.ErrHelp) {
+		// Parse already printed the usage text.
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("parse arguments: %w", err)
+	}
 
 	if *ghAPIURL != "" {
 		baseURL := *ghAPIURL
@@ -54,92 +78,122 @@ func main() {
 	}
 
 	if *kubeAPIServer == "" {
-		log.Fatal("--external-api-server-url is required")
+		return fmt.Errorf("--external-api-server-url is required")
 	}
 
 	if *clusterID == "" {
-		log.Fatal("--cluster-id is required")
+		return fmt.Errorf("--cluster-id is required")
 	}
 
 	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
-		log.Fatalf("Failed to create sub filesystem: %v", err)
+		return fmt.Errorf("failed to create sub filesystem: %v", err)
 	}
 
 	saTokenExpiryParsed := config.DefaultSATokenExpiry
 	if saTokenExpiry != nil && *saTokenExpiry != "" {
 		saTokenExpiryParsed, err = config.ParseSATokenExpiry(*saTokenExpiry)
 		if err != nil {
-			log.Fatalf("Failed to parse --sa-token-expiry=%s: %v", *saTokenExpiry, err)
+			return fmt.Errorf("failed to parse --sa-token-expiry=%s: %v", *saTokenExpiry, err)
 		}
 	}
 
 	cfg, err := kube.ComponentConfig()
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	namespace := kube.Namespace(defaultConsolePluginNamespace)
 	caCert, err := readCACert(*caPath)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	scmCredentials, err := credentials.NewStore(cfg, namespace, identity.NewResolver(*kubeHost, caCert))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	log.Printf("Storing SCM credentials as Secrets in namespace %q", namespace)
 
 	h := handler.New(caCert, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed, scmCredentials)
 
-	mux := newMux(h, scmCredentials, static)
+	mux := newMux(ctx, h, scmCredentials, static)
 
 	muxHandler := handler.LoggingMiddleware(mux)
 
 	_, certErr := os.Stat(*certFile)
 	_, keyErr := os.Stat(*keyFile)
+	var listener net.Listener
 	if certErr == nil && keyErr == nil {
 		reloader, err := tlsreload.New(*certFile, *keyFile)
 		if err != nil {
-			log.Fatalf("Failed to load TLS certificate: %v", err)
+			return fmt.Errorf("failed to load TLS certificate: %v", err)
 		}
 
-		go reloader.Run(context.Background())
-
-		go func() {
-			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpPort))
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Printf("Listening on http://%s", ln.Addr())
-			log.Fatal(http.Serve(ln, muxHandler))
-		}()
+		go reloader.Run(ctx)
 
 		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpsPort))
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("listen on https port %d: %w", *httpsPort, err)
 		}
-		tlsLn := tls.NewListener(ln, &tls.Config{
+		listener = tls.NewListener(ln, &tls.Config{
 			GetCertificate: reloader.GetCertificate,
 		})
 		log.Printf("Listening on https://%s", ln.Addr())
-		log.Fatal(http.Serve(tlsLn, muxHandler))
 	} else {
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpPort))
+		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", *httpPort))
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("listen on http port %d: %w", *httpPort, err)
 		}
-		log.Printf("TLS certificate not found, listening on http://%s", ln.Addr())
-		log.Fatal(http.Serve(ln, muxHandler))
+		log.Printf("TLS certificate not found, listening on http://%s", listener.Addr())
+	}
+	defer listener.Close()
+
+	server := http.Server{
+		Handler: muxHandler,
+	}
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- server.Serve(listener)
+	}()
+
+	select {
+	case err := <-serveDone:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("serve: %w", err)
+		}
+		return nil
+
+	case <-ctx.Done():
+		log.Printf("Signal received, draining in-flight requests for up to %s", shutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		err := server.Shutdown(shutdownCtx)
+		if errors.Is(err, context.DeadlineExceeded) {
+			// Shutdown waits for active connections to fall idle but never cancels
+			// an in-flight request, so streaming handlers such as the workflow run
+			// watch outlast the budget. Close drops the connections, which cancels
+			// their request contexts and lets those handlers return.
+			log.Printf("Drain budget of %s expired, closing remaining connections", shutdownTimeout)
+			err = server.Close()
+		}
+		serveErr := <-serveDone
+		if err != nil {
+			return fmt.Errorf("shut down: %w", err)
+		}
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			return fmt.Errorf("serve: %w", serveErr)
+		}
+		return nil
 	}
 }
 
-func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.FS) *http.ServeMux {
+func newMux(shutdownCtx context.Context, h *handler.Handlers, scmCredentials credentials.Provider, static fs.FS) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
 	// SSE reports failures inside the stream, so it checks the caller itself.
-	mux.HandleFunc("GET /api/v1/func/workflow-run/watch", handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials)))
+	mux.Handle("GET /api/v1/func/workflow-run/watch", handler.CancelOnShutdown(shutdownCtx,
+		handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials))))
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	withCredential := func(next http.HandlerFunc) http.Handler {
