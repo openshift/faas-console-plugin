@@ -50,7 +50,7 @@ FunctionTable.tsx <── useFunctions <── functionsClient.ts <── sseEve
 | `backend/scm/github/httpcache/etagcache.go` | The ETag cache: stores bodies, sends `If-None-Match`, replays on 304 |
 | `backend/functions/ci.go` | `WorkflowFilename`, the single workflow the watch is scoped to |
 | `backend/handler/workflow.go` | The SSE endpoint, `WorkflowRunDTO` / `ErrorDTO`, error mapping |
-| `backend/ticker/ticker.go` | Ticker abstraction behind an injectable factory, so tests step time instead of sleeping |
+| `backend/ticker/ticker.go` | Ticker abstraction behind an injectable factory that receives each ticker's interval, so tests step time instead of sleeping |
 | `backend/fakegithub/server.go` | Fake Actions API plus the `/_admin` scripting control |
 | `src/common/transport/sseEventSource.ts` | Custom SSE client implementing a subset of the native `EventSource` API, generic over event names |
 | `src/common/clients/functionsClient.ts` | `receiveWorkflowRunEvents`: wire events to callbacks |
@@ -60,23 +60,29 @@ FunctionTable.tsx <── useFunctions <── functionsClient.ts <── sseEve
 | `src/pages/function-list/components/FunctionTable.tsx` | `StatusCell`, the merge table rendered |
 | `e2e/helpers/fakegithub.ts` | `setWorkflowRun` and reset helpers for e2e |
 
-Cadences, all hardcoded (no config or env override; changing one means editing
-the constant):
+Cadences, all hardcoded except the workflow run poll, which
+`--workflow-polling-interval` sets (changing any other means editing the constant):
 
 | Cadence | Value | Defined in |
 |---------|-------|------------|
-| Workflow run poll | 3s | `defaultWatchPollInterval`, `scm/github/workflow.go` |
+| Workflow run poll | 3s (default) | `defaultWatchPollInterval`, `scm/github/workflow.go` |
 | Repo rediscovery | 30s | `defaultWatchRediscoverInterval`, `scm/github/workflow.go` |
 | SSE heartbeat | 15s | `defaultHeartbeat`, `handler/workflow.go` |
 | Client reconnect delay | 3s | `reconnectDelayMs` default, `sseEventSource.ts` |
 
-None of these is configurable at runtime: there is no flag, env var or API to
-change them, so retuning one means editing the constant. They are overridable
-in-process, though, which is how tests reach them: `github.WithWatchTickerFactories`
-and `handler.WithHeartbeatTickerFactory` are exported options that replace the
-ticker driving a cadence (not its duration). On the frontend, `reconnectDelayMs`
-is a transport option, but `functionsClient.ts` does not pass it, so the 3s
-default is what runs in the app.
+Apart from the workflow run poll, none of these is configurable at runtime:
+there is no flag, env var or other externally exposed setting for them, so
+retuning one means editing the constant. The poll interval is set at startup by
+`--workflow-polling-interval` (a positive Go duration; an empty, malformed, zero,
+or negative value stops the backend) through `github.WithWatchPollInterval`. The
+backend cadences are overridable in-process through Go options, though, which is
+how tests reach them:
+`github.WithWatchPollInterval` and `github.WithWatchRediscoverInterval` set the
+two watch intervals (no flag exposes the rediscover interval), and
+`github.WithWatchTickerFactory` and `handler.WithHeartbeatTickerFactory` replace
+the `ticker.Factory`, which is called with a cadence's interval to create its
+ticker. On the frontend, `reconnectDelayMs` is a transport option, but
+`functionsClient.ts` does not pass it, so the 3s default is what runs in the app.
 
 ## Lifecycle and status merge
 
@@ -358,8 +364,9 @@ key everything is correlated on, matching what `listFunctions` returns.
   failure say, carries no `Is` of its own and will not match itself, which costs
   a duplicate event rather than a wrong one. The carried-forward per-repo error
   uses the same helper.
-- Poll interval ~3s. The repo set is rediscovered on a slower cadence (~30s) so
-  newly created or deleted functions appear/disappear without reconnecting.
+- Poll interval ~3s by default (`--workflow-polling-interval`). The repo set is
+  rediscovered on a slower cadence (~30s) so newly created or deleted functions
+  appear/disappear without reconnecting.
 - **A failed rediscovery does not end the watch.** It emits
   `WorkflowRunsEvent{Runs: <last snapshot>, Err: err}` and keeps polling the repo
   set it already has. Closing the channel was the original design and was
@@ -672,10 +679,15 @@ Backend (Ginkgo/Gomega):
 
 - `scm/github`: `WatchWorkflowRuns` happy path (in_progress, success), failure
   path, change-only emission, per-repo error carry-forward, rediscovery and
-  rediscovery failure, missing workflow file, and conditional-request
-  revalidation. The intervals themselves are hardcoded, but the tickers that
-  drive them come from an injectable factory, so tests step time explicitly
-  rather than sleeping; the same applies to the heartbeat in the handler.
+  rediscovery failure, missing workflow file, conditional-request revalidation,
+  poll/rediscover interval wiring, and rejection of non-positive intervals.
+  The `WatchWorkflowRuns` tests run no real ticker: `newClient` sets the poll
+  and rediscover intervals through the client options and passes
+  `github.WithWatchTickerFactory` a factory that hands each interval its own
+  fake ticker from `ticker.CreateFakeTickerFactory`, so a test fires polls and
+  rediscoveries on demand. Where a handler test needs control of the heartbeat,
+  it injects a fake ticker the same way, through
+  `handler.WithHeartbeatTickerFactory`.
 - `scm/github/httpcache`: the ETag cache through its exported surface. 304
   replay, revalidation instead of honouring `max-age`, the header merge and
   hop-by-hop stripping, bodies of any size, the uncacheable cases (non-GET,

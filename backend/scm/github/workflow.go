@@ -17,7 +17,7 @@ import (
 )
 
 // Defaults for the WatchWorkflowRuns cadence, applied by NewWithBaseURL.
-// WithWatchIntervals overrides them per client.
+// WithWatchPollInterval overrides the poll interval per client.
 const (
 	defaultWatchPollInterval       = 3 * time.Second
 	defaultWatchRediscoverInterval = 30 * time.Second
@@ -25,8 +25,9 @@ const (
 
 // WatchWorkflowRuns polls GitHub for the latest workflow run of the given workflow
 // file across the authenticated user's function repos (topic:serverless-function),
-// emitting snapshots when the status changes. Polls every 3s; rediscovers repos
-// (re-runs ListRepos to pick up new/deleted functions) every 30s. Uses ETag
+// emitting snapshots when the status changes. Polls at the client's poll interval
+// (defaultWatchPollInterval unless set with WithWatchPollInterval); rediscovers
+// repos (re-runs ListRepos to pick up new/deleted functions) every 30s. Uses ETag
 // conditional requests (304s are rate-limit exempt) to reduce API consumption.
 //
 // Error handling: per-repo failures set WorkflowRun.Error and carry forward the
@@ -73,9 +74,9 @@ func (c *ghClient) WatchWorkflowRuns(ctx context.Context, workflowFilename strin
 		runs := c.pollRuns(pollCtx, repos, workflowFilename, prevRuns)
 		emit(runs, nil)
 
-		poll := c.pollTickerFactory()
+		poll := c.newTicker(c.pollInterval)
 		defer poll.Stop()
-		rediscover := c.rediscoverTickerFactory()
+		rediscover := c.newTicker(c.rediscoverInterval)
 		defer rediscover.Stop()
 
 		for {

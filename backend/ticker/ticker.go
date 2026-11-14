@@ -12,7 +12,7 @@ type Ticker interface {
 }
 
 // Factory creates Ticker instances.
-type Factory func() Ticker
+type Factory func(d time.Duration) Ticker
 
 // ticker wraps time.Ticker to satisfy the Ticker interface.
 type ticker struct {
@@ -61,7 +61,7 @@ func (m *tickerFake) tick() {
 
 // SilentTickerFactory returns a Factory that creates tickers with nil channels (no events).
 func SilentTickerFactory() Factory {
-	return func() Ticker {
+	return func(_ time.Duration) Ticker {
 		return &tickerFake{
 			c:    nil,
 			done: make(chan struct{}),
@@ -82,7 +82,7 @@ func CreateFakeTickerFactory() (func(), Factory) {
 	tick := func() {
 		t.tick()
 	}
-	factory := func() Ticker {
+	factory := func(_ time.Duration) Ticker {
 		if !invoked.CompareAndSwap(false, true) {
 			panic("factory invoked multiple times")
 		}

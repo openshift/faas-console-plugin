@@ -17,18 +17,30 @@ import (
 
 type Option func(*ghClient)
 
-// WithWatchTickerFactories sets the factories for poll and rediscover tickers
-// in the WatchWorkflowRuns loop. Both must be non-nil.
-func WithWatchTickerFactories(poll, rediscover ticker.Factory) Option {
-	if poll == nil {
-		panic("poll factory must not be nil")
-	}
-	if rediscover == nil {
-		panic("rediscover factory must not be nil")
+func WithWatchPollInterval(d time.Duration) Option {
+	if d <= 0 {
+		panic(fmt.Sprintf("watch poll interval must be positive, got %s", d))
 	}
 	return func(c *ghClient) {
-		c.pollTickerFactory = poll
-		c.rediscoverTickerFactory = rediscover
+		c.pollInterval = d
+	}
+}
+
+func WithWatchRediscoverInterval(d time.Duration) Option {
+	if d <= 0 {
+		panic(fmt.Sprintf("watch rediscover interval must be positive, got %s", d))
+	}
+	return func(c *ghClient) {
+		c.rediscoverInterval = d
+	}
+}
+
+func WithWatchTickerFactory(newTicker ticker.Factory) Option {
+	if newTicker == nil {
+		panic("newTicker must not be nil")
+	}
+	return func(c *ghClient) {
+		c.newTicker = newTicker
 	}
 }
 
@@ -42,7 +54,7 @@ func New(pat string) scm.Client {
 func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 	// Its own ETag cache, so responses are never served across PATs. Unchanged
 	// workflow run status comes back as a 304, which does NOT count against the
-	// primary rate limit, so the 3s poll loop stays nearly free. See
+	// primary rate limit, so the poll loop stays nearly free. See
 	// httpcache.NewETagCache.
 	httpClient := &http.Client{Transport: httpcache.NewETagCache(http.DefaultTransport), Timeout: 30 * time.Second}
 	clientOpts := []ghlib.ClientOptionsFunc{
@@ -57,13 +69,10 @@ func NewWithBaseURL(pat, baseURL string, opts ...Option) scm.Client {
 		panic(fmt.Sprintf("github.NewWithBaseURL: invalid baseURL %q: %v", baseURL, err))
 	}
 	c := &ghClient{
-		client: client,
-		pollTickerFactory: func() ticker.Ticker {
-			return ticker.New(defaultWatchPollInterval)
-		},
-		rediscoverTickerFactory: func() ticker.Ticker {
-			return ticker.New(defaultWatchRediscoverInterval)
-		},
+		client:             client,
+		newTicker:          ticker.New,
+		pollInterval:       defaultWatchPollInterval,
+		rediscoverInterval: defaultWatchRediscoverInterval,
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -75,8 +84,9 @@ type ghClient struct {
 	client *ghlib.Client
 	// Ticker factories for the WatchWorkflowRuns loop. Set once at construction
 	// and only read afterwards, including by the watch goroutine.
-	pollTickerFactory       ticker.Factory
-	rediscoverTickerFactory ticker.Factory
+	newTicker          ticker.Factory
+	pollInterval       time.Duration
+	rediscoverInterval time.Duration
 }
 
 func mapErr(err error) error {
