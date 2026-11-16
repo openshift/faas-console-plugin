@@ -23,7 +23,9 @@ the Roadmap Managers coordinate delivery with the product manager.
 All team members:
 
 - Develop, test, document, review code, and contribute to architecture decisions.
-- Refine stories and keep their own Jira issues, status, and PR links up to date.
+- Own refinement of their issues through to _Backlog_, and keep status, labels, estimates, dependencies and PR links up to date.
+- When picking up a ticket to refine, self-assign it and own it through to _Backlog_. Remove the assignee once it moves to _Backlog_. Tickets left in _New_ without an assignee are picked up by the Backlog Manager during the weekly sanity check.
+- Bring decisions and requests for refinement help to grooming.
 - Create or update an appropriate Jira issue for actionable findings and ideas they raise.
 
 ### Meeting Manager
@@ -34,10 +36,15 @@ All team members:
 
 ### Backlog Manager
 
-- Set up and facilitate backlog grooming, and coordinate story refinement across the team.
-- Ensure work is tracked in an appropriate Jira issue. Continuously monitor that issues in status Backlog and beyond are refined, assigned, prioritized, and estimated.
-- Check issue has correct status, PR links where applicable, story-to-epic links, epic-to-OCPSTRAT links, and dependencies.
-- Lead the Jira sanity check during weekly syncs and follow up on unresolved ticket dependencies.
+- Set up and facilitate backlog grooming, and help story owners get refinement input from the team. Owners remain responsible for refinement and moving ready issues to _Backlog_.
+- During grooming, coordinate the movement of inbox items and misplaced issues to the correct epics.
+- During grooming, briefly review a few of the oldest untouched _New_ or _Refinement_ issues with their owners to agree next steps and prevent abandoned tickets.
+- Collect topics people bring, hot topics, relevant Slack conversations, and unanswered requests for PM opinion, and keep them in a short running grooming agenda.
+- Ensure work is tracked in an appropriate Jira issue.
+- Continuously monitor that `Inbox` issues in status beyond _Backlog_ are correctly estimated and refined.
+- Return insufficiently refined _Backlog_ issues to _New_ with a comment explaining the gaps. Across these reviews, verify status, labels, applicable PR links, story-to-epic links, epic-to-OCPSTRAT links, and dependencies.
+- Lead the Jira sanity check during weekly syncs, raise gaps, and follow up on unresolved ticket dependencies with their owners.
+- Review potentially stale items with PM in a separate meeting when needed and agree their resolution. `needs-stale-check` may be used temporarily to collect those items, then removed once resolved.
 
 ### Roadmap Manager
 
@@ -79,7 +86,7 @@ At the end of each cycle, outgoing role holders:
 - Develop your story and refine the others
 - When done, notify the team in weekly sync, grab another refined story from the backlog
 - When done refining, grab the next ones
-- If a story is larger than expected, break it down, re-estimate, and refine new stories before moving them to Backlog
+- If a story is larger than expected, break it down, re-estimate, and refine new stories before moving them to _Backlog_
 
 ### Mid-flight re-scoping
 
@@ -105,37 +112,111 @@ We use Jira for planning and tracking. Issues are organized as:
 - **Bugs** describe a defect to fix (see [bug template](templates/jira-bug-template.md))
 - **Sub-tasks** break a story into smaller pieces when needed
 
+### Inbox
+
+Every new issue lands in the `Inbox` epic first. The Backlog Manager reviews inbox items during grooming to confirm refinement and decide where they belong.
+
+### Qualification Labels
+
+Use one primary purpose label and one support tier.
+
+#### Support Tiers
+
+The tiers follow "Serverless 2.0 Dependency Support Tiers".
+
+| Label             | Support scope                                              | Examples                                                                                                           |
+| ----------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `tier-0`  | Core dependencies and capabilities that make up Serverless | KEDA autoscaling, OCP Console, Git or equivalent repository capability, in-cluster CI/CD such as Tekton, Kafka EDA |
+| `tier-1`  | OpenShift dependencies that make Serverless work in OCP    | External-cluster CI/CD, Service Mesh networking                                                                    |
+| `tier-2`  | Established customer integrations                          | GitHub, Camel, SQS and S3                                                                                          |
+| `tier-3`  | Best-effort integrations                                   | MCP, GitHub Actions                                                                                                |
+| `tier-4`  | Documentation/upstream-only integrations                   | RedisStream                                                                                                        |
+| `tier-na` | Work outside the dependency support model                  | Team process, generic development tooling                                                                          |
+
+- Generic Console correctness or refactoring is Tier 0; GitHub-specific integration is Tier 2 even when implemented in the Console.
+- Product CI/CD and the team's own build/test infrastructure are different: development CI does not automatically inherit a customer CI/CD tier.
+- Documentation inherits the capability's tier. Writing documentation does not make an issue Tier 4.
+
+#### Work Purpose
+
+| Label         | Purpose                                                                            |
+| ------------- | ---------------------------------------------------------------------------------- |
+| `capability`  | Add or extend user-facing functionality or integrations                            |
+| `hardening`   | Improve correctness, security, reliability, recovery or production robustness      |
+| `maintenance` | Refactor, simplify code, maintain compatibility or update dependencies             |
+| `tooling`     | Improve development environments, repository CI, test infrastructure or automation |
+| `docs`        | Provide user/operator documentation, examples or guides                            |
+| `process`     | Improve team practices, planning, roles or ceremonies                              |
+
+Choose one or more purposes. For example, production-code test refactoring can be Tier 0 maintenance, while a generic E2E runner improvement is tooling outside the support tiers. Developer tooling guides belong with tooling; team working agreements belong with process.
+
+### Backlog Readiness
+
+The issue owner assignee owns refinement and moves the issue to _Backlog_ when it is ready.
+The Backlog Manager checks readiness and labels, and returns unready _Backlog_ issues to _New_ with a comment identifying the gaps. The owner addresses them before moving it back to _Backlog_.
+
+An issue is ready when:
+
+- The description states the problem and expected outcome following our guide templates.
+- Priority and a story-point estimate are set.
+- A support tier label and a work purpose label are set.
+- Parent epic, dependencies and related issue links are correct.
+- Scope is bounded, coherent and independently deliverable.
+- Acceptance criteria are observable.
+
 ## Jira Story Status
 
 - **New** - Issue to refine
-- **Backlog** - Ready for development
-- **Refinement** - Issue is in refinement
+- **Refinement** - The owner is actively refining the issue
+- **Backlog** - Refined and ready for development
 - **In Progress** - Work has started
 - **Code Review** - PR is open and awaiting review
-- **Closed** - Acceptance criteria are met and all required PRs are merged, if applicable
-
-Create unrefined issues in New. Use Backlog for work that is refined and ready for development.
+- **Closed** - Acceptance criteria are met and required PRs are merged, or the issue is otherwise resolved, such as duplicate or obsolete
 
 ## Async Ceremonies
 
 ### Refinement
 
-Refinement converts a vague initiative into work an engineer can act on. A story is considered "refined" when any team member could read it and know what to build and when it's done.
+Refinement converts a vague initiative into work an engineer can act on. An issue is considered "refined" when any team member could read it and know what to build and when it's done.
 
-**Process:**
+#### Process
 
-1. **Product Kickoff** (30-60 min, once per OCPSTRAT):
-   - The product manager explains the what/why, success criteria, and priority, with input from the team.
-   - The Roadmap Managers attend.
-   - This happens before iteration planning when new OCPSTRAT work enters the cycle.
-2. **Async Breakdown**: The Roadmap Managers coordinate the OCPSTRAT breakdown into epics and stories with the team. Engineers refine the stories, with the Backlog Manager coordinating refinement.
-3. **Open Questions**: Brought to the optional weekly refinement slot (45 min), coordinated by the Backlog Manager. Product questions go to the product manager through the Roadmap Managers.
+**OCPSTRAT**
+
+1. Created in _New_.
+2. **Product Kickoff** (30-60 min, once per OCPSTRAT, before iteration planning): 
+   - The Product Manager explains the what/why, success criteria, and priority, with input from the team.
+   - The Roadmap Managers attend. 
+   - Issue moves to _Refinement_ and PM is assigned. 
+3. **Async Breakdown**:
+   - PM and architects refine scope. Engineers may support.
+   - If the OCPSTRAT is unclear, a research epic is created and worked until refinement can continue.
+   - When clear, Roadmap Managers breakdown into child epics and stories.
+   - Moves to _Backlog_ when breakdown is complete, or directly to _In Progress_ if work starts immediately.
+4. **Refinement distribution (optional)**: During the weekly sanity check, the Backlog Manager assigns OCPSTRAT child issues to team members to split refinement across the team.
+5. **Open Questions**: Brought to the grooming session, coordinated by the Backlog Manager.
+
+**Epic**
+
+1. Created in _New_.
+2. Owner self-assigns or assigns someone and moves to _Refinement_.
+3. Assignee refines scope and creates child issues.
+4. When refined, moves to _Backlog_ and removes themselves as assignee.
+5. When development starts, an architect is assigned and the epic moves to _In Progress_.
+
+**Story / Bug**
+
+1. Created in _New_. Lands in `Inbox` unless the correct epic is already known.
+2. Owner self-assigns and moves to _Refinement_.
+3. Owner refines it.
+4. Moves to _Backlog_ when it meets [backlog readiness criteria](#backlog-readiness).
 
 **Rules:**
 
 - Blocked work should not be refined, defer until it is unblocked.
 - Refinement is ongoing.
-- Identify large stories during refinement and split them into subtasks with priorities (must-have / nice-to-have). Each subtask should be independently mergeable.
+- Owners move ready issues to _Backlog_ without waiting for a grooming meeting.
+- Identify large stories and split them into subtasks with priorities (must-have / nice-to-have). Each subtask should be independently mergeable
 
 ### Async Review
 
@@ -154,25 +235,28 @@ Checklist:
   - Status up to date?
   - Are priorities correct?
   - PR linked to the story?
-  - Stories in refinement up to date? Questions/comments answered?
   - Correct parent epic?
+- [ ] **Sanity check** (Backlog Manager) - assign relevant _New_ tickets until every engineer has at least 1-2 tickets for refinement.
 - [ ] **PR review assignments** - assign open PRs until everyone has 1-3 PRs to review.
 - [ ] **Technical discussions** - discuss stories in progress or upcoming stories that need alignment.
 
 Calendar event descriptions should reference this checklist as the single source of truth.
 
-**Backlog Cleanup / Grooming** (every week, Tue or Thu or both)
+**Grooming** (every week, Tue or Thu or both)
 
-The Backlog Manager sets up and facilitates this meeting.
+The Backlog Manager sets up and facilitates the meeting. Anyone, including the Backlog Manager can bring an issue they want to discuss.
 
 Checklist:
 
-- [ ] Go through all New / Backlog stories and bugs
+- [ ] Discuss items people bring for clarification
+- [ ] Review a 1-3 of the oldest untouched _New_/_Refinement_ issues, including from inbox and relevant epics
+   - [ ] Close if possible
+   - [ ] Assign for refinement
+   - [ ] Defer to revisit later
+- [ ] Move inbox items and misplaced issues to the correct epic
 - [ ] Identify large stories and split them into prioritized subtasks (must-have / nice-to-have)
-- [ ] Prioritize and assign stories for refinement
 - [ ] Close stale items
 - [ ] Create new tickets as needed
-- [ ] Discuss open questions
 
 Calendar event descriptions should reference this checklist as the single source of truth.
 
