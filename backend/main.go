@@ -153,40 +153,36 @@ func run(ctx context.Context, args []string) error {
 	server := http.Server{
 		Handler: muxHandler,
 	}
-	serveDone := make(chan error, 1)
+	serveErrCh := make(chan error, 1)
 	go func() {
-		serveDone <- server.Serve(listener)
+		serveErrCh <- server.Serve(listener)
 	}()
 
 	select {
-	case err := <-serveDone:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("serve: %w", err)
-		}
-		return nil
-
+	case err := <-serveErrCh:
+		return finishServe(err)
 	case <-ctx.Done():
 		log.Printf("Signal received, draining in-flight requests for up to %s", shutdownTimeout)
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
-		err := server.Shutdown(shutdownCtx)
-		if errors.Is(err, context.DeadlineExceeded) {
-			// Shutdown waits for active connections to fall idle but never cancels
-			// an in-flight request, so streaming handlers such as the workflow run
-			// watch outlast the budget. Close drops the connections, which cancels
-			// their request contexts and lets those handlers return.
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				return fmt.Errorf("shut down: %w", err)
+			}
 			log.Printf("Drain budget of %s expired, closing remaining connections", shutdownTimeout)
-			err = server.Close()
+			if closeErr := server.Close(); closeErr != nil {
+				return fmt.Errorf("shut down: %w", closeErr)
+			}
 		}
-		serveErr := <-serveDone
-		if err != nil {
-			return fmt.Errorf("shut down: %w", err)
-		}
-		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			return fmt.Errorf("serve: %w", serveErr)
-		}
-		return nil
+		return finishServe(<-serveErrCh)
 	}
+}
+
+func finishServe(err error) error {
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("serve: %w", err)
+	}
+	return nil
 }
 
 // newSCMRegistry returns the SCM client registry. ghAPIURL overrides the GitHub
