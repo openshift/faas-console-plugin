@@ -17,7 +17,7 @@ var _ = Describe("CancelOnShutdown", func() {
 	// it gives up waiting on its request context.
 	serveBlocking := func(shutdownCtx context.Context) (returned chan struct{}) {
 		started, returned := make(chan struct{}), make(chan struct{})
-		wrapped := CancelOnShutdown(shutdownCtx, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		wrapped := CancelStreamOnShutdown(shutdownCtx, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			close(started)
 			<-r.Context().Done()
 			close(returned)

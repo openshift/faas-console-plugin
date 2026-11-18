@@ -205,7 +205,7 @@ func newMux(shutdownCtx context.Context, h *handler.Handlers, scmCredentials cre
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", h.HandleHealthz)
 	// SSE reports failures inside the stream, so it checks the caller itself.
-	mux.Handle("GET /api/v1/func/workflow-run/watch", handler.CancelOnShutdown(shutdownCtx,
+	mux.Handle("GET /api/v1/func/workflow-run/watch", handler.CancelStreamOnShutdown(shutdownCtx,
 		handler.WorkflowRunWatch(handler.WithCredentialsProvider(scmCredentials))))
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
