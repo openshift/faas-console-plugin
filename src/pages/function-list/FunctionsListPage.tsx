@@ -13,6 +13,8 @@ import {
   Button,
   Content,
   ContentVariants,
+  Drawer,
+  DrawerContent,
   PageSection,
   Spinner,
   Toolbar,
@@ -39,6 +41,7 @@ import {
 import { ClusterStatus, Function, functionKey } from './types';
 import { FunctionsEmptyState } from './components/EmptyState';
 import { FunctionTable } from './components/FunctionTable';
+import { MetricsDrawer } from './components/MetricsDrawer';
 import { SetupGuide } from './components/SetupGuide';
 
 export default function FunctionsListPage() {
@@ -60,7 +63,67 @@ function FunctionsListPageContent() {
     isAuthenticated,
     errors,
     showNamespace,
+    namespace,
   } = useFunctionListPage();
+
+  const showFunctionList = (loaded || refreshing) && functions.length > 0;
+  const pageContent = (
+    <PageSection>
+      {errors.length > 0 &&
+        errors.map((err, i) => (
+          <Alert key={i} variant="danger" title={t('Error')} isInline>
+            {err}
+          </Alert>
+        ))}
+      {!loaded && !refreshing && (
+        <Spinner aria-label={t('Loading')} style={{ display: 'block', margin: '4rem auto' }} />
+      )}
+      {loaded && functions.length === 0 && (
+        <FunctionsEmptyState isCreateDisabled={!isAuthenticated} />
+      )}
+      {showFunctionList && (
+        <>
+          <Content component={ContentVariants.p}>
+            {t(
+              'Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.',
+            )}{' '}
+            <SetupGuide />
+          </Content>
+          <Toolbar>
+            <ToolbarContent>
+              <ToolbarItem>
+                {!isAuthenticated ? (
+                  <Button variant="primary" isDisabled>
+                    {t('Create new function')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="primary"
+                    component={(props) => <Link {...props} to="/faas/create" />}
+                  >
+                    {t('Create new function')}
+                  </Button>
+                )}
+              </ToolbarItem>
+              <ToolbarItem variant="separator" />
+              <ToolbarItem>
+                <Button
+                  variant="plain"
+                  aria-label={t('Refresh')}
+                  onClick={onRefresh}
+                  isLoading={refreshing}
+                  spinnerAriaLabel={t('Refreshing')}
+                  isDisabled={refreshing}
+                  icon={<SyncAltIcon />}
+                />
+              </ToolbarItem>
+            </ToolbarContent>
+          </Toolbar>
+          <FunctionTable functions={functions} onEdit={onEdit} showNamespace={showNamespace} />
+        </>
+      )}
+    </PageSection>
+  );
 
   return (
     <>
@@ -69,61 +132,15 @@ function FunctionsListPageContent() {
       <ListPageHeader title={t('Functions')}>
         <UserAvatar />
       </ListPageHeader>
-      <PageSection>
-        {errors.length > 0 &&
-          errors.map((err, i) => (
-            <Alert key={i} variant="danger" title={t('Error')} isInline>
-              {err}
-            </Alert>
-          ))}
-        {!loaded && !refreshing && (
-          <Spinner aria-label={t('Loading')} style={{ display: 'block', margin: '4rem auto' }} />
-        )}
-        {loaded && functions.length === 0 && (
-          <FunctionsEmptyState isCreateDisabled={!isAuthenticated} />
-        )}
-        {(loaded || refreshing) && functions.length > 0 && (
-          <>
-            <Content component={ContentVariants.p}>
-              {t(
-                'Serverless functions in your repository and deployed to your cluster. Manage lifecycle, monitor status, and scale on demand.',
-              )}{' '}
-              <SetupGuide />
-            </Content>
-            <Toolbar>
-              <ToolbarContent>
-                <ToolbarItem>
-                  {!isAuthenticated ? (
-                    <Button variant="primary" isDisabled>
-                      {t('Create new function')}
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="primary"
-                      component={(props) => <Link {...props} to="/faas/create" />}
-                    >
-                      {t('Create new function')}
-                    </Button>
-                  )}
-                </ToolbarItem>
-                <ToolbarItem variant="separator" />
-                <ToolbarItem>
-                  <Button
-                    variant="plain"
-                    aria-label={t('Refresh')}
-                    onClick={onRefresh}
-                    isLoading={refreshing}
-                    spinnerAriaLabel={t('Refreshing')}
-                    isDisabled={refreshing}
-                    icon={<SyncAltIcon />}
-                  />
-                </ToolbarItem>
-              </ToolbarContent>
-            </Toolbar>
-            <FunctionTable functions={functions} onEdit={onEdit} showNamespace={showNamespace} />
-          </>
-        )}
-      </PageSection>
+      {showFunctionList ? (
+        <Drawer position="bottom" isExpanded>
+          <DrawerContent panelContent={<MetricsDrawer namespace={namespace} />}>
+            {pageContent}
+          </DrawerContent>
+        </Drawer>
+      ) : (
+        pageContent
+      )}
     </>
   );
 }
@@ -137,6 +154,7 @@ function useFunctionListPage(): {
   isAuthenticated: boolean;
   errors: string[];
   showNamespace: boolean;
+  namespace: string;
 } {
   const { isAuthenticated, user } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -165,6 +183,7 @@ function useFunctionListPage(): {
     isAuthenticated,
     errors: errors ?? [],
     showNamespace: isAllNamespacesKey(namespace),
+    namespace,
   };
 }
 

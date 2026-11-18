@@ -16,6 +16,7 @@ import (
 	"github.com/openshift/faas-console-plugin/backend/handler"
 	"github.com/openshift/faas-console-plugin/backend/identity"
 	"github.com/openshift/faas-console-plugin/backend/kube"
+	"github.com/openshift/faas-console-plugin/backend/monitoring"
 	"github.com/openshift/faas-console-plugin/backend/scm"
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 	"github.com/openshift/faas-console-plugin/backend/scm/github"
@@ -41,6 +42,8 @@ func main() {
 	clusterID := flag.String("cluster-id", "", "unique cluster identifier")
 	ghAPIURL := flag.String("gh-api-url", "", "GitHub API base URL")
 	saTokenExpiry := flag.String("sa-token-expiry", "", "ServiceAccount token expiry is a duration in common notation, e.g. 7d, 12h, 10m")
+	thanosURL := flag.String("thanos-url", "", "Thanos querier base URL for metrics queries")
+	thanosCAPath := flag.String("thanos-ca-path", "", "CA bundle path for Thanos TLS verification")
 	flag.Parse()
 
 	if *ghAPIURL != "" {
@@ -59,6 +62,14 @@ func main() {
 
 	if *clusterID == "" {
 		log.Fatal("--cluster-id is required")
+	}
+
+	if *thanosURL == "" {
+		log.Fatal("--thanos-url is required (the frontend metrics views depend on it)")
+	}
+
+	if *thanosCAPath == "" {
+		log.Fatal("--thanos-ca-path is required (TLS verification cannot be skipped)")
 	}
 
 	static, err := fs.Sub(staticFiles, "static")
@@ -91,7 +102,14 @@ func main() {
 	}
 	log.Printf("Storing SCM credentials as Secrets in namespace %q", namespace)
 
-	h := handler.New(caCert, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed, scmCredentials)
+	var metricsClient *monitoring.Client
+	metricsClient, err = monitoring.NewClient(*thanosURL, *thanosCAPath, monitoring.TokenSourceFromConfig(cfg))
+	if err != nil {
+		log.Fatalf("Failed to create metrics client: %v", err)
+	}
+	log.Printf("Metrics client configured for Thanos at %s", *thanosURL)
+
+	h := handler.New(caCert, *kubeHost, *kubeAPIServer, *clusterID, saTokenExpiryParsed, scmCredentials, metricsClient)
 
 	mux := newMux(h, scmCredentials, static)
 
@@ -153,6 +171,7 @@ func newMux(h *handler.Handlers, scmCredentials credentials.Provider, static fs.
 	api.Handle("GET /api/v1/func/{owner}/{name}/files", withCredential(h.HandleGetFiles))
 	api.Handle("PUT /api/v1/func/{owner}/{name}/files", withCredential(h.HandlePutFiles))
 	api.Handle("POST /api/v1/func/create", withCredential(h.HandleFuncCreate))
+	api.HandleFunc("GET /api/v1/monitoring/metrics", h.HandleGetMetrics)
 	mux.Handle("/api/v1/", handler.RequireOCPToken(api))
 	return mux
 }

@@ -82,7 +82,8 @@
     "exposedModules": {
       "FunctionsListPage": "./pages/function-list/FunctionsListPage",
       "FunctionCreatePage": "./pages/function-create/FunctionCreatePage",
-      "FunctionEditPage": "./pages/function-edit/FunctionEditPage"
+      "FunctionEditPage": "./pages/function-edit/FunctionEditPage",
+      "FunctionDetailPage": "./pages/function-detail/FunctionDetailPage"
     },
     "dependencies": {
       "@console/pluginAPI": "~4.22.0-0"
@@ -101,5 +102,9 @@
     "ws": ">=8.21.1",
     "minimatch": ">=10.2.6"
   },
-  "packageManager": "yarn@4.18.1"
+  "packageManager": "yarn@4.18.1",
+  "dependencies": {
+    "@patternfly/react-charts": "^8",
+    "victory": "^37.3.6"
+  }
 }

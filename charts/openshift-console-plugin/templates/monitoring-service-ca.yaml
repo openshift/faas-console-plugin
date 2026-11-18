@@ -1,0 +1,13 @@
+# ConfigMap injected with the OpenShift service-CA bundle by the service-ca operator.
+# The backend uses this to verify TLS when querying the in-cluster Thanos service,
+# whose serving certificate is signed by the service-CA (not the kube-apiserver CA).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "openshift-console-plugin.name" . }}-service-ca
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openshift-console-plugin.labels" . | nindent 4 }}
+  annotations:
+    # The service-ca operator injects the CA bundle when this annotation is present.
+    service.beta.openshift.io/inject-cabundle: "true"

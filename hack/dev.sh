@@ -34,9 +34,21 @@ PLUGIN_PORT=9001
 CONSOLE_PORT=9000
 FAKE_GH=false
 FAKE_GH_PORT=8090
+MONITORING_PLUGIN_PORT=9443
 TIMEOUT=60
 PID_DIR=".dev-pids"
 CONTAINER_CMD=podman
+
+build_bridge_plugins() {
+  local plugin_host=$1
+  local plugin_port=$2
+  local monitoring_plugin_port=${3:-}
+
+  printf '%s' "console-functions-plugin=http://${plugin_host}:${plugin_port}"
+  if [[ -n "$monitoring_plugin_port" ]]; then
+    printf '%s' ",monitoring-plugin=https://${plugin_host}:${monitoring_plugin_port}"
+  fi
+}
 
 wait_for_port() {
   local port=$1
@@ -140,6 +152,46 @@ resolve_cluster_id() {
   export CLUSTER_ID=$(oc get clusterversion version -o jsonpath='{.spec.clusterID}')
 }
 
+resolve_thanos() {
+  resolve_thanos_url
+  extract_thanos_ingress_ca
+}
+
+resolve_thanos_url() {
+  log::info "Resolving Thanos querier route..."
+  local host
+  host=$(oc get route thanos-querier -n openshift-monitoring -o jsonpath='{.spec.host}' 2>/dev/null || true)
+  if [ -n "$host" ]; then
+    export THANOS_HOST="$host"
+    export THANOS_URL="https://$host"
+    log::info "Thanos URL: $THANOS_URL"
+  else
+    log::error "Thanos querier route not found in openshift-monitoring; the metrics endpoint is required. Is this an OpenShift cluster with cluster monitoring?"
+    exit 1
+  fi
+}
+# The Thanos route uses reencrypt termination, so the dev backend sees the
+# router's certificate, signed by the cluster ingress CA. That CA is published
+# in the default-ingress-cert ConfigMap so off-cluster clients can verify it.
+# Re-fetched on every dev start, so ingress CA rotation is picked up naturally.
+extract_thanos_ingress_ca() {
+  if [ -z "${THANOS_URL:-}" ]; then
+    export THANOS_CA_PATH=""
+    return
+  fi
+  THANOS_CA_PATH=$(mktemp -t thanos-ca.XXXXXX).crt
+  if oc get cm default-ingress-cert -n openshift-config-managed \
+    -o jsonpath='{.data.ca-bundle\.crt}' > "$THANOS_CA_PATH" 2>/dev/null \
+    && grep -q "BEGIN CERTIFICATE" "$THANOS_CA_PATH"; then
+    export THANOS_CA_PATH
+    log::info "Thanos ingress CA: $THANOS_CA_PATH"
+  else
+    rm -f "$THANOS_CA_PATH"
+    log::error "Could not fetch the ingress CA (default-ingress-cert). Is this an OpenShift cluster with cluster monitoring?"
+    exit 1
+  fi
+}
+
 backend_gh_flag() {
   if $FAKE_GH; then
     echo "--gh-api-url http://localhost:$FAKE_GH_PORT"
@@ -167,6 +219,8 @@ start_backend() {
     --kube-host "$KUBE_API_SERVER" \
     --external-api-server-url "$KUBE_API_SERVER" \
     --cluster-id "$CLUSTER_ID" \
+    --thanos-url "$THANOS_URL" \
+    --thanos-ca-path "$THANOS_CA_PATH" \
     $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
   echo $! > "$PID_DIR/backend.pid"
 }
@@ -188,6 +242,7 @@ restart_backend() {
   extract_cluster_ca
   resolve_kube_api_server
   resolve_cluster_id
+  resolve_thanos
   start_backend
   wait_for_port "$BACKEND_PORT" "Go backend" "$PID_DIR/backend.pid"
   log::info "Backend restarted on port $BACKEND_PORT."
@@ -226,6 +281,8 @@ start_backend_watcher() {
           --kube-host "$KUBE_API_SERVER" \
           --external-api-server-url "$KUBE_API_SERVER" \
           --cluster-id "$CLUSTER_ID" \
+          --thanos-url "$THANOS_URL" \
+          --thanos-ca-path "$THANOS_CA_PATH" \
           $(backend_gh_flag) >>"$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$PID_DIR/backend.pid"
         echo "[watcher] Backend restarted (PID $!)."
@@ -258,6 +315,27 @@ start_fakegithub() {
   echo $! > "$PID_DIR/fakegithub.pid"
 }
 
+start_monitoring_plugin_proxy() {
+  if ! oc get consoleplugin monitoring-plugin >/dev/null 2>&1 || \
+    ! oc -n openshift-monitoring get service monitoring-plugin >/dev/null 2>&1; then
+    log::warn "Cluster monitoring plugin not found; Observe routes will be unavailable."
+    return
+  fi
+
+  log::info "Forwarding the cluster monitoring plugin..."
+  oc -n openshift-monitoring port-forward service/monitoring-plugin \
+    "${MONITORING_PLUGIN_PORT}:9443" >>"$LOG_DIR/monitoring-plugin.log" 2>&1 &
+  echo $! > "$PID_DIR/monitoring-plugin.pid"
+  wait_for_port \
+    "$MONITORING_PLUGIN_PORT" \
+    "monitoring plugin" \
+    "$PID_DIR/monitoring-plugin.pid"
+}
+
+stop_monitoring_plugin_proxy() {
+  stop_pid "monitoring-plugin.pid" "monitoring plugin port-forward"
+}
+
 stop_fakegithub() {
   stop_pid "fakegithub.pid" "fake GitHub server"
 }
@@ -286,8 +364,20 @@ stop_console() {
   rm -f "$cidfile" "$PID_DIR/console.pid"
 }
 
+start_serverless_setup() {
+  log::info "Running Serverless operator setup in background..."
+  hack/setup-serverless.sh >>"$LOG_DIR/serverless.log" 2>&1 &
+  echo $! > "$PID_DIR/serverless-setup.pid"
+}
+
+stop_serverless_setup() {
+  stop_pid "serverless-setup.pid" "Serverless setup"
+}
+
 stop_dev() {
+  stop_serverless_setup
   stop_fakegithub
+  stop_monitoring_plugin_proxy
   stop_backend
   stop_plugin
   stop_console
@@ -341,12 +431,15 @@ start_console() {
   local cidfile="$PID_DIR/console.cid"
   local bearer_token
   bearer_token=$(oc whoami --show-token 2>/dev/null)
+  local bridge_plugins
+  bridge_plugins=$(build_bridge_plugins "$plugin_host" "$PLUGIN_PORT" "$MONITORING_PLUGIN_PORT")
   local proxy_config
   proxy_config=$(printf '{"services":[{"consoleAPIPath":"/api/proxy/plugin/%s/backend/","endpoint":"http://%s:%s","authorize":true}]}' \
     "$plugin_name" "$plugin_host" "$BACKEND_PORT")
   local -a network_opts=("-p" "${CONSOLE_PORT}:9000")
   if [[ "$KUBE_API_SERVER" == *"crc.testing"* ]]; then
     network_opts+=("--add-host" "api.crc.testing:host-gateway")
+    network_opts+=("--add-host" "${THANOS_HOST}:host-gateway")
   fi
 
   log::info "Starting OpenShift console (${console_image})..."
@@ -361,10 +454,11 @@ start_console() {
     --env BRIDGE_K8S_MODE_OFF_CLUSTER_SKIP_VERIFY_TLS=true \
     --env BRIDGE_USER_SETTINGS_LOCATION=localstorage \
     --env "BRIDGE_I18N_NAMESPACES=plugin__${plugin_name}" \
-    --env "BRIDGE_PLUGINS=${plugin_name}=http://${plugin_host}:${PLUGIN_PORT}" \
+    --env "BRIDGE_PLUGINS=${bridge_plugins}" \
     --env "BRIDGE_PLUGIN_PROXY=${proxy_config}" \
     --env "BRIDGE_K8S_MODE_OFF_CLUSTER_ENDPOINT=$KUBE_API_SERVER" \
     --env "BRIDGE_K8S_AUTH_BEARER_TOKEN=$bearer_token" \
+    --env "BRIDGE_K8S_MODE_OFF_CLUSTER_THANOS=$THANOS_URL" \
     "$console_image" \
     >>"$LOG_DIR/console.log" 2>&1 &
   echo $! > "$PID_DIR/console.pid"
@@ -388,12 +482,21 @@ main() {
   check_prerequisites
   install_dependencies
   stop_dev
+  MONITORING_PLUGIN_PORT=$(random_free_port)
+  while [[ "$MONITORING_PLUGIN_PORT" -eq "$BACKEND_PORT" ]] || \
+    [[ "$MONITORING_PLUGIN_PORT" -eq "$PLUGIN_PORT" ]] || \
+    [[ "$MONITORING_PLUGIN_PORT" -eq "$CONSOLE_PORT" ]] || \
+    { $FAKE_GH && [[ "$MONITORING_PLUGIN_PORT" -eq "$FAKE_GH_PORT" ]]; }; do
+    MONITORING_PLUGIN_PORT=$(random_free_port)
+  done
   resolve_kube_api_server
   ensure_credentials_namespace
   resolve_cluster_id
+  resolve_thanos
   write_dev_env
   extract_cluster_ca
   trap 'stop_dev' EXIT INT TERM
+  start_serverless_setup
   if $FAKE_GH; then
     start_fakegithub
     wait_for_port "$FAKE_GH_PORT" "Fake GitHub server" "$PID_DIR/fakegithub.pid"
@@ -403,6 +506,7 @@ main() {
   start_backend_watcher
   start_plugin
   wait_for_port "$PLUGIN_PORT" "Plugin dev server" "$PID_DIR/webpack.pid"
+  start_monitoring_plugin_proxy
   start_console
   wait_for_port "$CONSOLE_PORT" "OpenShift console" "$PID_DIR/console.pid"
   trap - EXIT INT TERM

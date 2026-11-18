@@ -1,0 +1,17 @@
+# Grants the backend ServiceAccount read access to the Thanos cluster-wide query
+# API. The backend queries Thanos with its own identity and enforces per-caller
+# authorization via SelfSubjectAccessReview before returning any data.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ template "openshift-console-plugin.name" . }}-cluster-monitoring-view
+  labels:
+    {{- include "openshift-console-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-monitoring-view
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshift-console-plugin.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

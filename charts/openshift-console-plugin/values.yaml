@@ -10,6 +10,16 @@ plugin:
   # saTokenExpiry is the deploy ServiceAccount token lifetime as a duration,
   # e.g. 30d, 10h, or 7d12h. Empty uses the backend default (7 days).
   saTokenExpiry: ""
+  # thanosUrl is the Thanos Querier endpoint used by the metrics/monitoring
+  # feature; it is required (the frontend metrics views depend on it). The
+  # default targets the in-cluster service on OpenShift. Point at an external
+  # querier (e.g. an ACM hub) as needed; when doing so, also review thanosCaPath.
+  thanosUrl: "https://thanos-querier.openshift-monitoring.svc:9091"
+  # thanosCaPath is the CA bundle used to verify the Thanos endpoint TLS; it is
+  # required (TLS verification cannot be skipped). The default is the service-CA
+  # ConfigMap mount, valid for in-cluster service URLs. For an external querier,
+  # mount the appropriate CA and point this at it.
+  thanosCaPath: "/var/run/service-ca/service-ca.crt"
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
   replicas: 2

@@ -57,6 +57,8 @@ spec:
             {{- if .Values.plugin.saTokenExpiry }}
             - "--sa-token-expiry={{ .Values.plugin.saTokenExpiry }}"
             {{- end }}
+            - "--thanos-url={{ required "plugin.thanosUrl is required (the frontend metrics views depend on it)" .Values.plugin.thanosUrl }}"
+            - "--thanos-ca-path={{ required "plugin.thanosCaPath is required (TLS verification cannot be skipped)" .Values.plugin.thanosCaPath }}"
           env:
             {{- if .Values.plugin.funcCliVersion }}
             - name: FUNC_CLI_VERSION
@@ -86,11 +88,17 @@ spec:
             - name: {{ template "openshift-console-plugin.certificateSecret" . }}
               readOnly: true
               mountPath: /var/cert
+            - name: service-ca
+              readOnly: true
+              mountPath: /var/run/service-ca
       volumes:
         - name: {{ template "openshift-console-plugin.certificateSecret" . }}
           secret:
             secretName: {{ template "openshift-console-plugin.certificateSecret" . }}
             defaultMode: 420
+        - name: service-ca
+          configMap:
+            name: {{ template "openshift-console-plugin.name" . }}-service-ca
       restartPolicy: Always
       dnsPolicy: ClusterFirst
       {{- if and (.Values.plugin.securityContext.enabled) (.Values.plugin.podSecurityContext) }}

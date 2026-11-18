@@ -49,5 +49,13 @@
       "path": "/faas/edit/:name",
       "component": { "$codeRef": "FunctionEditPage" }
     }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/faas/functions/:namespace/:name",
+      "component": { "$codeRef": "FunctionDetailPage" },
+      "exact": true
+    }
   }
 ]

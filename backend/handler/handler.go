@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/openshift/faas-console-plugin/backend/identity"
+	"github.com/openshift/faas-console-plugin/backend/monitoring"
 	"github.com/openshift/faas-console-plugin/backend/scm/credentials"
 )
 
@@ -17,6 +18,7 @@ type Handlers struct {
 	clusterID            string // unique cluster identifier
 	saTokenExpiry        int64  // requested SA token lifetime in seconds
 	scmCredentials       credentials.Provider
+	metricsClient        *monitoring.Client // nil when --thanos-url is not configured
 }
 
 type httpError struct {
@@ -37,7 +39,7 @@ func newHTTPError(code int, message string, cause error) error {
 	return &httpError{code: code, message: message, cause: cause}
 }
 
-func New(caCert []byte, kubeHost, externalAPIServerURL, clusterID string, saTokenExpiry int64, scmCredentials credentials.Provider) *Handlers {
+func New(caCert []byte, kubeHost, externalAPIServerURL, clusterID string, saTokenExpiry int64, scmCredentials credentials.Provider, metricsClient *monitoring.Client) *Handlers {
 	return &Handlers{
 		caCert:               caCert,
 		kubeHost:             kubeHost,
@@ -45,6 +47,7 @@ func New(caCert []byte, kubeHost, externalAPIServerURL, clusterID string, saToke
 		clusterID:            clusterID,
 		saTokenExpiry:        saTokenExpiry,
 		scmCredentials:       scmCredentials,
+		metricsClient:        metricsClient,
 	}
 }
 

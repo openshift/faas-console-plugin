@@ -14,6 +14,7 @@ import {
 } from '@patternfly/react-icons';
 import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { FunctionSource } from '../../../common/types';
 import { Function, FunctionStatus, functionKey } from '../types';
 
@@ -50,7 +51,13 @@ export function FunctionTable({
       <Tbody>
         {functions.map((fn) => (
           <Tr key={functionKey(fn)}>
-            <Td dataLabel={t('Name')}>{fn.name || fn.repoName}</Td>
+            <Td dataLabel={t('Name')}>
+              {fn.name && fn.namespace ? (
+                <Link to={`/faas/functions/${fn.namespace}/${fn.name}`}>{fn.name}</Link>
+              ) : (
+                fn.repoName
+              )}
+            </Td>
             {showNamespace && (
               <Td dataLabel={t('Namespace')}>
                 <TextOrDash value={fn.namespace} />
