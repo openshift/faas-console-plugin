@@ -10,24 +10,24 @@ import (
 var _ = Describe("Ticker", func() {
 	Describe("CreateFakeTickerFactory", func() {
 		It("panics on second invocation", func() {
-			tick, factory := CreateFakeTickerFactory()
+			tick, newTicker := CreateFakeTickerFactory()
 			_ = tick // silence unused warning
 
 			// First invocation should succeed
-			ticker1 := factory()
+			ticker1 := newTicker(0)
 			Expect(ticker1).NotTo(BeNil())
 
 			// Second invocation should panic
 			Expect(func() {
-				_ = factory()
+				_ = newTicker(0)
 			}).To(Panic())
 		})
 	})
 
 	Describe("tickerFake", func() {
 		It("sends a tick when tick() is called", func() {
-			tick, factory := CreateFakeTickerFactory()
-			ticker := factory()
+			tick, newTicker := CreateFakeTickerFactory()
+			ticker := newTicker(0)
 			DeferCleanup(ticker.Stop)
 
 			ch := ticker.Chan()
@@ -38,8 +38,8 @@ var _ = Describe("Ticker", func() {
 		})
 
 		It("panics when tick() is called after Stop()", func() {
-			tick, factory := CreateFakeTickerFactory()
-			ticker := factory()
+			tick, newTicker := CreateFakeTickerFactory()
+			ticker := newTicker(0)
 
 			ticker.Stop()
 
@@ -49,8 +49,8 @@ var _ = Describe("Ticker", func() {
 		})
 
 		It("is idempotent (multiple Stop() calls are safe)", func() {
-			_, factory := CreateFakeTickerFactory()
-			ticker := factory()
+			_, newTicker := CreateFakeTickerFactory()
+			ticker := newTicker(0)
 
 			// First Stop should succeed
 			ticker.Stop()
@@ -64,8 +64,8 @@ var _ = Describe("Ticker", func() {
 
 	Describe("SilentTickerFactory", func() {
 		It("returns a ticker with nil channel", func() {
-			factory := SilentTickerFactory()
-			ticker := factory()
+			newTicker := SilentTickerFactory()
+			ticker := newTicker(0)
 
 			Expect(ticker.Chan()).To(BeNil())
 		})

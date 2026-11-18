@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strconv"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -29,6 +30,40 @@ var _ = Describe("ParseSATokenExpiry", func() {
 		Entry("zero", "0s", int64(0), true),
 		Entry("negative", "-1s", int64(0), true),
 		Entry("less than one second", "500ms", int64(0), true),
+	)
+})
+
+var _ = Describe("ParseWorkflowPollingInterval", func() {
+	DescribeTable("accepts positive durations", func(value string, want time.Duration) {
+		got, err := ParseWorkflowPollingInterval(value)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(got).To(Equal(want))
+	},
+		Entry("flag default", "3s", 3*time.Second),
+		Entry("seconds", "10s", 10*time.Second),
+		Entry("minutes and seconds", "1m30s", 90*time.Second),
+		Entry("milliseconds", "500ms", 500*time.Millisecond),
+	)
+
+	DescribeTable("rejects malformed, zero, and negative values", func(value string) {
+		got, err := ParseWorkflowPollingInterval(value)
+
+		Expect(err).To(MatchError(And(
+			ContainSubstring(strconv.Quote(value)),
+			ContainSubstring("must be a positive duration"),
+		)))
+		Expect(got).To(BeZero())
+	},
+		Entry("empty", ""),
+		Entry("malformed", "abc"),
+		Entry("missing unit", "10"),
+		Entry("unknown unit", "5x"),
+		Entry("days are not supported", "1d"),
+		Entry("zero without unit", "0"),
+		Entry("zero", "0s"),
+		Entry("negative", "-1s"),
+		Entry("negative minutes", "-5m"),
 	)
 })
 

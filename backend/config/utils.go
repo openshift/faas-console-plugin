@@ -27,6 +27,14 @@ func ParseSATokenExpiry(s string) (int64, error) {
 	return secs, nil
 }
 
+func ParseWorkflowPollingInterval(s string) (time.Duration, error) {
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("invalid workflow polling interval %q: must be a positive duration such as 3s, 30s, or 1m", s)
+	}
+	return d, nil
+}
+
 // parseExpiryDuration parses a duration that may include a leading days
 // component (e.g. 7d or 7d12h). time.ParseDuration handles h/m/s but not d.
 func parseExpiryDuration(s string) (time.Duration, error) {
