@@ -9,21 +9,33 @@ has_changes() {
   echo "$STAGED" | grep -qE "$1"
 }
 
+# Export the staged index to a temp directory so that lint/type-check run
+# only against what is staged, without touching the working tree.
+# This avoids the failure modes of "git stash --keep-index" (lost merge
+# state, conflicts from adjacent hunks, dirty files from make verify).
+STAGED_DIR="$(mktemp -d)"
+trap 'rm -rf "$STAGED_DIR"' EXIT
+
+git checkout-index --all --prefix="$STAGED_DIR/"
+ln -s "$PWD/node_modules" "$STAGED_DIR/node_modules"
+
+in_staged() { make -C "$STAGED_DIR" -o node_modules/.yarn-state.yml "$@"; }
+
 log::step "Running pre-commit checks"
 
 if has_changes '^(src|e2e)/'; then
   log::info "Linting frontend..."
-  make lint-frontend
+  in_staged lint-frontend
 
   log::info "Type-checking..."
-  make type-check
+  in_staged type-check
 else
   log::info "No frontend changes, skipping lint and type-check"
 fi
 
 if has_changes '^backend/'; then
   log::info "Linting backend..."
-  make lint-backend
+  in_staged lint-backend
 else
   log::info "No backend changes, skipping backend lint"
 fi
