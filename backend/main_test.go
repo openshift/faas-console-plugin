@@ -144,9 +144,37 @@ var _ = Describe("API routes", func() {
 	})
 })
 
+// Every case here is rejected before run reaches kube.ComponentConfig, so none
+// of them needs a cluster or a kubeconfig.
+var _ = Describe("run argument validation", func() {
+	const (
+		apiServerArg = "--external-api-server-url=https://api.example.com:6443"
+		clusterIDArg = "--cluster-id=test-cluster-id"
+	)
+
+	DescribeTable("refuses to start and says why",
+		func(args []string, want string) {
+			err := run(context.Background(), args)
+
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring(want))
+		},
+		Entry("an undefined flag", []string{"--no-such-flag"}, "parse arguments"),
+		Entry("no external API server URL", []string{clusterIDArg}, "--external-api-server-url is required"),
+		Entry("no cluster ID", []string{apiServerArg}, "--cluster-id is required"),
+		Entry("an unparsable SA token expiry",
+			[]string{apiServerArg, clusterIDArg, "--sa-token-expiry=nonsense"},
+			"failed to parse --sa-token-expiry=nonsense"),
+	)
+
+	It("reports a help request as success, so --help exits zero", func() {
+		Expect(run(context.Background(), []string{"--help"})).To(Succeed())
+	})
+})
+
 func testMux(provider credentials.Provider) *http.ServeMux {
 	h := handler.New(nil, "", "", "test-cluster-id", 0, provider)
-	return newMux(h, provider, fstest.MapFS{"index.html": {Data: []byte("static content")}})
+	return newMux(context.Background(), h, provider, fstest.MapFS{"index.html": {Data: []byte("static content")}})
 }
 
 func serveRoute(mux http.Handler, method, path, body string) *httptest.ResponseRecorder {

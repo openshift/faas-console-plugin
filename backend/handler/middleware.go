@@ -48,6 +48,22 @@ func RequireSCMCredential(next http.Handler, scmCredentials credentials.Provider
 	})
 }
 
+// CancelStreamOnShutdown wires the shutdown signal context into the request
+// context, so that when a shutdown signal arrives, e.g. SIGTERM, the wrapped
+// request's context is canceled and the handler terminates itself. Use it only
+// for routes that run until the client goes away, e.g. the SSE workflow watch:
+// handlers that finish on their own should be left to finish, or a shutdown
+// tears their work in half.
+func CancelStreamOnShutdown(shutdownCtx context.Context, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		stop := context.AfterFunc(shutdownCtx, cancel)
+		defer stop()
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
 // LoggingMiddleware logs every request and turns a panic into a 500.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
