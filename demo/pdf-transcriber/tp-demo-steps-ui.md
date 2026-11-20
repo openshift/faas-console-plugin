@@ -6,9 +6,20 @@ This guide walks through deploying the PDF Transcriber function entirely through
 
 Before starting:
 
-- OpenShift 4.22+ cluster with OpenShift Serverless and the FaaS Console Plugin installed (see [Quick Install via Operator](https://github.com/openshift/faas-console-plugin#quick-install-via-operator))
+- OpenShift 4.22 cluster with OpenShift Serverless and the FaaS Console Plugin installed (see [Quick Install via Operator](https://github.com/openshift/faas-console-plugin#quick-install-via-operator))
 - `oc` CLI logged into the cluster (`oc login`)
-- GitHub Personal Access Token (classic) with the `repo` and `workflow` scopes. The `workflow` scope is required because the function repository includes a GitHub Actions workflow file. Adding the `delete_repo` scope is recommended, so the Console can remove the repository again if function creation fails (see [Troubleshooting](#troubleshooting)).
+- GitHub Personal Access Token. A [fine-grained token](https://github.com/settings/personal-access-tokens/new) is recommended, with **Repository access** set to **All repositories** (the Console creates a new repository for each function) and these **Repository permissions**:
+
+  | Permission | Access | Used for |
+  |---|---|---|
+  | Administration | Read and write | Create the function repository (and delete it again if creation fails) |
+  | Contents | Read and write | Push the function code, read files in the editor |
+  | Workflows | Read and write | Push the GitHub Actions workflow file (`.github/workflows/func-deploy.yaml`) |
+  | Secrets | Read and write | Store the cluster credentials (`KUBECONFIG`) as an Actions secret |
+  | Variables | Read and write | Store the `CLUSTER_ID` and `KUBECONFIG_EXPIRE_AT` Actions variables |
+  | Actions | Read-only | Show the workflow run status in the functions list |
+
+  Alternatively, use a [classic token](https://github.com/settings/tokens/new) with the `repo` and `workflow` scopes, plus `delete_repo` so the Console can remove the repository again if function creation fails (see [Troubleshooting](#troubleshooting)).
 - GCP Application Default Credentials JSON file. Generate it with `gcloud auth application-default login` (requires the [`gcloud` CLI](https://cloud.google.com/sdk/docs/install), e.g. `brew install google-cloud-sdk` on macOS). The SDK writes the file to `~/.config/gcloud/application_default_credentials.json`.
 - Values for GCP authorization:
   - `ANTHROPIC_VERTEX_PROJECT_ID` (GCP project with Vertex AI / Claude access)
@@ -152,8 +163,10 @@ Before starting:
 ## Troubleshooting
 
 **Creating the function in Step 4 fails and the form stays open:**
-- Check the scopes of your GitHub PAT. Without the `workflow` scope, the Console creates the repository but cannot push the scaffolded project (it contains `.github/workflows/func-deploy.yaml`). The plugin backend logs `failed to push files ... create tree: ... 404 Not Found` (`oc logs -n openshift-operators deploy/console-functions-plugin`).
-- Without the `delete_repo` scope, the Console cannot remove the partially created repository afterwards, and creating the function again fails because the repository name is taken. Delete the repository on GitHub, then connect a PAT with the `repo` and `workflow` scopes (avatar menu > **Disconnect**, then **Connect to GitHub**) and try again.
+- Check the permissions of your GitHub PAT against the list in [Prerequisites](#prerequisites).
+- With a fine-grained token, a missing permission is reported as *Your GitHub session has expired* and *Error creating function: invalid SCM token*, although the token itself is valid. A missing **Variables** permission is the most likely cause. You can edit the token's permissions on GitHub without reconnecting it in the Console.
+- With a classic token, a missing `workflow` scope means the Console creates the repository but cannot push the scaffolded project. The plugin backend logs `failed to push files ... create tree: ... 404 Not Found` (`oc logs -n openshift-operators deploy/console-functions-plugin`).
+- If the token cannot delete repositories (classic token without `delete_repo`), the Console cannot remove the partially created repository afterwards, and creating the function again fails because the repository name is taken. Delete the repository on GitHub, then connect a token with the required permissions (avatar menu > **Disconnect**, then **Connect to GitHub**) and try again.
 
 **The Secret dropdown in Step 4 is empty:**
 - Check the **Namespace** field: it must be exactly `pdf-transcriber`, without leading or trailing spaces. The **Registry** field shows the namespace it uses.
