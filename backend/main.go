@@ -46,7 +46,28 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, args []string) error {
+type listenFunc func(network, address string) (net.Listener, error)
+
+type runConfig struct {
+	listen listenFunc
+}
+
+type runOpt func(c *runConfig)
+
+func withListen(l listenFunc) runOpt {
+	return func(c *runConfig) {
+		c.listen = l
+	}
+}
+
+func run(ctx context.Context, args []string, opts ...runOpt) error {
+	rc := runConfig{
+		listen: net.Listen,
+	}
+	for _, o := range opts {
+		o(&rc)
+	}
+
 	fgs := flag.NewFlagSet("plugin-backend", flag.ContinueOnError)
 	httpPort := fgs.Int("http-port", 8080, "HTTP server port, used only when no TLS certificate is found")
 	httpsPort := fgs.Int("https-port", 8443, "HTTPS server port")
@@ -133,7 +154,7 @@ func run(ctx context.Context, args []string) error {
 
 		go reloader.Run(ctx)
 
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", *httpsPort))
+		ln, err := rc.listen("tcp", fmt.Sprintf(":%d", *httpsPort))
 		if err != nil {
 			return fmt.Errorf("listen on https port %d: %w", *httpsPort, err)
 		}
@@ -142,7 +163,7 @@ func run(ctx context.Context, args []string) error {
 		})
 		log.Printf("Listening on https://%s", ln.Addr())
 	} else {
-		listener, err = net.Listen("tcp", fmt.Sprintf(":%d", *httpPort))
+		listener, err = rc.listen("tcp", fmt.Sprintf(":%d", *httpPort))
 		if err != nil {
 			return fmt.Errorf("listen on http port %d: %w", *httpPort, err)
 		}
