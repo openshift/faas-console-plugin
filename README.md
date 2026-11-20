@@ -61,7 +61,7 @@ PRs merge via Prow when they have both `approved` and `lgtm` labels.
 
 - [oc](https://console.redhat.com/openshift/downloads) CLI
 - An [OpenShift 4.22+ cluster](https://console.redhat.com/openshift/create)
-- Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content*, *secret* and *workflow* write permissions in all repositories
+- Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content*, *secret*, *variables* and *workflow* write permissions and *actions* read permission in all repositories
 
 ### Quick Install (via Operator)
 
@@ -103,7 +103,7 @@ oc patch consoles.operator.openshift.io cluster --type=json \
 - [oc](https://console.redhat.com/openshift/downloads) CLI
 - [Podman](https://podman.io) (v3.2.0+)
 - An [OpenShift cluster](https://console.redhat.com/openshift/create)
-- Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content* and *workflow* write permissions in all repositories
+- Github [*Personal Access Token*](https://github.com/settings/personal-access-tokens) with *administration*, *content*, *variables* and *workflow* write permissions in all repositories
 - [gh](https://cli.github.com/) CLI (optional, enables your agent to create/update PRs)
 - [fswatch](https://github.com/emcrisostomo/fswatch) (optional, enables Go backend auto-recompile on file changes)
 - [Superpowers](https://github.com/obra/superpowers) (optional, enables your coding agents to brainstorm, write plans, use tdd, etc.)
