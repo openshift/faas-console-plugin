@@ -6,13 +6,26 @@ This guide walks through deploying the PDF Transcriber function entirely through
 
 Before starting:
 
-- OpenShift 4.22+ cluster with OpenShift Serverless and the FaaS Console Plugin installed (see [Quick Install via Operator](https://github.com/openshift/faas-console-plugin#quick-install-via-operator))
+- OpenShift 4.22 cluster with OpenShift Serverless and the FaaS Console Plugin installed (see [Quick Install via Operator](https://github.com/openshift/faas-console-plugin#quick-install-via-operator))
 - `oc` CLI logged into the cluster (`oc login`)
-- GitHub Personal Access Token (PAT) with `repo` scope
-- GCP Application Default Credentials JSON file. Generate it with `gcloud auth application-default login` (requires `gcloud` CLI, install via `brew install google-cloud-sdk`). The SDK writes the file to `~/.config/gcloud/application_default_credentials.json`.
+- GitHub Personal Access Token. A [fine-grained token](https://github.com/settings/personal-access-tokens/new) is recommended, with **Repository access** set to **All repositories** (the Console creates a new repository for each function) and these **Repository permissions**:
+
+  | Permission | Access | Used for |
+  |---|---|---|
+  | Administration | Read and write | Create the function repository (and delete it again if creation fails) |
+  | Contents | Read and write | Push the function code, read files in the editor |
+  | Workflows | Read and write | Push the GitHub Actions workflow file (`.github/workflows/func-deploy.yaml`) |
+  | Secrets | Read and write | Store the cluster credentials (`KUBECONFIG`) as an Actions secret |
+  | Variables | Read and write | Store the `CLUSTER_ID` and `KUBECONFIG_EXPIRE_AT` Actions variables |
+  | Actions | Read-only | Show the workflow run status in the functions list |
+
+  Alternatively, use a [classic token](https://github.com/settings/tokens/new) with the `repo` and `workflow` scopes, plus `delete_repo` so the Console can remove the repository again if function creation fails (see [Troubleshooting](#troubleshooting)).
+- GCP Application Default Credentials JSON file. Generate it with `gcloud auth application-default login` (requires the [`gcloud` CLI](https://cloud.google.com/sdk/docs/install), e.g. `brew install google-cloud-sdk` on macOS). The SDK writes the file to `~/.config/gcloud/application_default_credentials.json`.
 - Values for GCP authorization:
   - `ANTHROPIC_VERTEX_PROJECT_ID` (GCP project with Vertex AI / Claude access)
   - `CLOUD_ML_REGION` (e.g. `us-east5`)
+
+> **Note on Console perspectives:** Since OpenShift 4.19 the Console shows a single unified view (labeled **Core platform** at the top of the sidebar), and the **Developer** perspective is disabled by default. This walkthrough works in the default view. If a cluster admin has enabled the Developer perspective, a perspective switcher appears at the top of the sidebar instead, and **FaaS** is also available in the Developer perspective sidebar.
 
 ---
 
@@ -20,7 +33,7 @@ Before starting:
 
 1. Open the OpenShift Console.
 
-2. Switch to the **Core platform** perspective using the perspective switcher in the sidebar.
+2. Make sure you are in the **Core platform** view (the default). If the sidebar shows a perspective switcher, select **Core platform**.
 
 3. Navigate to **Home > Projects** and click **Create Project**.
 
@@ -39,7 +52,7 @@ Before starting:
 3. Fill in the form:
    - **Secret name:** `gcp-adc`
    - **Key:** `application_default_credentials.json`
-   - **Value:** Click **Browse** and upload your `~/.config/gcloud/application_default_credentials.json` file
+   - **Value:** Click **Browse...** and upload your `~/.config/gcloud/application_default_credentials.json` file
 
 4. Click **Create**. The secret detail page confirms creation.
 
@@ -47,39 +60,45 @@ Before starting:
 
 ## Step 3: Connect GitHub
 
-1. Switch to the **Developer** perspective.
+1. Navigate to **Workloads > FaaS** in the sidebar (the last item in the **Workloads** section). If you use the Developer perspective, click **FaaS** in its sidebar instead.
 
-2. Click **FaaS** in the sidebar.
+2. The **Functions** page opens. If GitHub is not yet connected, the **Connect to GitHub** dialog opens automatically. (If you closed it, click **Connect to GitHub** in the top-right corner.)
 
-3. If GitHub is not yet connected, click the user avatar button and enter your GitHub Personal Access Token.
+3. Enter your GitHub Personal Access Token in the **Personal Access Token** field and click **Connect**.
 
-4. After connecting, you will see the Functions list page.
+4. After connecting, your GitHub avatar and login appear in the top-right corner (its menu offers **Go to GitHub** and **Disconnect**), and the **Create function** button is enabled.
 
 ---
 
 ## Step 4: Create the Function
 
-1. Click **Create new function**.
+1. Click **Create function** (or **Create new function** if functions already exist).
 
 2. Fill in the basic fields:
+   - **Owner:** pre-filled with your GitHub login (read-only)
    - **Repository:** `pdf-transcriber-demo`
    - **Branch:** `main`
    - **Name:** `pdf-transcriber-demo`
    - **Language:** Quarkus
+   - **Registry:** pre-filled with the cluster's internal image registry and the namespace (read-only)
    - **Namespace:** `pdf-transcriber`
 
-3. Add environment variables. Click "Add environment variable" for each:
+   Type the namespace exactly, without leading or trailing spaces. The **Secret** dropdown in the next step only lists secrets from the namespace entered here.
 
-   **Plain key/value env vars:**
+3. Add environment variables. Click **Add environment variable** once. This shows three groups: plain environment variables, **Secrets**, and **ConfigMaps**. Each group has its own **Add key/value** button for additional rows.
+
+   **Plain environment variables** (use the **Add key/value** button below this group for the second row):
    - Name: `ANTHROPIC_VERTEX_PROJECT_ID`, Value: your GCP project ID
    - Name: `CLOUD_ML_REGION`, Value: your GCP region (e.g. `us-east5`)
 
-   **Secret reference env var:**
+   **Secrets** group:
    - Name: `GCP_CREDENTIALS`, Secret: `gcp-adc`, Key: `application_default_credentials.json`
 
-   This injects the JSON content of the secret directly into the `GCP_CREDENTIALS` environment variable at runtime.
+   This injects the JSON content of the secret directly into the `GCP_CREDENTIALS` environment variable at runtime. Leave the **ConfigMaps** group empty.
 
-4. Click **Create**. The function is created and appears in the functions list.
+4. Click **Create**. The function is created and appears in the functions list with status **Not deployed**.
+
+   Creating the function also creates a **public** GitHub repository `<your-login>/pdf-transcriber-demo` with the scaffolded Quarkus project, and starts a first GitHub Actions workflow run that builds and deploys the scaffolded function. While a workflow run is in progress, a spinning icon (tooltip: *Workflow run in progress*) is shown next to the status. After this first run finishes, the status changes to **Running**.
 
 ---
 
@@ -121,7 +140,9 @@ Before starting:
 
    The scaffolded tests reference `Input` and `Output` classes that no longer exist after replacing `Function.java`, so the build will fail if these are not updated.
 
-5. Click **Save & Deploy**. A success banner appears: "Pushed to GitHub. Deployment running..."
+   Each modified file is marked with a dot (●) in the file tree until it is saved.
+
+5. Click **Save & Deploy**. A success banner appears: "Pushed to GitHub. Build and deploy workflow run initiated."
 
 ---
 
@@ -129,11 +150,11 @@ Before starting:
 
 1. Click **Back to Functions** to return to the functions list.
 
-2. The function initially shows "NotDeployed" status. The Console pushes code to GitHub, and a GitHub Actions workflow builds and deploys the container image to the cluster.
+2. The Console pushed your code to GitHub, and a new GitHub Actions workflow run builds the container image, pushes it to the cluster's internal registry, and deploys it. While the run is in progress, the spinning icon is shown next to the status. The status still shows **Running** during this time, because the scaffolded function from Step 4 keeps serving until the new version is deployed.
 
-3. Wait for the status to change to **Running** (this can take several minutes for the first build).
+3. Wait for the spinning icon to disappear (this takes a few minutes). If the run fails, a warning icon (tooltip: *Latest workflow run failed*) is shown instead, and clicking it opens the failed run on GitHub.
 
-4. Once running, a **URL** column will show the function's route. Click it to open the PDF Transcriber web app.
+4. The **URL** column shows a link named after the function's route (e.g. `pdf-transcriber-demo-pdf-transcriber`). Click it to open the PDF Transcriber web app in a new tab.
 
 5. Upload a PDF file and click **Transcribe** to verify the function works end-to-end.
 
@@ -141,7 +162,20 @@ Before starting:
 
 ## Troubleshooting
 
-**Function stays in NotDeployed:**
+**Creating the function in Step 4 fails and the form stays open:**
+- Check the permissions of your GitHub PAT against the list in [Prerequisites](#prerequisites).
+- With a fine-grained token, a missing permission is reported as *Your GitHub session has expired* and *Error creating function: invalid SCM token*, although the token itself is valid. A missing **Variables** permission is the most likely cause. You can edit the token's permissions on GitHub without reconnecting it in the Console.
+- With a classic token, a missing `workflow` scope means the Console creates the repository but cannot push the scaffolded project. The plugin backend logs `failed to push files ... create tree: ... 404 Not Found` (`oc logs -n openshift-operators deploy/console-functions-plugin`).
+- If the token cannot delete repositories (classic token without `delete_repo`), the Console cannot remove the partially created repository afterwards, and creating the function again fails because the repository name is taken. Delete the repository on GitHub, then connect a token with the required permissions (avatar menu > **Disconnect**, then **Connect to GitHub**) and try again.
+
+**The Secret dropdown in Step 4 is empty:**
+- Check the **Namespace** field: it must be exactly `pdf-transcriber`, without leading or trailing spaces. The **Registry** field shows the namespace it uses.
+- Make sure you are using the **Secret** dropdown in the **Secrets** group, not the **ConfigMap** dropdown in the **ConfigMaps** group.
+
+**Where to watch the build:**
+- The build runs in GitHub Actions, not on the cluster, so it does not appear under **Builds** in the Console. Open the function in the editor, click the **Repository** link, and open the **Actions** tab on GitHub.
+
+**Function stays in Not deployed:**
 - Check the GitHub Actions tab on the function's repo for workflow run status
 - Check operator health: ensure Serverless CSV shows "Succeeded" (`oc get csv -A | grep serverless`)
 
