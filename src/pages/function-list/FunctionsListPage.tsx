@@ -22,7 +22,7 @@ import {
 import { SyncAltIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router';
+import { useNavigate } from 'react-router';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import {
@@ -51,6 +51,7 @@ export default function FunctionsListPage() {
 
 function FunctionsListPageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
+  const navigate = useNavigate();
   const {
     functions,
     loaded,
@@ -98,10 +99,7 @@ function FunctionsListPageContent() {
                       {t('Create new function')}
                     </Button>
                   ) : (
-                    <Button
-                      variant="primary"
-                      component={(props) => <Link {...props} to="/faas/create" />}
-                    >
+                    <Button variant="primary" onClick={() => navigate('/faas/create')}>
                       {t('Create new function')}
                     </Button>
                   )}
