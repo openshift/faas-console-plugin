@@ -1,8 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuthContext } from '../../../common/context/AuthProvider';
-import { AuthUser } from '../../../common/types';
-import { K8sKeyedResource } from '../types';
+import { AuthUser, K8sKeyedResource } from '../../../common/types';
 import { CreateFunctionForm } from './CreateFunctionForm';
 
 const sdkTestDoubles = await vi.hoisted(
@@ -25,12 +24,9 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-const sdk = vi.hoisted(() => ({ activeNamespace: '' }));
-
 vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   consoleFetch: sdkTestDoubles.consoleFetchStub,
   consoleFetchJSON: sdkTestDoubles.consoleFetchJSONStub,
-  useActiveNamespace: () => [sdk.activeNamespace, vi.fn()],
 }));
 
 const emptySecrets: K8sKeyedResource[] = [];
@@ -49,8 +45,11 @@ describe('CreateFunctionForm', () => {
     isSubmitting: false,
     secrets: emptySecrets,
     configMaps: emptyConfigMaps,
+    resourcesNamespace: '',
     canCreateNamespaces: true,
     namespaces: [] as string[],
+    systemNamespaces: [] as string[],
+    initialNamespace: '',
     setNamespaceWatchField: vi.fn(),
   };
 
@@ -64,30 +63,26 @@ describe('CreateFunctionForm', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    sdk.activeNamespace = '';
   });
 
   describe('namespace autofill', () => {
     const NS_FIELD = { name: /Namespace/ };
 
-    it('fills the field with the console active namespace on load', async () => {
-      sdk.activeNamespace = 'demo';
+    it('fills the field with the initial namespace', () => {
+      renderForm({ initialNamespace: 'demo' });
 
-      renderForm({ namespaces: ['demo', 'other'] });
-
-      await waitFor(() => expect(screen.getByRole('textbox', NS_FIELD)).toHaveValue('demo'));
+      expect(screen.getByRole('textbox', NS_FIELD)).toHaveValue('demo');
+      expect(screen.getByRole('textbox', { name: /Registry/ })).toHaveValue(
+        'image-registry.openshift-image-registry.svc:5000/demo',
+      );
     });
 
-    // Autofill is a starting point, not a lock. Re-applying it turns the field
-    // read-only in practice: the value reappears the moment it is emptied.
+    // Autofill is a starting point, not a lock.
     it('lets the user clear the autofilled namespace', async () => {
       const user = userEvent.setup();
-      sdk.activeNamespace = 'demo';
 
-      renderForm({ namespaces: ['demo', 'other'] });
+      renderForm({ initialNamespace: 'demo' });
       const field = screen.getByRole('textbox', NS_FIELD);
-      await waitFor(() => expect(field).toHaveValue('demo'));
-
       await user.clear(field);
 
       expect(field).toHaveValue('');
@@ -95,31 +90,26 @@ describe('CreateFunctionForm', () => {
 
     it('lets the user replace the autofilled namespace', async () => {
       const user = userEvent.setup();
-      sdk.activeNamespace = 'demo';
 
-      renderForm({ namespaces: ['demo', 'other'] });
+      renderForm({ initialNamespace: 'demo' });
       const field = screen.getByRole('textbox', NS_FIELD);
-      await waitFor(() => expect(field).toHaveValue('demo'));
-
       await user.clear(field);
       await user.type(field, 'mine');
 
       expect(field).toHaveValue('mine');
     });
 
-    // The prefill is resolved once, when the form mounts. A later change to
-    // the namespace list must not reach back into a field the user has since
-    // made their own.
-    it('does not overwrite a namespace typed before the list arrives', async () => {
+    // The field is seeded once, when the form mounts. A later initial namespace
+    // must not reach back into a field the user has since made their own.
+    it('does not overwrite a typed namespace when the initial namespace changes', async () => {
       const user = userEvent.setup();
-      sdk.activeNamespace = 'demo';
 
-      const { rerender } = renderForm({ namespaces: [] });
+      const { rerender } = renderForm();
       await user.type(screen.getByRole('textbox', NS_FIELD), 'mine');
 
       rerender(
         <AuthContext.Provider value={authContext}>
-          <CreateFunctionForm {...defaultProps} namespaces={['demo', 'other']} />
+          <CreateFunctionForm {...defaultProps} initialNamespace="demo" />
         </AuthContext.Provider>,
       );
 
@@ -357,6 +347,33 @@ describe('CreateFunctionForm', () => {
     expect(container.querySelector('#configmap-key-0')).toBeInTheDocument();
   });
 
+  it('offers the secrets only when they belong to the namespace in the field', async () => {
+    const user = userEvent.setup();
+    const secrets: K8sKeyedResource[] = [{ name: 'ns-a-secret', keys: ['key1'] }];
+
+    const { rerender } = renderForm({
+      secrets,
+      resourcesNamespace: 'ns-a',
+      initialNamespace: 'ns-b',
+    });
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+    expect(screen.queryByRole('option', { name: 'ns-a-secret' })).not.toBeInTheDocument();
+
+    rerender(
+      <AuthContext.Provider value={authContext}>
+        <CreateFunctionForm
+          {...defaultProps}
+          secrets={secrets}
+          resourcesNamespace="ns-b"
+          initialNamespace="ns-b"
+        />
+      </AuthContext.Provider>,
+    );
+
+    expect(screen.getByRole('option', { name: 'ns-a-secret' })).toBeInTheDocument();
+  });
+
   it('disables Create button when env var name starts with a digit', async () => {
     const user = userEvent.setup();
 
@@ -442,7 +459,10 @@ describe('CreateFunctionForm', () => {
   it('shows duplicate error across env var groups', async () => {
     const user = userEvent.setup();
 
-    renderForm({ secrets: [{ name: 'my-secret', keys: ['key1'] }] });
+    renderForm({
+      secrets: [{ name: 'my-secret', keys: ['key1'] }],
+      resourcesNamespace: 'default',
+    });
 
     await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'default');
 
@@ -519,7 +539,7 @@ describe('CreateFunctionForm', () => {
     const user = userEvent.setup();
 
     const secrets: K8sKeyedResource[] = [{ name: 'my-secret', keys: ['key1'] }];
-    const { container } = renderForm({ secrets });
+    const { container } = renderForm({ secrets, resourcesNamespace: 'ns-a' });
 
     await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'ns-a');
 

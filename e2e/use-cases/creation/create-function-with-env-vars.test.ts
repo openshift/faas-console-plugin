@@ -32,6 +32,8 @@ test.describe('Create function with environment variables', () => {
     });
 
     await test.step('fill in function details without namespace', async () => {
+      // The field may be prefilled from the console's active namespace; this flow needs it empty.
+      await page.locator('#namespace').fill('');
       await page.locator('#repo').fill(FUNC_NAME);
       await page.locator('#branch').fill(BRANCH);
       await page.locator('#name').fill(FUNC_NAME);

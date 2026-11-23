@@ -45,11 +45,12 @@ var _ = Describe("GET /api/v1/namespaces", func() {
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(decodeNamespaces(w)).To(Equal(namespacesResponse{
 			Namespaces:          []string{"team-a", "team-b"},
+			SystemNamespaces:    []string{},
 			CanCreateNamespaces: false,
 		}))
 	})
 
-	It("returns every namespace, sorted, to a caller who can create namespaces", func() {
+	It("returns every namespace, sorted, and flags the system ones to a caller who can create namespaces", func() {
 		withClusterStub(&cluster.ClientStub{
 			OnListProjects:        projects("team-a", "openshift-monitoring", "default"),
 			OnCanCreateNamespaces: canCreate(true),
@@ -61,11 +62,12 @@ var _ = Describe("GET /api/v1/namespaces", func() {
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(decodeNamespaces(w)).To(Equal(namespacesResponse{
 			Namespaces:          []string{"default", "openshift-monitoring", "team-a"},
+			SystemNamespaces:    []string{"default", "openshift-monitoring"},
 			CanCreateNamespaces: true,
 		}))
 	})
 
-	It("returns an empty list rather than null when the caller has no namespaces", func() {
+	It("returns empty lists rather than null when the caller has no namespaces", func() {
 		withClusterStub(&cluster.ClientStub{})
 
 		w := httptest.NewRecorder()
@@ -73,6 +75,23 @@ var _ = Describe("GET /api/v1/namespaces", func() {
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(w.Body.String()).To(ContainSubstring(`"namespaces":[]`))
+		Expect(w.Body.String()).To(ContainSubstring(`"systemNamespaces":[]`))
+	})
+
+	It("connects to the cluster with the caller's token", func() {
+		var gotToken string
+		orig := newClusterClient
+		newClusterClient = func(host, token string, caCert []byte) (cluster.Client, error) {
+			gotToken = token
+			return &cluster.ClientStub{}, nil
+		}
+		DeferCleanup(func() { newClusterClient = orig })
+
+		w := httptest.NewRecorder()
+		(&Handlers{}).HandleListNamespaces(w, namespacesRequest())
+
+		Expect(w.Code).To(Equal(http.StatusOK))
+		Expect(gotToken).To(Equal("ocp-token"))
 	})
 
 	It("requires the Authorization header", func() {

@@ -1,22 +1,24 @@
 import {
   DocumentTitle,
-  K8sResourceKind,
   ListPageHeader,
-  useK8sWatchResource,
-  WatchK8sResource,
+  useActiveNamespace,
 } from '@openshift-console/dynamic-plugin-sdk';
 import { Alert, Bullseye, PageSection, Spinner } from '@patternfly/react-core';
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
-import { createFunction } from '../../common/clients/functionsClient';
-import { useNamespaceOptions } from '../../common/clients/useNamespaceOptions';
+import {
+  createFunction,
+  getConfigMaps,
+  getNamespaces,
+  getSecrets,
+} from '../../common/clients/functionsClient';
 import { UserAvatar } from '../../common/components/UserAvatar';
 import { AuthContext, AuthProvider } from '../../common/context/AuthProvider';
 import { errorMessage } from '../../common/errors';
-import { EnvVar } from '../../common/types';
+import { EnvVar, K8sKeyedResource, NamespaceOptions } from '../../common/types';
 import { CreateFunctionForm } from './components/CreateFunctionForm';
-import { CreateFunctionFormData, K8sKeyedResource, PlainEnvVar, ResourceEnvVar } from './types';
+import { CreateFunctionFormData, PlainEnvVar, ResourceEnvVar } from './types';
 
 export default function FunctionCreatePage() {
   return (
@@ -30,14 +32,20 @@ function FunctionCreatePageContent() {
   const { t } = useTranslation('plugin__console-functions-plugin');
   const {
     isSubmitting,
-    error,
+    submitError,
+    namespacesError,
+    resourcesError,
+    resourcesForbidden,
     handleSubmit,
     handleCancel,
     isAuthenticated,
     secrets,
     configMaps,
+    resourcesNamespace,
     canCreateNamespaces,
     namespaces,
+    systemNamespaces,
+    initialNamespace,
     setNamespaceWatchField,
     namespacesLoaded,
   } = useFunctionCreatePage();
@@ -49,12 +57,33 @@ function FunctionCreatePageContent() {
         <UserAvatar />
       </ListPageHeader>
       <PageSection>
-        {error && (
+        {submitError && (
           <Alert variant="danger" title={t('Error creating function')} isInline>
-            {error}
+            {submitError}
           </Alert>
         )}
+        {namespacesError && (
+          <Alert variant="danger" title={t('Error loading namespaces')} isInline>
+            {namespacesError}
+          </Alert>
+        )}
+        {resourcesError && (
+          <Alert variant="danger" title={t('Error loading Secrets and ConfigMaps')} isInline>
+            {resourcesError}
+          </Alert>
+        )}
+        {resourcesForbidden && (
+          <Alert
+            variant="info"
+            title={t(
+              'You cannot read Secrets or ConfigMaps in namespace "{{namespace}}", so they cannot be used as environment variable sources.',
+              { namespace: resourcesNamespace },
+            )}
+            isInline
+          />
+        )}
         {isAuthenticated &&
+          !namespacesError &&
           (!namespacesLoaded ? (
             <Bullseye>
               <Spinner aria-label={t('Loading')} size="lg" />
@@ -63,12 +92,15 @@ function FunctionCreatePageContent() {
             <CreateFunctionForm
               secrets={secrets}
               configMaps={configMaps}
+              resourcesNamespace={resourcesNamespace}
               onSubmit={handleSubmit}
               onCancel={handleCancel}
               setNamespaceWatchField={setNamespaceWatchField}
               isSubmitting={isSubmitting}
               canCreateNamespaces={canCreateNamespaces}
               namespaces={namespaces}
+              systemNamespaces={systemNamespaces}
+              initialNamespace={initialNamespace}
             />
           ))}
       </PageSection>
@@ -79,44 +111,58 @@ function FunctionCreatePageContent() {
 function useFunctionCreatePage(): {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
+  resourcesNamespace: string;
+  resourcesForbidden: boolean;
   isSubmitting: boolean;
   isAuthenticated: boolean;
-  error: string | null;
+  submitError: string | null;
+  namespacesError?: string;
+  resourcesError?: string;
   canCreateNamespaces: boolean;
   namespaces: string[];
+  systemNamespaces: string[];
+  initialNamespace: string;
   namespacesLoaded: boolean;
   handleSubmit: (data: CreateFunctionFormData) => Promise<void>;
   handleCancel: () => void;
   setNamespaceWatchField: (namespace: string) => void;
 } {
-  const { t } = useTranslation('plugin__console-functions-plugin');
   const navigate = useNavigate();
   const isAuthenticated = useContext(AuthContext).isAuthenticated;
 
   const {
     canCreateNamespaces,
     namespaces,
+    systemNamespaces,
     loaded: namespacesLoaded,
     error: namespacesError,
   } = useNamespaceOptions();
 
-  const [namespaceWatchField, setNamespaceWatchField] = useState('');
+  const [activeNamespace] = useActiveNamespace();
+  const initialNamespace = resolveInitialNamespace(
+    canCreateNamespaces,
+    namespaces,
+    systemNamespaces,
+    activeNamespace,
+  );
+
+  // null until the user changes the field; until then the field shows the prefill.
+  const [typedNamespace, setNamespaceWatchField] = useState<string | null>(null);
 
   const {
+    namespace: resourcesNamespace,
     secrets,
     configMaps,
-    error: clusterResourcesError,
-  } = useSecretsAndConfigMaps(namespaceWatchField);
+    forbidden: resourcesForbidden,
+    error: resourcesError,
+  } = useSecretsAndConfigMaps(typedNamespace ?? initialNamespace);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const clusterResourcesErrorMessage =
-    namespacesError || clusterResourcesError ? t('Error loading cluster resources') : null;
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const handleSubmit = async (data: CreateFunctionFormData) => {
     setIsSubmitting(true);
-    setError(null);
+    setSubmitError(null);
 
     try {
       await createFunction({
@@ -132,7 +178,7 @@ function useFunctionCreatePage(): {
 
       navigate('/faas');
     } catch (err) {
-      setError(errorMessage(err));
+      setSubmitError(errorMessage(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -144,17 +190,41 @@ function useFunctionCreatePage(): {
 
   return {
     isSubmitting,
-    error: error || clusterResourcesErrorMessage,
+    submitError,
+    namespacesError,
+    resourcesError,
+    resourcesForbidden,
     handleSubmit,
     handleCancel,
     setNamespaceWatchField,
     isAuthenticated,
     secrets,
     configMaps,
+    resourcesNamespace,
     canCreateNamespaces,
     namespaces,
+    systemNamespaces,
+    initialNamespace,
     namespacesLoaded,
   };
+}
+
+function resolveInitialNamespace(
+  canCreateNamespaces: boolean,
+  namespaces: string[],
+  systemNamespaces: string[],
+  activeNamespace: string,
+): string {
+  // The backend has already left out the namespaces this user may not pick. A system
+  // namespace is never suggested, even to a user who may pick it.
+  if (
+    activeNamespace &&
+    namespaces.includes(activeNamespace) &&
+    !systemNamespaces.includes(activeNamespace)
+  )
+    return activeNamespace;
+  if (!canCreateNamespaces && namespaces.length === 1) return namespaces[0];
+  return '';
 }
 
 function toEnvVars(
@@ -194,33 +264,101 @@ function toEnvVars(
   return result.length > 0 ? result : undefined;
 }
 
-function useSecretsAndConfigMaps(namespace?: string): {
+const NO_OPTIONS: NamespaceOptions = {
+  namespaces: [],
+  systemNamespaces: [],
+  canCreateNamespaces: false,
+};
+
+// The namespace choices a user is allowed to deploy into, as decided by the backend.
+function useNamespaceOptions(): NamespaceOptions & { loaded: boolean; error?: string } {
+  const [options, setOptions] = useState<NamespaceOptions>(NO_OPTIONS);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string>();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setOptions(await getNamespaces());
+      } catch (err) {
+        setError(errorMessage(err));
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, []);
+
+  return { ...options, loaded, error };
+}
+
+const NO_RESOURCES: K8sKeyedResource[] = [];
+
+interface NamespaceResources {
+  namespace: string;
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
-  error: Error | undefined;
-} {
-  const secretConfig = useMemo(() => newDataWatchConfig('Secret', namespace), [namespace]);
-  const configMapConfig = useMemo(() => newDataWatchConfig('ConfigMap', namespace), [namespace]);
-
-  const [rawSecrets, , secretsError] = useK8sWatchResource<K8sResourceKind[]>(secretConfig);
-  const [rawConfigMaps, , configMapsError] =
-    useK8sWatchResource<K8sResourceKind[]>(configMapConfig);
-
-  const secrets = useMemo(() => toKeyedResources(rawSecrets), [rawSecrets]);
-  const configMaps = useMemo(() => toKeyedResources(rawConfigMaps), [rawConfigMaps]);
-
-  return { secrets, configMaps, error: secretsError || configMapsError };
+  forbidden: boolean;
+  error?: string;
 }
 
-function newDataWatchConfig(kind: string, namespace?: string): WatchK8sResource | null {
-  return namespace ? { groupVersionKind: { version: 'v1', kind }, namespace, isList: true } : null;
+// The Secrets and ConfigMaps of namespace. The returned namespace says which namespace the
+// lists belong to; it is empty until the current namespace has answered.
+function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
+  const [result, setResult] = useState<NamespaceResources>();
+
+  useEffect(() => {
+    if (!namespace) return;
+    // The namespace changes as the user types, so a slow answer for an earlier
+    // namespace must not land after the answer for the current one.
+    let stale = false;
+
+    (async () => {
+      try {
+        const [secrets, configMaps] = await Promise.all([
+          fetchOrEmpty(getSecrets, namespace),
+          fetchOrEmpty(getConfigMaps, namespace),
+        ]);
+        if (!stale)
+          setResult({
+            namespace,
+            secrets: secrets.items,
+            configMaps: configMaps.items,
+            forbidden: secrets.forbidden || configMaps.forbidden,
+          });
+      } catch (err) {
+        if (!stale)
+          setResult({
+            namespace,
+            secrets: NO_RESOURCES,
+            configMaps: NO_RESOURCES,
+            forbidden: false,
+            error: errorMessage(err),
+          });
+      }
+    })();
+
+    return () => {
+      stale = true;
+    };
+  }, [namespace]);
+
+  if (result?.namespace !== namespace)
+    return { namespace: '', secrets: NO_RESOURCES, configMaps: NO_RESOURCES, forbidden: false };
+  return result;
 }
 
-function toKeyedResources(resources: K8sResourceKind[]): K8sKeyedResource[] {
-  return (resources ?? [])
-    .filter((r) => r.metadata?.name)
-    .map((r) => ({
-      name: r.metadata!.name!,
-      keys: r.data ? Object.keys(r.data) : [],
-    }));
+// A 400 (a half-typed, invalid name) or a 403 (no read access) means there is nothing to
+// offer, not that loading failed.
+async function fetchOrEmpty(
+  fetchResources: (namespace: string) => Promise<K8sKeyedResource[]>,
+  namespace: string,
+): Promise<{ items: K8sKeyedResource[]; forbidden: boolean }> {
+  try {
+    return { items: await fetchResources(namespace), forbidden: false };
+  } catch (err) {
+    const status = (err as { code?: number }).code;
+    if (status === 400) return { items: NO_RESOURCES, forbidden: false };
+    if (status === 403) return { items: NO_RESOURCES, forbidden: true };
+    throw err;
+  }
 }

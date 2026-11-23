@@ -50,10 +50,6 @@ func (c *k8sClient) CanCreateNamespaces(ctx context.Context) (bool, error) {
 // IsSystemNamespace reports whether name is a namespace that belongs to the
 // platform rather than to user workloads.
 func IsSystemNamespace(name string) bool {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return false
-	}
 	if slices.Contains(systemNamespaces, name) {
 		return true
 	}

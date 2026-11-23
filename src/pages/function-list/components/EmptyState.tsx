@@ -7,8 +7,8 @@ import {
 } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
 import { useTranslation } from 'react-i18next';
-import { SetupGuide } from './SetupGuide';
 import { useNavigate } from 'react-router';
+import { SetupGuide } from './SetupGuide';
 
 interface FunctionsEmptyStateProps {
   isCreateDisabled?: boolean;

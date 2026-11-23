@@ -12,12 +12,15 @@ import (
 
 type namespacesResponse struct {
 	Namespaces          []string `json:"namespaces"`
+	SystemNamespaces    []string `json:"systemNamespaces"`
 	CanCreateNamespaces bool     `json:"canCreateNamespaces"`
 }
 
 // HandleListNamespaces returns the namespaces the caller may deploy a function
 // into. Callers who cannot create namespaces never see system namespaces, so a
-// developer is only offered namespaces meant for their own workloads.
+// developer is only offered namespaces meant for their own workloads. Callers
+// who can are given every namespace, and the system ones are also listed in
+// SystemNamespaces so the UI can warn before deploying there.
 func (h *Handlers) HandleListNamespaces(w http.ResponseWriter, r *http.Request) {
 	ocpToken, ok := extractOCPToken(r)
 	if !ok {
@@ -53,13 +56,23 @@ func (h *Handlers) HandleListNamespaces(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	namespaces := make([]string, 0, len(projects))
+	resp := namespacesResponse{
+		Namespaces:          make([]string, 0, len(projects)),
+		SystemNamespaces:    []string{},
+		CanCreateNamespaces: canCreate,
+	}
 	for _, ns := range projects {
-		if canCreate || !cluster.IsSystemNamespace(ns) {
-			namespaces = append(namespaces, ns)
+		system := cluster.IsSystemNamespace(ns)
+		if system && !canCreate {
+			continue
+		}
+		resp.Namespaces = append(resp.Namespaces, ns)
+		if system {
+			resp.SystemNamespaces = append(resp.SystemNamespaces, ns)
 		}
 	}
-	slices.Sort(namespaces)
+	slices.Sort(resp.Namespaces)
+	slices.Sort(resp.SystemNamespaces)
 
-	writeJSON(w, http.StatusOK, namespacesResponse{Namespaces: namespaces, CanCreateNamespaces: canCreate})
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -60,10 +60,10 @@ Shared test infrastructure lives in `src/common/testing/`:
 | File | Purpose |
 | ------ | --------- |
 | `sdkTestDoubles.tsx` | Stubs for the OCP SDK: `consoleFetchStub` and `consoleFetchJSONStub` (bridge the SDK's fetch wrappers to real `fetch` so MSW can intercept while the real `httpClient` logic stays in the test path), `useK8sWatchResourceStub`, `useActiveNamespaceStub`, fixture builders (`ksvcFixture`, `deploymentFixture`) |
-| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`, `receiveWorkflowRunEventsStub`), with configurable responses, errors, and delays |
+| `functionsClientStub.ts` | MSW handlers for the backend API (`listFunctionsStub`, `getFilesStub`, `putFilesStub`, `receiveWorkflowRunEventsStub`, `createFunctionStub`, `getNamespacesStub`, `getSecretsStub`, `getConfigMapsStub`), with configurable responses, errors, and delays |
 | `authClientStub.ts` | MSW handlers for `/api/v1/scm/github/credential` (`connectGithubUserStub`, `fetchGithubUserStub`, `noGithubUserStub`, `disconnectGithubUserStub`) |
 | `testData.ts` | Test data factories for shared test fixtures (`functionMetadata`) |
-| `mswServer.ts` | The MSW server. It provides an empty workflow event stream by default and rejects other unhandled requests |
+| `mswServer.ts` | The MSW server. It provides an empty workflow event stream and empty Secrets/ConfigMaps lists by default and rejects other unhandled requests |
 | `timerFake.ts` | Disposable fake timer wrapper with `advance()` for controlled time progression |
 | `AsyncQueue.ts` | Async iterable queue for streaming test stubs (SSE event sequences) |
 | `constants.ts` | Shared test constants (`BACKEND_API` base URL) |

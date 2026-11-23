@@ -40,6 +40,8 @@ type Client interface {
 	CheckNamespace(ctx context.Context, namespace string) error
 	ListProjects(ctx context.Context) ([]string, error)
 	CanCreateNamespaces(ctx context.Context) (bool, error)
+	ListSecrets(ctx context.Context, namespace string) ([]KeyedResource, error)
+	ListConfigMaps(ctx context.Context, namespace string) ([]KeyedResource, error)
 }
 
 // New creates a cluster client authenticated with token.
@@ -231,6 +233,8 @@ type ClientStub struct {
 	OnDeleteImageBuilderBinding func(ctx context.Context, namespace string) error
 	OnListProjects              func(ctx context.Context) ([]string, error)
 	OnCanCreateNamespaces       func(ctx context.Context) (bool, error)
+	OnListSecrets               func(ctx context.Context, namespace string) ([]KeyedResource, error)
+	OnListConfigMaps            func(ctx context.Context, namespace string) ([]KeyedResource, error)
 }
 
 func (s *ClientStub) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
@@ -318,6 +322,20 @@ func (s *ClientStub) CanCreateNamespaces(ctx context.Context) (bool, error) {
 		return s.OnCanCreateNamespaces(ctx)
 	}
 	return false, nil
+}
+
+func (s *ClientStub) ListSecrets(ctx context.Context, namespace string) ([]KeyedResource, error) {
+	if s.OnListSecrets != nil {
+		return s.OnListSecrets(ctx, namespace)
+	}
+	return []KeyedResource{}, nil
+}
+
+func (s *ClientStub) ListConfigMaps(ctx context.Context, namespace string) ([]KeyedResource, error) {
+	if s.OnListConfigMaps != nil {
+		return s.OnListConfigMaps(ctx, namespace)
+	}
+	return []KeyedResource{}, nil
 }
 
 func roleBody(namespace string) *rbacv1.Role {

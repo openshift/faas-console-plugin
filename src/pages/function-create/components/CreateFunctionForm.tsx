@@ -25,15 +25,8 @@ import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../../common/context/AuthProvider';
-import {
-  CreateFunctionFormData,
-  FunctionRuntime,
-  K8sKeyedResource,
-  PlainEnvVar,
-  ResourceEnvVar,
-} from '../types';
-import { isSystemNamespace } from '../../../common/utils/utils';
-import { useActiveNamespace } from '@openshift-console/dynamic-plugin-sdk';
+import { K8sKeyedResource } from '../../../common/types';
+import { CreateFunctionFormData, FunctionRuntime, PlainEnvVar, ResourceEnvVar } from '../types';
 
 const OCP_INTERNAL_REGISTRY = 'image-registry.openshift-image-registry.svc:5000/';
 const runtimeOptions = [
@@ -45,12 +38,17 @@ const runtimeOptions = [
 
 type EnvVarField = 'plainEnvVars' | 'secretEnvVars' | 'configMapEnvVars';
 
+const NO_RESOURCES: K8sKeyedResource[] = [];
+
 interface CreateFunctionFormProps {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
+  resourcesNamespace: string; // the namespace secrets and configMaps belong to
   isSubmitting: boolean;
   canCreateNamespaces: boolean;
   namespaces: string[];
+  systemNamespaces: string[];
+  initialNamespace: string;
   onSubmit: (data: CreateFunctionFormData) => void;
   onCancel: () => void;
   setNamespaceWatchField: (namespace: string) => void;
@@ -59,31 +57,25 @@ interface CreateFunctionFormProps {
 export function CreateFunctionForm({
   secrets,
   configMaps,
+  resourcesNamespace,
   onSubmit,
   onCancel,
   setNamespaceWatchField,
   isSubmitting,
   canCreateNamespaces,
   namespaces,
+  systemNamespaces,
+  initialNamespace,
 }: CreateFunctionFormProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
-  const [activeNamespace] = useActiveNamespace();
-
-  // Resolved once, for the life of the form. The form field is seeded from it
-  // and is the user's from then on, so recomputing it would let the namespace
-  // the page watches drift away from the one the field shows.
-  const [initialNamespace] = useState(() =>
-    resolveInitialNamespace(canCreateNamespaces, namespaces, activeNamespace),
-  );
-
+  // The field is seeded from initialNamespace when the form mounts and is the user's from then on.
   const { fields, setField, setNamespaceFormField, setEnvVars, isValid } =
     useCreateFunctionForm(initialNamespace);
 
-  // A prefill is never typed, so the page has to be told about it once.
-  useEffect(() => {
-    if (initialNamespace) setNamespaceWatchField(initialNamespace);
-  }, [initialNamespace, setNamespaceWatchField]);
+  // Right after a namespace change the lists still belong to the previous namespace; offering
+  // them would let the user pick a resource from the wrong namespace.
+  const resourcesMatch = resourcesNamespace === fields.namespace;
 
   return (
     <Form
@@ -98,12 +90,13 @@ export function CreateFunctionForm({
         setField={setField}
         canCreateNamespaces={canCreateNamespaces}
         namespaces={namespaces}
+        systemNamespaces={systemNamespaces}
         setNamespaceFormField={setNamespaceFormField}
         setNamespaceWatchField={setNamespaceWatchField}
       />
       <EnvVarSection
-        secrets={secrets}
-        configMaps={configMaps}
+        secrets={resourcesMatch ? secrets : NO_RESOURCES}
+        configMaps={resourcesMatch ? configMaps : NO_RESOURCES}
         plainEnvVars={fields.plainEnvVars}
         secretEnvVars={fields.secretEnvVars}
         configMapEnvVars={fields.configMapEnvVars}
@@ -185,17 +178,6 @@ function useCreateFunctionForm(initialNamespace: string) {
   };
 }
 
-function resolveInitialNamespace(
-  canCreateNamespaces: boolean,
-  namespaces: string[],
-  activeNamespace: string,
-): string {
-  // The backend has already left out the namespaces this user may not pick.
-  if (activeNamespace && namespaces.includes(activeNamespace)) return activeNamespace;
-  if (!canCreateNamespaces && namespaces.length === 1) return namespaces[0];
-  return '';
-}
-
 interface GithubSettingsSectionProps {
   fields: CreateFunctionFormData;
   setField: (key: keyof CreateFunctionFormData, value: string) => void;
@@ -234,6 +216,7 @@ interface FunctionSettingsSectionProps {
   setField: (key: keyof CreateFunctionFormData, value: string) => void;
   canCreateNamespaces: boolean;
   namespaces: string[];
+  systemNamespaces: string[];
   setNamespaceFormField: (namespace: string) => void;
   setNamespaceWatchField: (namespace: string) => void;
 }
@@ -243,6 +226,7 @@ const FunctionSettingsSection = ({
   setField,
   canCreateNamespaces,
   namespaces,
+  systemNamespaces,
   setNamespaceFormField,
   setNamespaceWatchField,
 }: FunctionSettingsSectionProps) => {
@@ -276,6 +260,7 @@ const FunctionSettingsSection = ({
       <NamespaceInput
         canCreateNamespaces={canCreateNamespaces}
         namespaces={namespaces}
+        systemNamespaces={systemNamespaces}
         value={fields.namespace}
         setNamespaceFormField={setNamespaceFormField}
         setNamespaceWatchField={setNamespaceWatchField}
@@ -287,26 +272,29 @@ const FunctionSettingsSection = ({
 interface NamespaceInputProps {
   canCreateNamespaces: boolean;
   namespaces: string[];
+  systemNamespaces: string[];
   value: string;
   setNamespaceFormField: (namespace: string) => void; // set the namespace field in the form
-  setNamespaceWatchField: (namespace: string) => void; // debounced namespace change handler to watch for secrets and configmaps
+  setNamespaceWatchField: (namespace: string) => void; // tells the page which namespace to load secrets and configmaps for
 }
 
 function NamespaceInput({
   canCreateNamespaces,
   namespaces,
+  systemNamespaces,
   value,
   setNamespaceFormField,
   setNamespaceWatchField,
 }: NamespaceInputProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { handleNamespaceChange, soleNamespace, namespaceMissing } = useNamespaceInput({
-    canCreateNamespaces,
-    namespaces,
-    value,
-    setNamespaceFormField,
-    setNamespaceWatchField,
-  });
+  const { handleNamespaceChange, selectNamespace, soleNamespace, namespaceMissing } =
+    useNamespaceInput({
+      canCreateNamespaces,
+      namespaces,
+      value,
+      setNamespaceFormField,
+      setNamespaceWatchField,
+    });
 
   if (!canCreateNamespaces && !namespaces.length) {
     return (
@@ -341,7 +329,7 @@ function NamespaceInput({
         <FormSelect
           id="namespace"
           value={value}
-          onChange={(_, val) => handleNamespaceChange(val)}
+          onChange={(_, val) => selectNamespace(val)}
           aria-label={t('Namespace')}
         >
           <FormSelectOption value="" label={t('Select...')} isPlaceholder hidden />
@@ -350,7 +338,7 @@ function NamespaceInput({
           ))}
         </FormSelect>
       )}
-      {canCreateNamespaces && isSystemNamespace(value) && (
+      {canCreateNamespaces && systemNamespaces.includes(value) && (
         <NamespaceAlert
           title={t(
             'Functions should not be deployed to a system namespace. Create a dedicated namespace for your functions instead.',
@@ -399,15 +387,22 @@ const useNamespaceInput = ({
     }, 500);
   };
 
+  // A pick from the dropdown is final, so there is nothing to wait for.
+  const selectNamespace = (val: string) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setNamespaceFormField(val);
+    setNamespaceWatchField(val);
+  };
+
   // With a single choice there is nothing to pick, so the field is rendered read-only. It
   // was seeded into the form when it mounted, so there is nothing to keep in sync here.
   const soleNamespace = !canCreateNamespaces && namespaces.length === 1 ? namespaces[0] : null;
 
-  const namespaceMissing =
-    canCreateNamespaces && !!value && namespaces.length > 0 && !namespaces.includes(value);
+  const namespaceMissing = canCreateNamespaces && !!value && !namespaces.includes(value);
 
   return {
     handleNamespaceChange,
+    selectNamespace,
     soleNamespace,
     namespaceMissing,
   };

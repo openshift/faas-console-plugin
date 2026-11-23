@@ -2,7 +2,12 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { fetchGithubUserStub, noGithubUserStub } from '../../common/testing/authClientStub';
-import { createFunctionStub, getNamespacesStub } from '../../common/testing/functionsClientStub';
+import {
+  createFunctionStub,
+  getConfigMapsStub,
+  getNamespacesStub,
+  getSecretsStub,
+} from '../../common/testing/functionsClientStub';
 import FunctionCreatePage from './FunctionCreatePage';
 
 // vi.mock is hoisted above imports, so regular imports aren't available in the factory.
@@ -30,7 +35,6 @@ vi.mock('@openshift-console/dynamic-plugin-sdk', () => ({
     </>
   ),
   useActiveNamespace: sdkTestDoubles.useActiveNamespaceStub,
-  useK8sWatchResource: sdkTestDoubles.useK8sWatchResourceStub,
 }));
 
 vi.mock('react-router', async (importOriginal) => ({
@@ -111,7 +115,7 @@ describe('FunctionCreatePage', () => {
   });
 
   it('shows a spinner instead of the form until the namespaces have loaded', () => {
-    getNamespacesStub({ wait: new Promise(() => {}) });
+    getNamespacesStub({ wait: heldUntilTestEnds().held });
 
     render(
       <MemoryRouter>
@@ -121,6 +125,103 @@ describe('FunctionCreatePage', () => {
 
     expect(screen.getByRole('progressbar')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /Namespace/ })).not.toBeInTheDocument();
+  });
+
+  it('offers the secrets and config maps of the chosen namespace', async () => {
+    const user = userEvent.setup();
+    asUserWhoCanCreateNamespaces('team-a');
+    getSecretsStub({ byNamespace: { 'team-a': [{ name: 'db-credentials', keys: ['password'] }] } });
+    getConfigMapsStub({ byNamespace: { 'team-a': [{ name: 'app-settings', keys: ['mode'] }] } });
+
+    await renderPage();
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+    expect(await screen.findByRole('option', { name: 'db-credentials' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'app-settings' })).toBeInTheDocument();
+  });
+
+  it('shows why the namespaces could not be loaded instead of the form', async () => {
+    getNamespacesStub({ errorResponse: { message: 'failed to list namespaces', status: 502 } });
+
+    await renderPage();
+
+    expect(screen.getByText('Error loading namespaces')).toBeInTheDocument();
+    expect(screen.getByText('failed to list namespaces')).toBeInTheDocument();
+    expect(screen.queryByText(/no namespaces available/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Create/ })).not.toBeInTheDocument();
+  });
+
+  it('explains when the user cannot read Secrets in the chosen namespace', async () => {
+    const user = userEvent.setup();
+    asUserWhoCanCreateNamespaces('team-a');
+    getSecretsStub({
+      errorResponse: { message: 'not allowed to list secrets in namespace team-a', status: 403 },
+    });
+
+    await renderPage();
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
+
+    expect(await screen.findByText(/cannot read Secrets or ConfigMaps/)).toBeInTheDocument();
+    expect(screen.queryByText('Error loading Secrets and ConfigMaps')).not.toBeInTheDocument();
+  });
+
+  it('shows the backend message when Secrets fail to load, separately from create errors', async () => {
+    const user = userEvent.setup();
+    asUserWhoCanCreateNamespaces('team-a');
+    getSecretsStub({ errorResponse: { message: 'failed to list secrets', status: 502 } });
+
+    await renderPage();
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
+
+    expect(await screen.findByText('Error loading Secrets and ConfigMaps')).toBeInTheDocument();
+    expect(screen.getByText('failed to list secrets')).toBeInTheDocument();
+    expect(screen.queryByText('Error creating function')).not.toBeInTheDocument();
+  });
+
+  it('stays quiet while a typed namespace is not a valid name yet', async () => {
+    const user = userEvent.setup();
+    asUserWhoCanCreateNamespaces('team-a');
+    const requested = getSecretsStub({
+      errorResponse: { message: 'invalid namespace', status: 400 },
+    });
+
+    await renderPage();
+    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'Team_A');
+    await waitFor(() => expect(requested).toContain('Team_A'));
+
+    expect(screen.queryByText('Error loading Secrets and ConfigMaps')).not.toBeInTheDocument();
+    expect(screen.queryByText(/cannot read Secrets or ConfigMaps/)).not.toBeInTheDocument();
+  });
+
+  it('drops a slow answer for a namespace the user has already moved away from', async () => {
+    const user = userEvent.setup();
+    asUserWhoCanCreateNamespaces('team-a', 'team-b');
+    const teamA = heldUntilTestEnds();
+    const requested = getSecretsStub({
+      byNamespace: {
+        'team-a': [{ name: 'team-a-secret', keys: ['k'] }],
+        'team-b': [{ name: 'team-b-secret', keys: ['k'] }],
+      },
+      waitFor: { 'team-a': teamA.held },
+    });
+
+    await renderPage();
+    const field = screen.getByRole('textbox', { name: /Namespace/ });
+    await user.type(field, 'team-a');
+    await waitFor(() => expect(requested).toContain('team-a'));
+    await user.clear(field);
+    await user.type(field, 'team-b');
+    await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+    expect(await screen.findByRole('option', { name: 'team-b-secret' })).toBeInTheDocument();
+
+    teamA.release();
+    await waitFor(() => expect(requested).toEqual(['team-a', 'team-b']));
+    // Give the late answer a chance to land before asserting it did not.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(screen.getByRole('option', { name: 'team-b-secret' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'team-a-secret' })).not.toBeInTheDocument();
   });
 
   it('renders UserAvatar in header', async () => {
@@ -172,16 +273,6 @@ describe('FunctionCreatePage', () => {
         expect(screen.queryByText(/does not exist/i)).not.toBeInTheDocument();
       });
 
-      it('does not warn about non-existence before the namespace list is known', async () => {
-        const user = userEvent.setup();
-        asUserWhoCanCreateNamespaces();
-
-        await renderPage();
-        await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'ghost');
-
-        expect(screen.queryByText(/does not exist/i)).not.toBeInTheDocument();
-      });
-
       it('does not block Create for a namespace that does not exist', async () => {
         const user = userEvent.setup();
         asUserWhoCanCreateNamespaces('team-a');
@@ -193,8 +284,13 @@ describe('FunctionCreatePage', () => {
         await waitFor(() => expect(screen.getByRole('button', { name: /Create/ })).toBeEnabled());
       });
 
-      it('warns when a system namespace is typed', async () => {
+      it('warns when a namespace the backend reports as a system namespace is typed', async () => {
         const user = userEvent.setup();
+        getNamespacesStub({
+          canCreateNamespaces: true,
+          namespaces: ['openshift-monitoring', 'team-a'],
+          systemNamespaces: ['openshift-monitoring'],
+        });
 
         await renderPage();
         expect(screen.queryByText(/system namespace/i)).not.toBeInTheDocument();
@@ -214,6 +310,11 @@ describe('FunctionCreatePage', () => {
 
       it('does not block Create for a system namespace', async () => {
         const user = userEvent.setup();
+        getNamespacesStub({
+          canCreateNamespaces: true,
+          namespaces: ['default', 'team-a'],
+          systemNamespaces: ['default'],
+        });
 
         await renderPage();
         await fillForm(user);
@@ -268,6 +369,40 @@ describe('FunctionCreatePage', () => {
       });
     });
 
+    describe('console active namespace', () => {
+      it('pre-selects the active namespace when the user may deploy there', async () => {
+        sdkTestDoubles.setActiveNamespace('team-b');
+        asUserWhoCanCreateNamespaces('team-a', 'team-b');
+
+        await renderPage();
+
+        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('team-b');
+        expect(registryInput()).toHaveValue(`${REGISTRY}team-b`);
+      });
+
+      it('does not pre-select a system namespace', async () => {
+        sdkTestDoubles.setActiveNamespace('default');
+        getNamespacesStub({
+          canCreateNamespaces: true,
+          namespaces: ['default', 'team-a'],
+          systemNamespaces: ['default'],
+        });
+
+        await renderPage();
+
+        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('');
+      });
+
+      it('leaves the field empty when the active namespace is not one the user may pick', async () => {
+        sdkTestDoubles.setActiveNamespace('someone-elses');
+        asUserWhoCanCreateNamespaces('team-a', 'team-b');
+
+        await renderPage();
+
+        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('');
+      });
+    });
+
     describe('developer with several namespaces', () => {
       it('offers a dropdown of the accessible namespaces', async () => {
         asDeveloperWithNamespaces('team-a', 'team-b');
@@ -277,6 +412,18 @@ describe('FunctionCreatePage', () => {
         expect(screen.getByRole('combobox', { name: /Namespace/ })).toBeInTheDocument();
         expect(screen.getByRole('option', { name: 'team-a' })).toBeInTheDocument();
         expect(screen.getByRole('option', { name: 'team-b' })).toBeInTheDocument();
+      });
+
+      it('loads the Secrets of the namespace picked from the dropdown', async () => {
+        const user = userEvent.setup();
+        asDeveloperWithNamespaces('team-a', 'team-b');
+        getSecretsStub({ byNamespace: { 'team-b': [{ name: 'team-b-secret', keys: ['k'] }] } });
+
+        await renderPage();
+        await user.selectOptions(screen.getByRole('combobox', { name: /Namespace/ }), 'team-b');
+        await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
+
+        expect(await screen.findByRole('option', { name: 'team-b-secret' })).toBeInTheDocument();
       });
 
       it('applies the picked namespace to the form without warning about it', async () => {
@@ -312,6 +459,15 @@ function setProjects(canCreateNamespaces: boolean, namespaces: string[]) {
 
 // Renders the page and waits for the namespace options to arrive from the backend, since the
 // form is held back behind a spinner until then.
+// A backend answer held back until release() is called, and released when the test ends at the
+// latest, so no request is left pending after the test.
+function heldUntilTestEnds() {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  onTestFinished(() => release());
+  return { held, release };
+}
+
 async function renderPage() {
   const view = render(
     <MemoryRouter>

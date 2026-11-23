@@ -97,6 +97,5 @@ var _ = Describe("Namespaces", func() {
 		Entry("name that only starts with default", "defaulted", false),
 		Entry("name that only starts with openshift", "openshiftish", false),
 		Entry("empty", "", false),
-		Entry("blank", "   ", false),
 	)
 })

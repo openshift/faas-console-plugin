@@ -1,9 +1,17 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { FunctionsEmptyState } from './EmptyState';
 
+const mockNavigate = vi.hoisted(() => vi.fn());
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
+  useNavigate: () => mockNavigate,
 }));
 
 describe('FunctionsEmptyState', () => {
@@ -21,14 +29,17 @@ describe('FunctionsEmptyState', () => {
     expect(screen.getByRole('heading', { name: 'No functions found' })).toBeInTheDocument();
   });
 
-  it('renders a "Create function" button that navigates to /faas/create', () => {
+  it('renders a "Create function" button that navigates to /faas/create', async () => {
+    const user = userEvent.setup();
     render(
       <MemoryRouter>
         <FunctionsEmptyState />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('button', { name: 'Create function' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Create function' }));
+
+    expect(mockNavigate).toHaveBeenCalledWith('/faas/create');
   });
 
   it('shows PAT hint and disabled button when isCreateDisabled is true', () => {

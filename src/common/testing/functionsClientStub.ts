@@ -1,7 +1,13 @@
 import { http, HttpResponse } from 'msw';
 import { BACKEND_API } from '../testing/constants';
 import { server } from '../testing/mswServer';
-import { CreateFunctionRequest, FileEntry, FunctionMetadata, WorkflowRunRecord } from '../types';
+import {
+  CreateFunctionRequest,
+  FileEntry,
+  FunctionMetadata,
+  K8sKeyedResource,
+  WorkflowRunRecord,
+} from '../types';
 
 // -----------------------------------------------------------------------------
 // Test Doubles ----------------------------------------------------------------
@@ -183,11 +189,13 @@ export function createFunctionStub({
 
 export function getNamespacesStub({
   namespaces = [],
+  systemNamespaces = [],
   canCreateNamespaces = false,
   errorResponse,
   wait,
 }: {
   namespaces?: string[];
+  systemNamespaces?: string[];
   canCreateNamespaces?: boolean;
   errorResponse?: { message: string; status: number };
   wait?: Promise<void>;
@@ -202,7 +210,48 @@ export function getNamespacesStub({
           { status: errorResponse.status },
         );
 
-      return HttpResponse.json({ namespaces, canCreateNamespaces });
+      return HttpResponse.json({ namespaces, systemNamespaces, canCreateNamespaces });
     }),
   );
+}
+
+interface KeyedResourcesStubOptions {
+  byNamespace?: Record<string, K8sKeyedResource[]>;
+  errorResponse?: { message: string; status: number };
+  // Holds the answer for a namespace until the promise settles.
+  waitFor?: Partial<Record<string, Promise<void>>>;
+}
+
+// Returns the namespaces requested so far, in order.
+function keyedResourcesStub(
+  resource: 'secrets' | 'configmaps',
+  { byNamespace = {}, errorResponse, waitFor = {} }: KeyedResourcesStubOptions,
+): string[] {
+  const requested: string[] = [];
+
+  server.use(
+    http.get(`${BACKEND_API}/api/v1/namespaces/:namespace/${resource}`, async ({ params }) => {
+      const namespace = params.namespace as string;
+      requested.push(namespace);
+      await waitFor[namespace];
+
+      if (errorResponse)
+        return HttpResponse.json(
+          { message: errorResponse.message },
+          { status: errorResponse.status },
+        );
+
+      return HttpResponse.json(byNamespace[namespace] ?? []);
+    }),
+  );
+
+  return requested;
+}
+
+export function getSecretsStub(options: KeyedResourcesStubOptions = {}): string[] {
+  return keyedResourcesStub('secrets', options);
+}
+
+export function getConfigMapsStub(options: KeyedResourcesStubOptions = {}): string[] {
+  return keyedResourcesStub('configmaps', options);
 }

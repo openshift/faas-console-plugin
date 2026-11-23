@@ -111,7 +111,7 @@ Go + `net/http` standard library. Key dependencies:
 | Package | Responsibility |
 |---|---|
 | `kube` | Shared Kubernetes connection: builds a `*rest.Config` from host/token/caCert (or in-cluster), including the JSON content config and the default request timeout |
-| `cluster` | Kubernetes provisioning: service account, RBAC provisioning, TokenRequest, kubeconfig generation; per-namespace existence checks |
+| `cluster` | Kubernetes provisioning: service account, RBAC provisioning, TokenRequest, kubeconfig generation; per-namespace existence checks; introspection for the create form (accessible projects, namespace-create access review, system-namespace rule, Secret/ConfigMap key names) |
 | `functions` | Function lifecycle via knative/func: cluster queries behind the growable `functions.Client` facade (lists today), plus source/CI scaffold generation (`Generate`) |
 | `handler` | HTTP handlers: input validation, orchestration, error mapping |
 | `scm` | SCM abstraction types (`Platform`, `Registry`, `Client`) and filesystem helpers |
