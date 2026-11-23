@@ -6,6 +6,8 @@ import { fakeGithubUrl } from '../../helpers/fakegithub';
 const FUNC_NAME = 'env-var-func';
 const NAMESPACE = 'env-var-test';
 const BRANCH = 'main';
+// A namespace that exists on every cluster and holds none of the Secrets or ConfigMaps below.
+const OTHER_NAMESPACE = 'default';
 
 const SECRET_NAME = 'my-db-secret';
 const SECRET_KEY = 'DB_PASSWORD';
@@ -33,7 +35,7 @@ test.describe('Create function with environment variables', () => {
 
     await test.step('fill in function details without namespace', async () => {
       // The field may be prefilled from the console's active namespace; this flow needs it empty.
-      await page.locator('#namespace').fill('');
+      await page.locator('#namespace').selectOption('');
       await page.locator('#repo').fill(FUNC_NAME);
       await page.locator('#branch').fill(BRANCH);
       await page.locator('#name').fill(FUNC_NAME);
@@ -48,8 +50,8 @@ test.describe('Create function with environment variables', () => {
       await expect(page.locator('#configmap-resource-0')).toBeDisabled();
     });
 
-    await test.step('fill namespace and verify resource dropdowns become enabled', async () => {
-      await page.locator('#namespace').fill(NAMESPACE);
+    await test.step('pick namespace and verify resource dropdowns become enabled', async () => {
+      await page.locator('#namespace').selectOption(NAMESPACE);
 
       await expect(page.locator('#secret-resource-0')).toBeEnabled({ timeout: 10_000 });
       await expect(page.locator('#configmap-resource-0')).toBeEnabled({ timeout: 10_000 });
@@ -115,7 +117,7 @@ test.describe('Create function with environment variables', () => {
       await expect(page.locator('#configmap-resource-0')).toHaveValue(CONFIGMAP_NAME);
       await expect(page.locator('#configmap-key-0')).toHaveValue(CONFIGMAP_KEY);
 
-      await page.locator('#namespace').fill('other-ns');
+      await page.locator('#namespace').selectOption(OTHER_NAMESPACE);
 
       await expect(page.locator('#secret-resource-0')).toHaveValue('');
       await expect(page.locator('#secret-key-0')).toHaveValue('');
@@ -124,7 +126,7 @@ test.describe('Create function with environment variables', () => {
       await expect(page.locator('#configmap-key-0')).toHaveValue('');
       await expect(page.locator('#configmap-key-0')).toBeDisabled();
 
-      await page.locator('#namespace').fill(NAMESPACE);
+      await page.locator('#namespace').selectOption(NAMESPACE);
       await expect(
         page.locator('#secret-resource-0').locator(`option[value="${SECRET_NAME}"]`),
       ).toBeAttached({ timeout: 30_000 });

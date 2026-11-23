@@ -65,7 +65,7 @@ test.describe('Create go function', () => {
       await page.locator('#branch').fill(BRANCH);
       await page.locator('#name').fill(FUNC_NAME);
       await page.locator('#runtime').selectOption(RUNTIME);
-      await page.locator('#namespace').fill(NAMESPACE);
+      await page.locator('#namespace').selectOption(NAMESPACE);
     });
 
     await test.step('verify namespace updates the registry field', async () => {

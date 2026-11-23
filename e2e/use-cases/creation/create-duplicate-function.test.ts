@@ -38,7 +38,7 @@ test.describe('Create duplicate function', () => {
 
       await page.locator('#runtime').selectOption('go');
 
-      await page.locator('#namespace').fill(NAMESPACE);
+      await page.locator('#namespace').selectOption(NAMESPACE);
     });
 
     await test.step('submit and verify error is displayed', async () => {

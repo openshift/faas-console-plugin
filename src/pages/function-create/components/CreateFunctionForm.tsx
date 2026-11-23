@@ -22,7 +22,7 @@ import {
   Title,
 } from '@patternfly/react-core';
 import { MinusCircleIcon, PlusCircleIcon } from '@patternfly/react-icons';
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../../../common/context/AuthProvider';
 import { K8sKeyedResource } from '../../../common/types';
@@ -287,16 +287,15 @@ function NamespaceInput({
   setNamespaceWatchField,
 }: NamespaceInputProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
-  const { handleNamespaceChange, selectNamespace, soleNamespace, namespaceMissing } =
-    useNamespaceInput({
-      canCreateNamespaces,
-      namespaces,
-      value,
-      setNamespaceFormField,
-      setNamespaceWatchField,
-    });
 
-  if (!canCreateNamespaces && !namespaces.length) {
+  // A pick from the dropdown is final, so the page can load its Secrets and ConfigMaps
+  // right away.
+  const selectNamespace = (val: string) => {
+    setNamespaceFormField(val);
+    setNamespaceWatchField(val);
+  };
+
+  if (!namespaces.length) {
     return (
       <FormGroup label={t('Namespace')}>
         <NamespaceAlert
@@ -307,17 +306,13 @@ function NamespaceInput({
     );
   }
 
+  // With a single choice there is nothing to pick, so the field is rendered read-only. It
+  // was seeded into the form when it mounted, so there is nothing to keep in sync here.
+  const soleNamespace = !canCreateNamespaces && namespaces.length === 1 ? namespaces[0] : null;
+
   return (
     <FormGroup label={t('Namespace')} isRequired fieldId="namespace">
-      {canCreateNamespaces ? (
-        <TextInput
-          id="namespace"
-          isRequired
-          value={value}
-          onChange={(_, val) => handleNamespaceChange(val)}
-          aria-label={t('Namespace')}
-        />
-      ) : soleNamespace ? (
+      {soleNamespace ? (
         <TextInput
           id="namespace"
           isRequired
@@ -345,68 +340,9 @@ function NamespaceInput({
           )}
         />
       )}
-      {canCreateNamespaces && namespaceMissing && (
-        <NamespaceAlert
-          title={t('Namespace "{{namespace}}" does not exist.', { namespace: value })}
-        />
-      )}
     </FormGroup>
   );
 }
-
-interface UseNamespaceInputProps {
-  canCreateNamespaces: boolean;
-  namespaces: string[];
-  value: string;
-  setNamespaceFormField: (namespace: string) => void;
-  setNamespaceWatchField: (namespace: string) => void;
-}
-
-const useNamespaceInput = ({
-  canCreateNamespaces,
-  namespaces,
-  value,
-  setNamespaceFormField,
-  setNamespaceWatchField,
-}: UseNamespaceInputProps) => {
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const handleNamespaceChange = (val: string) => {
-    setNamespaceFormField(val); // Instant UI update for the namespace field in the form
-
-    if (timerRef.current) clearTimeout(timerRef.current);
-
-    timerRef.current = setTimeout(() => {
-      setNamespaceWatchField(val); // Debounced parent call for watching secrets and configmaps
-    }, 500);
-  };
-
-  // A pick from the dropdown is final, so there is nothing to wait for.
-  const selectNamespace = (val: string) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setNamespaceFormField(val);
-    setNamespaceWatchField(val);
-  };
-
-  // With a single choice there is nothing to pick, so the field is rendered read-only. It
-  // was seeded into the form when it mounted, so there is nothing to keep in sync here.
-  const soleNamespace = !canCreateNamespaces && namespaces.length === 1 ? namespaces[0] : null;
-
-  const namespaceMissing = canCreateNamespaces && !!value && !namespaces.includes(value);
-
-  return {
-    handleNamespaceChange,
-    selectNamespace,
-    soleNamespace,
-    namespaceMissing,
-  };
-};
 
 function NamespaceAlert({
   title,

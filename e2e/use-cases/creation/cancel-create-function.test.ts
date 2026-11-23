@@ -1,6 +1,7 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { Request } from '@playwright/test';
 import { navigateToCreatePage } from '../../helpers/navigation';
+import { ensureNamespace } from '../../helpers/cluster';
 
 const FUNC_NAME = 'test-func';
 const NAMESPACE = 'create-test';
@@ -14,6 +15,10 @@ test.describe('Cancel create function', () => {
       }
     });
 
+    await test.step('ensure namespace', async () => {
+      await ensureNamespace(page, NAMESPACE);
+    });
+
     await test.step('navigate to the create page', async () => {
       await navigateToCreatePage(page);
       await expect(page.locator('#owner')).toBeVisible({ timeout: 10_000 });
@@ -22,7 +27,7 @@ test.describe('Cancel create function', () => {
     await test.step('partially fill the form', async () => {
       await page.locator('#repo').fill(FUNC_NAME);
       await page.locator('#name').fill(FUNC_NAME);
-      await page.locator('#namespace').fill(NAMESPACE);
+      await page.locator('#namespace').selectOption(NAMESPACE);
     });
 
     await test.step('click cancel and verify redirect to overview', async () => {

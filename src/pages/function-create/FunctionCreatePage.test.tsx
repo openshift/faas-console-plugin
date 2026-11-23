@@ -49,10 +49,9 @@ vi.mock('../../common/components/UserAvatar', () => ({
 describe('FunctionCreatePage', () => {
   beforeEach(() => {
     fetchGithubUserStub();
-    // Most flows are exercised as a user who may create namespaces, because that is the only
-    // role whose namespace field is a free-text input. The developer branches arrange their
-    // own fixtures.
-    asUserWhoCanCreateNamespaces();
+    // Most flows are exercised as a user who may create namespaces, who picks from every
+    // namespace. The developer branches arrange their own fixtures.
+    asUserWhoCanCreateNamespaces('default', 'my-functions');
   });
 
   afterEach(() => {
@@ -134,7 +133,7 @@ describe('FunctionCreatePage', () => {
     getConfigMapsStub({ byNamespace: { 'team-a': [{ name: 'app-settings', keys: ['mode'] }] } });
 
     await renderPage();
-    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
+    await user.selectOptions(screen.getByRole('combobox', { name: /Namespace/ }), 'team-a');
     await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
 
     expect(await screen.findByRole('option', { name: 'db-credentials' })).toBeInTheDocument();
@@ -160,7 +159,7 @@ describe('FunctionCreatePage', () => {
     });
 
     await renderPage();
-    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
+    await user.selectOptions(screen.getByRole('combobox', { name: /Namespace/ }), 'team-a');
 
     expect(await screen.findByText(/cannot read Secrets or ConfigMaps/)).toBeInTheDocument();
     expect(screen.queryByText('Error loading Secrets and ConfigMaps')).not.toBeInTheDocument();
@@ -172,26 +171,11 @@ describe('FunctionCreatePage', () => {
     getSecretsStub({ errorResponse: { message: 'failed to list secrets', status: 502 } });
 
     await renderPage();
-    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
+    await user.selectOptions(screen.getByRole('combobox', { name: /Namespace/ }), 'team-a');
 
     expect(await screen.findByText('Error loading Secrets and ConfigMaps')).toBeInTheDocument();
     expect(screen.getByText('failed to list secrets')).toBeInTheDocument();
     expect(screen.queryByText('Error creating function')).not.toBeInTheDocument();
-  });
-
-  it('stays quiet while a typed namespace is not a valid name yet', async () => {
-    const user = userEvent.setup();
-    asUserWhoCanCreateNamespaces('team-a');
-    const requested = getSecretsStub({
-      errorResponse: { message: 'invalid namespace', status: 400 },
-    });
-
-    await renderPage();
-    await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'Team_A');
-    await waitFor(() => expect(requested).toContain('Team_A'));
-
-    expect(screen.queryByText('Error loading Secrets and ConfigMaps')).not.toBeInTheDocument();
-    expect(screen.queryByText(/cannot read Secrets or ConfigMaps/)).not.toBeInTheDocument();
   });
 
   it('drops a slow answer for a namespace the user has already moved away from', async () => {
@@ -207,11 +191,10 @@ describe('FunctionCreatePage', () => {
     });
 
     await renderPage();
-    const field = screen.getByRole('textbox', { name: /Namespace/ });
-    await user.type(field, 'team-a');
+    const field = screen.getByRole('combobox', { name: /Namespace/ });
+    await user.selectOptions(field, 'team-a');
     await waitFor(() => expect(requested).toContain('team-a'));
-    await user.clear(field);
-    await user.type(field, 'team-b');
+    await user.selectOptions(field, 'team-b');
     await user.click(screen.getByRole('button', { name: /Add environment variable/ }));
     expect(await screen.findByRole('option', { name: 'team-b-secret' })).toBeInTheDocument();
 
@@ -242,49 +225,31 @@ describe('FunctionCreatePage', () => {
 
   describe('namespace', () => {
     describe('user who can create namespaces', () => {
-      it('keeps every character the user types, without the debounce reverting it', async () => {
-        const user = userEvent.setup();
+      it('offers every namespace in a dropdown, system namespaces included', async () => {
+        getNamespacesStub({
+          canCreateNamespaces: true,
+          namespaces: ['kube-system', 'openshift-monitoring', 'team-a'],
+          systemNamespaces: ['kube-system', 'openshift-monitoring'],
+        });
 
         await renderPage();
-        const input = screen.getByRole('textbox', { name: /Namespace/ });
-        await user.type(input, 'my-functions');
 
-        expect(input).toHaveValue('my-functions');
-        expect(registryInput()).toHaveValue(`${REGISTRY}my-functions`);
+        expect(screen.queryByRole('textbox', { name: /Namespace/ })).not.toBeInTheDocument();
+        expect(screen.getByRole('combobox', { name: /Namespace/ })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'kube-system' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'openshift-monitoring' })).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: 'team-a' })).toBeInTheDocument();
       });
 
-      it('warns when the typed namespace does not exist', async () => {
-        const user = userEvent.setup();
+      it('offers a dropdown even when there is a single namespace', async () => {
         asUserWhoCanCreateNamespaces('team-a');
 
         await renderPage();
-        await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'ghost');
 
-        expect(screen.getByText(/does not exist/i)).toBeInTheDocument();
+        expect(screen.getByRole('combobox', { name: /Namespace/ })).toBeEnabled();
       });
 
-      it('does not warn about non-existence when the namespace exists', async () => {
-        const user = userEvent.setup();
-        asUserWhoCanCreateNamespaces('team-a');
-
-        await renderPage();
-        await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'team-a');
-
-        expect(screen.queryByText(/does not exist/i)).not.toBeInTheDocument();
-      });
-
-      it('does not block Create for a namespace that does not exist', async () => {
-        const user = userEvent.setup();
-        asUserWhoCanCreateNamespaces('team-a');
-
-        await renderPage();
-        await fillForm(user, 'ghost');
-
-        expect(screen.getByText(/does not exist/i)).toBeInTheDocument();
-        await waitFor(() => expect(screen.getByRole('button', { name: /Create/ })).toBeEnabled());
-      });
-
-      it('warns when a namespace the backend reports as a system namespace is typed', async () => {
+      it('warns when a namespace the backend reports as a system namespace is picked', async () => {
         const user = userEvent.setup();
         getNamespacesStub({
           canCreateNamespaces: true,
@@ -294,7 +259,10 @@ describe('FunctionCreatePage', () => {
 
         await renderPage();
         expect(screen.queryByText(/system namespace/i)).not.toBeInTheDocument();
-        await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'openshift-monitoring');
+        await user.selectOptions(
+          screen.getByRole('combobox', { name: /Namespace/ }),
+          'openshift-monitoring',
+        );
 
         expect(screen.getByText(/system namespace/i)).toBeInTheDocument();
       });
@@ -303,7 +271,10 @@ describe('FunctionCreatePage', () => {
         const user = userEvent.setup();
 
         await renderPage();
-        await user.type(screen.getByRole('textbox', { name: /Namespace/ }), 'my-functions');
+        await user.selectOptions(
+          screen.getByRole('combobox', { name: /Namespace/ }),
+          'my-functions',
+        );
 
         expect(screen.queryByText(/system namespace/i)).not.toBeInTheDocument();
       });
@@ -376,7 +347,7 @@ describe('FunctionCreatePage', () => {
 
         await renderPage();
 
-        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('team-b');
+        expect(screen.getByRole('combobox', { name: /Namespace/ })).toHaveValue('team-b');
         expect(registryInput()).toHaveValue(`${REGISTRY}team-b`);
       });
 
@@ -390,7 +361,7 @@ describe('FunctionCreatePage', () => {
 
         await renderPage();
 
-        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('');
+        expect(screen.getByRole('combobox', { name: /Namespace/ })).toHaveValue('');
       });
 
       it('leaves the field empty when the active namespace is not one the user may pick', async () => {
@@ -399,7 +370,7 @@ describe('FunctionCreatePage', () => {
 
         await renderPage();
 
-        expect(screen.getByRole('textbox', { name: /Namespace/ })).toHaveValue('');
+        expect(screen.getByRole('combobox', { name: /Namespace/ })).toHaveValue('');
       });
     });
 
@@ -487,7 +458,7 @@ async function fillForm(user: ReturnType<typeof userEvent.setup>, namespace = 'd
   await user.type(screen.getByRole('textbox', { name: /Repository/ }), 'my-repo');
   await user.type(screen.getByRole('textbox', { name: /Branch/ }), 'main');
   await user.type(screen.getByRole('textbox', { name: /^Name$/ }), 'my-func');
-  await user.type(screen.getByRole('textbox', { name: /Namespace/ }), namespace);
+  await user.selectOptions(screen.getByRole('combobox', { name: /Namespace/ }), namespace);
 }
 
 function registryInput() {

@@ -47,7 +47,6 @@
   "Loading": "Loading",
   "Name": "Name",
   "Namespace": "Namespace",
-  "Namespace \"{{namespace}}\" does not exist.": "Namespace \"{{namespace}}\" does not exist.",
   "No functions found": "No functions found",
   "No namespaces available. You can create a new namespace in Home/Projects.": "No namespaces available. You can create a new namespace in Home/Projects.",
   "No source repository to edit": "No source repository to edit",

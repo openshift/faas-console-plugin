@@ -147,7 +147,7 @@ function useFunctionCreatePage(): {
   );
 
   // null until the user changes the field; until then the field shows the prefill.
-  const [typedNamespace, setNamespaceWatchField] = useState<string | null>(null);
+  const [pickedNamespace, setNamespaceWatchField] = useState<string | null>(null);
 
   const {
     namespace: resourcesNamespace,
@@ -155,7 +155,7 @@ function useFunctionCreatePage(): {
     configMaps,
     forbidden: resourcesForbidden,
     error: resourcesError,
-  } = useSecretsAndConfigMaps(typedNamespace ?? initialNamespace);
+  } = useSecretsAndConfigMaps(pickedNamespace ?? initialNamespace);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -347,8 +347,7 @@ function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
   return result;
 }
 
-// A 400 (a half-typed, invalid name) or a 403 (no read access) means there is nothing to
-// offer, not that loading failed.
+// A 403 (no read access) means there is nothing to offer, not that loading failed.
 async function fetchOrEmpty(
   fetchResources: (namespace: string) => Promise<K8sKeyedResource[]>,
   namespace: string,
@@ -357,7 +356,6 @@ async function fetchOrEmpty(
     return { items: await fetchResources(namespace), forbidden: false };
   } catch (err) {
     const status = (err as { code?: number }).code;
-    if (status === 400) return { items: NO_RESOURCES, forbidden: false };
     if (status === 403) return { items: NO_RESOURCES, forbidden: true };
     throw err;
   }

@@ -1,11 +1,16 @@
 import { test, expect } from '../../fixtures/authenticated-page';
 import { navigateToCreatePage } from '../../helpers/navigation';
+import { ensureNamespace } from '../../helpers/cluster';
 
 const NAMESPACE = 'create-test';
 const BRANCH = 'main';
 
 test.describe('Env var validation on create form', () => {
   test('user sees validation errors for invalid env var entries', async ({ page }) => {
+    await test.step('ensure namespace', async () => {
+      await ensureNamespace(page, NAMESPACE);
+    });
+
     await test.step('navigate to the create page and fill required fields', async () => {
       await navigateToCreatePage(page);
       await expect(page.locator('#owner')).toBeVisible({ timeout: 10_000 });
@@ -13,7 +18,7 @@ test.describe('Env var validation on create form', () => {
       await page.locator('#repo').fill('env-test-func');
       await page.locator('#branch').fill(BRANCH);
       await page.locator('#name').fill('env-test-func');
-      await page.locator('#namespace').fill(NAMESPACE);
+      await page.locator('#namespace').selectOption(NAMESPACE);
     });
 
     await test.step('verify submit is enabled before adding env vars', async () => {
