@@ -5,14 +5,14 @@ go 1.26.0
 require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/go-github/v90 v90.0.0
-	github.com/onsi/ginkgo/v2 v2.32.2
-	github.com/onsi/gomega v1.43.0
+	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/gomega v1.44.0
 	golang.org/x/crypto v0.59.0
 	golang.org/x/sync v0.25.0
 	k8s.io/api v0.36.5
 	k8s.io/apimachinery v0.36.5
 	k8s.io/client-go v0.36.5
-	knative.dev/func v0.50.1-0.20260903102939-e3cccb21e68d
+	knative.dev/func v0.50.3
 	sigs.k8s.io/yaml v1.6.0
 )
 
