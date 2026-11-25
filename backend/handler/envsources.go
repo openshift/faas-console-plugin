@@ -29,11 +29,7 @@ func (h *Handlers) handleListKeyedResources(
 	kind string,
 	list func(cluster.Client, context.Context, string) ([]cluster.KeyedResource, error),
 ) {
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "Authorization header is required")
-		return
-	}
+	ocpToken := ocpTokenFrom(r.Context())
 	namespace := r.PathValue("namespace")
 	if errs := k8svalidation.IsDNS1123Label(namespace); len(errs) > 0 {
 		writeError(w, http.StatusBadRequest, "invalid namespace: "+errs[0])

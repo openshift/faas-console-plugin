@@ -8,10 +8,7 @@ import (
 
 	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 )
-
-var projectsGVR = schema.GroupVersionResource{Group: "project.openshift.io", Version: "v1", Resource: "projects"}
 
 var (
 	systemNamespaces        = []string{"openshift", "default"}
@@ -22,13 +19,13 @@ var (
 // scopes the project list to the caller, so this is the set of namespaces the
 // user has access to, without needing cluster-wide list on namespaces.
 func (c *k8sClient) ListProjects(ctx context.Context) ([]string, error) {
-	list, err := c.dynamic.Resource(projectsGVR).List(ctx, metav1.ListOptions{})
+	list, err := c.projects.ProjectV1().Projects().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
 	names := make([]string, 0, len(list.Items))
 	for _, p := range list.Items {
-		names = append(names, p.GetName())
+		names = append(names, p.Name)
 	}
 	return names, nil
 }

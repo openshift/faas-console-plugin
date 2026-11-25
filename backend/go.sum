@@ -828,6 +828,10 @@ github.com/opencontainers/selinux v1.13.1 h1:A8nNeceYngH9Ow++M+VVEwJVpdFmrlxsN22
 github.com/opencontainers/selinux v1.13.1/go.mod h1:S10WXZ/osk2kWOYKy1x2f/eXF5ZHJoUs8UU/2caNRbg=
 github.com/openshift-pipelines/pipelines-as-code v0.31.0 h1:dUUvnwCrhSmr3IYjsywLD7QTNAINetFoLCIO4529nOk=
 github.com/openshift-pipelines/pipelines-as-code v0.31.0/go.mod h1:74yRkJfqVzMp2iiq3IBm8Lt1q1EAHMIHb53/Au+2IVM=
+github.com/openshift/api v0.0.0-20260702202555-ef71f942ef6c h1:X1B6zMjD7kmKcuv9Cxs4Zhq/ruJLt7BsywSWKOA9Jn4=
+github.com/openshift/api v0.0.0-20260702202555-ef71f942ef6c/go.mod h1:7WJ3IPaK6nmWT8bDcaNooHqd0H5WepjVqV/10VlkMEM=
+github.com/openshift/client-go v0.0.0-20260703082747-24d059aea27a h1:RfmstmmWz5/23/Tt8gBipICzC1VHQLgGBeQUQ1aWoUA=
+github.com/openshift/client-go v0.0.0-20260703082747-24d059aea27a/go.mod h1:fNuXvm6bMJff2AxiRb9CR5L3a9CLzVgcoSmHZ3l7FgU=
 github.com/openshift/functions v0.0.0-20261105072231-9c2e4a2cde40 h1:0GZWxOJMQXl3icSkY176vFja5cjuOTWfNOSKQG5uBYU=
 github.com/openshift/functions v0.0.0-20261105072231-9c2e4a2cde40/go.mod h1:M3ORqXqq+KhL4GOlTiKMA8Vad5DRR06wDHspyBICrfo=
 github.com/openshift/source-to-image v1.6.1 h1:JSMmw0kDK1ckuukUd/NgqxFE2zUA3fTJW1p/evoZmTI=

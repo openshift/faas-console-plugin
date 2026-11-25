@@ -6,35 +6,29 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	projectv1 "github.com/openshift/api/project/v1"
+	projectfake "github.com/openshift/client-go/project/clientset/versioned/fake"
 	authorizationv1 "k8s.io/api/authorization/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
-func projectObject(name string) *unstructured.Unstructured {
-	p := &unstructured.Unstructured{}
-	p.SetAPIVersion("project.openshift.io/v1")
-	p.SetKind("Project")
-	p.SetName(name)
-	return p
+func projectObject(name string) *projectv1.Project {
+	return &projectv1.Project{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+	}
 }
 
-func projectsClient(objects ...runtime.Object) *dynamicfake.FakeDynamicClient {
-	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
-		runtime.NewScheme(),
-		map[schema.GroupVersionResource]string{projectsGVR: "ProjectList"},
-		objects...,
-	)
+func projectsClient(objects ...runtime.Object) *projectfake.Clientset {
+	return projectfake.NewClientset(objects...)
 }
 
 var _ = Describe("Namespaces", func() {
 	Describe("ListProjects", func() {
 		It("returns the names of the projects the caller can see", func() {
-			cl := &k8sClient{dynamic: projectsClient(projectObject("team-a"), projectObject("team-b"))}
+			cl := &k8sClient{projects: projectsClient(projectObject("team-a"), projectObject("team-b"))}
 
 			names, err := cl.ListProjects(context.Background())
 			Expect(err).NotTo(HaveOccurred())
@@ -42,11 +36,11 @@ var _ = Describe("Namespaces", func() {
 		})
 
 		It("returns an error when the list fails", func() {
-			dc := projectsClient()
-			dc.PrependReactor("list", "projects", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			pc := projectsClient()
+			pc.PrependReactor("list", "projects", func(action k8stesting.Action) (bool, runtime.Object, error) {
 				return true, nil, forbiddenFor("projects")
 			})
-			cl := &k8sClient{dynamic: dc}
+			cl := &k8sClient{projects: pc}
 
 			_, err := cl.ListProjects(context.Background())
 			Expect(err).To(HaveOccurred())

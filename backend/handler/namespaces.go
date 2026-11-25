@@ -22,11 +22,7 @@ type namespacesResponse struct {
 // who can are given every namespace, and the system ones are also listed in
 // SystemNamespaces so the UI can warn before deploying there.
 func (h *Handlers) HandleListNamespaces(w http.ResponseWriter, r *http.Request) {
-	ocpToken, ok := extractOCPToken(r)
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "Authorization header is required")
-		return
-	}
+	ocpToken := ocpTokenFrom(r.Context())
 
 	cl, err := newClusterClient(h.kubeHost, ocpToken, h.caCert)
 	if err != nil {

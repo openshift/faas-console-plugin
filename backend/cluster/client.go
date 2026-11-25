@@ -7,13 +7,13 @@ import (
 	"log/slog"
 	"time"
 
+	projectclientset "github.com/openshift/client-go/project/clientset/versioned"
 	"github.com/openshift/faas-console-plugin/backend/kube"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -57,16 +57,16 @@ func New(host, token string, caCert []byte) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
-	dynamicClient, err := dynamic.NewForConfig(cfg)
+	projectClient, err := projectclientset.NewForConfig(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("create dynamic client: %w", err)
+		return nil, fmt.Errorf("create project client: %w", err)
 	}
-	return &k8sClient{clientset: clientset, dynamic: dynamicClient}, nil
+	return &k8sClient{clientset: clientset, projects: projectClient}, nil
 }
 
 type k8sClient struct {
 	clientset kubernetes.Interface
-	dynamic   dynamic.Interface
+	projects  projectclientset.Interface
 }
 
 func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {

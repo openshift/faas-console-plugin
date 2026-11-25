@@ -14,9 +14,7 @@ import (
 )
 
 func namespacesRequest() *http.Request {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/namespaces", nil)
-	req.Header.Set("Authorization", "Bearer ocp-token")
-	return req
+	return httptest.NewRequestWithContext(testOCPTokenContext(), http.MethodGet, "/api/v1/namespaces", nil)
 }
 
 func decodeNamespaces(w *httptest.ResponseRecorder) namespacesResponse {
@@ -92,15 +90,6 @@ var _ = Describe("GET /api/v1/namespaces", func() {
 
 		Expect(w.Code).To(Equal(http.StatusOK))
 		Expect(gotToken).To(Equal("ocp-token"))
-	})
-
-	It("requires the Authorization header", func() {
-		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/namespaces", nil)
-
-		w := httptest.NewRecorder()
-		(&Handlers{}).HandleListNamespaces(w, req)
-
-		Expect(w.Code).To(Equal(http.StatusUnauthorized))
 	})
 
 	It("returns 502 when the cluster cannot be reached", func() {

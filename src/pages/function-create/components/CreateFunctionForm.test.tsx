@@ -50,7 +50,7 @@ describe('CreateFunctionForm', () => {
     namespaces: ['default', 'demo', 'mine', 'my-ns', 'ns-a', 'ns-b'],
     systemNamespaces: [] as string[],
     initialNamespace: '',
-    setNamespaceWatchField: vi.fn(),
+    onPickNamespace: vi.fn(),
   };
 
   // The form owns the namespace and only notifies the page, so nothing is fed back down.

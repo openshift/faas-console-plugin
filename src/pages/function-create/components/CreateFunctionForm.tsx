@@ -38,8 +38,6 @@ const runtimeOptions = [
 
 type EnvVarField = 'plainEnvVars' | 'secretEnvVars' | 'configMapEnvVars';
 
-const NO_RESOURCES: K8sKeyedResource[] = [];
-
 interface CreateFunctionFormProps {
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
@@ -51,7 +49,7 @@ interface CreateFunctionFormProps {
   initialNamespace: string;
   onSubmit: (data: CreateFunctionFormData) => void;
   onCancel: () => void;
-  setNamespaceWatchField: (namespace: string) => void;
+  onPickNamespace: (namespace: string) => void;
 }
 
 export function CreateFunctionForm({
@@ -60,7 +58,7 @@ export function CreateFunctionForm({
   resourcesNamespace,
   onSubmit,
   onCancel,
-  setNamespaceWatchField,
+  onPickNamespace,
   isSubmitting,
   canCreateNamespaces,
   namespaces,
@@ -92,11 +90,11 @@ export function CreateFunctionForm({
         namespaces={namespaces}
         systemNamespaces={systemNamespaces}
         setNamespaceFormField={setNamespaceFormField}
-        setNamespaceWatchField={setNamespaceWatchField}
+        onPickNamespace={onPickNamespace}
       />
       <EnvVarSection
-        secrets={resourcesMatch ? secrets : NO_RESOURCES}
-        configMaps={resourcesMatch ? configMaps : NO_RESOURCES}
+        secrets={resourcesMatch ? secrets : []}
+        configMaps={resourcesMatch ? configMaps : []}
         plainEnvVars={fields.plainEnvVars}
         secretEnvVars={fields.secretEnvVars}
         configMapEnvVars={fields.configMapEnvVars}
@@ -218,7 +216,7 @@ interface FunctionSettingsSectionProps {
   namespaces: string[];
   systemNamespaces: string[];
   setNamespaceFormField: (namespace: string) => void;
-  setNamespaceWatchField: (namespace: string) => void;
+  onPickNamespace: (namespace: string) => void;
 }
 
 const FunctionSettingsSection = ({
@@ -228,7 +226,7 @@ const FunctionSettingsSection = ({
   namespaces,
   systemNamespaces,
   setNamespaceFormField,
-  setNamespaceWatchField,
+  onPickNamespace,
 }: FunctionSettingsSectionProps) => {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
@@ -263,7 +261,7 @@ const FunctionSettingsSection = ({
         systemNamespaces={systemNamespaces}
         value={fields.namespace}
         setNamespaceFormField={setNamespaceFormField}
-        setNamespaceWatchField={setNamespaceWatchField}
+        onPickNamespace={onPickNamespace}
       />
     </FormSection>
   );
@@ -275,7 +273,7 @@ interface NamespaceInputProps {
   systemNamespaces: string[];
   value: string;
   setNamespaceFormField: (namespace: string) => void; // set the namespace field in the form
-  setNamespaceWatchField: (namespace: string) => void; // tells the page which namespace to load secrets and configmaps for
+  onPickNamespace: (namespace: string) => void; // tells the page the user picked, so it loads that namespace's Secrets and ConfigMaps
 }
 
 function NamespaceInput({
@@ -284,7 +282,7 @@ function NamespaceInput({
   systemNamespaces,
   value,
   setNamespaceFormField,
-  setNamespaceWatchField,
+  onPickNamespace,
 }: NamespaceInputProps) {
   const { t } = useTranslation('plugin__console-functions-plugin');
 
@@ -292,7 +290,7 @@ function NamespaceInput({
   // right away.
   const selectNamespace = (val: string) => {
     setNamespaceFormField(val);
-    setNamespaceWatchField(val);
+    onPickNamespace(val);
   };
 
   if (!namespaces.length) {

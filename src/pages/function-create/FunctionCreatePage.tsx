@@ -46,7 +46,7 @@ function FunctionCreatePageContent() {
     namespaces,
     systemNamespaces,
     initialNamespace,
-    setNamespaceWatchField,
+    onPickNamespace,
     namespacesLoaded,
   } = useFunctionCreatePage();
 
@@ -95,7 +95,7 @@ function FunctionCreatePageContent() {
               resourcesNamespace={resourcesNamespace}
               onSubmit={handleSubmit}
               onCancel={handleCancel}
-              setNamespaceWatchField={setNamespaceWatchField}
+              onPickNamespace={onPickNamespace}
               isSubmitting={isSubmitting}
               canCreateNamespaces={canCreateNamespaces}
               namespaces={namespaces}
@@ -108,25 +108,7 @@ function FunctionCreatePageContent() {
   );
 }
 
-function useFunctionCreatePage(): {
-  secrets: K8sKeyedResource[];
-  configMaps: K8sKeyedResource[];
-  resourcesNamespace: string;
-  resourcesForbidden: boolean;
-  isSubmitting: boolean;
-  isAuthenticated: boolean;
-  submitError: string | null;
-  namespacesError?: string;
-  resourcesError?: string;
-  canCreateNamespaces: boolean;
-  namespaces: string[];
-  systemNamespaces: string[];
-  initialNamespace: string;
-  namespacesLoaded: boolean;
-  handleSubmit: (data: CreateFunctionFormData) => Promise<void>;
-  handleCancel: () => void;
-  setNamespaceWatchField: (namespace: string) => void;
-} {
+function useFunctionCreatePage() {
   const navigate = useNavigate();
   const isAuthenticated = useContext(AuthContext).isAuthenticated;
 
@@ -146,8 +128,8 @@ function useFunctionCreatePage(): {
     activeNamespace,
   );
 
-  // null until the user changes the field; until then the field shows the prefill.
-  const [pickedNamespace, setNamespaceWatchField] = useState<string | null>(null);
+  // null until the user picks a namespace; until then the field shows the prefill.
+  const [pickedNamespace, setPickedNamespace] = useState<string | null>(null);
 
   const {
     namespace: resourcesNamespace,
@@ -196,7 +178,7 @@ function useFunctionCreatePage(): {
     resourcesForbidden,
     handleSubmit,
     handleCancel,
-    setNamespaceWatchField,
+    onPickNamespace: setPickedNamespace,
     isAuthenticated,
     secrets,
     configMaps,
@@ -264,15 +246,13 @@ function toEnvVars(
   return result.length > 0 ? result : undefined;
 }
 
-const NO_OPTIONS: NamespaceOptions = {
-  namespaces: [],
-  systemNamespaces: [],
-  canCreateNamespaces: false,
-};
-
 // The namespace choices a user is allowed to deploy into, as decided by the backend.
 function useNamespaceOptions(): NamespaceOptions & { loaded: boolean; error?: string } {
-  const [options, setOptions] = useState<NamespaceOptions>(NO_OPTIONS);
+  const [options, setOptions] = useState<NamespaceOptions>({
+    namespaces: [],
+    systemNamespaces: [],
+    canCreateNamespaces: false,
+  });
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -290,8 +270,6 @@ function useNamespaceOptions(): NamespaceOptions & { loaded: boolean; error?: st
 
   return { ...options, loaded, error };
 }
-
-const NO_RESOURCES: K8sKeyedResource[] = [];
 
 interface NamespaceResources {
   namespace: string;
@@ -315,8 +293,8 @@ function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
     (async () => {
       try {
         const [secrets, configMaps] = await Promise.all([
-          fetchOrEmpty(getSecrets, namespace),
-          fetchOrEmpty(getConfigMaps, namespace),
+          getSecrets(namespace),
+          getConfigMaps(namespace),
         ]);
         if (!stale)
           setResult({
@@ -329,8 +307,8 @@ function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
         if (!stale)
           setResult({
             namespace,
-            secrets: NO_RESOURCES,
-            configMaps: NO_RESOURCES,
+            secrets: [],
+            configMaps: [],
             forbidden: false,
             error: errorMessage(err),
           });
@@ -343,20 +321,6 @@ function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
   }, [namespace]);
 
   if (result?.namespace !== namespace)
-    return { namespace: '', secrets: NO_RESOURCES, configMaps: NO_RESOURCES, forbidden: false };
+    return { namespace: '', secrets: [], configMaps: [], forbidden: false };
   return result;
-}
-
-// A 403 (no read access) means there is nothing to offer, not that loading failed.
-async function fetchOrEmpty(
-  fetchResources: (namespace: string) => Promise<K8sKeyedResource[]>,
-  namespace: string,
-): Promise<{ items: K8sKeyedResource[]; forbidden: boolean }> {
-  try {
-    return { items: await fetchResources(namespace), forbidden: false };
-  } catch (err) {
-    const status = (err as { code?: number }).code;
-    if (status === 403) return { items: NO_RESOURCES, forbidden: true };
-    throw err;
-  }
 }

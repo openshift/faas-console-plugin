@@ -14,10 +14,9 @@ import (
 )
 
 func envSourceRequest(namespace, resource string) *http.Request {
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet,
+	req := httptest.NewRequestWithContext(testOCPTokenContext(), http.MethodGet,
 		"/api/v1/namespaces/"+namespace+"/"+resource, nil)
 	req.SetPathValue("namespace", namespace)
-	req.Header.Set("Authorization", "Bearer ocp-token")
 	return req
 }
 
@@ -85,16 +84,6 @@ var _ = Describe("Environment variable source endpoints", func() {
 				ep.handle(&Handlers{}, w, envSourceRequest("Not_Valid", ep.resource))
 
 				Expect(w.Code).To(Equal(http.StatusBadRequest))
-			})
-
-			It("requires the Authorization header", func() {
-				req := envSourceRequest("team-a", ep.resource)
-				req.Header.Del("Authorization")
-
-				w := httptest.NewRecorder()
-				ep.handle(&Handlers{}, w, req)
-
-				Expect(w.Code).To(Equal(http.StatusUnauthorized))
 			})
 
 			It("returns 403 when the caller may not list them", func() {
