@@ -48,7 +48,7 @@ test.describe('Functions list', () => {
     await test.step('verify page description and toolbar', async () => {
       await expect(page.getByText('Serverless functions in your repository')).toBeVisible();
 
-      await expect(page.getByRole('link', { name: 'Create new function' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Create new function' })).toBeVisible();
 
       await expect(page.getByRole('button', { name: 'Refresh' })).toBeVisible();
     });
@@ -96,7 +96,7 @@ test.describe('Functions list', () => {
       const grid = page.getByRole('grid', { name: 'Functions' });
       await expect(grid).toBeVisible({ timeout: 30_000 });
 
-      await page.getByRole('link', { name: 'Create new function' }).click();
+      await page.getByRole('button', { name: 'Create new function' }).click();
       await expect(page).toHaveURL(/\/faas\/create/, { timeout: 10_000 });
     });
   });
