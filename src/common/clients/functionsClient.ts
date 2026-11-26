@@ -6,6 +6,8 @@ import {
   CreateFunctionRequest,
   FileEntry,
   FunctionMetadata,
+  K8sKeyedResource,
+  NamespaceOptions,
   PROXY_BASE,
   WorkflowRunRecord,
 } from '../types';
@@ -22,6 +24,22 @@ export async function listFunctions(namespace: string): Promise<FunctionMetadata
     : `?namespace=${encodeURIComponent(namespace)}`;
 
   return customFetchJSON(`${PROXY_BASE}/api/v1/func/list${query}`);
+}
+
+export async function getNamespaces(): Promise<NamespaceOptions> {
+  return customFetchJSON(`${PROXY_BASE}/api/v1/namespaces`);
+}
+
+export async function getSecrets(namespace: string): Promise<K8sKeyedResource[]> {
+  return customFetchJSON(
+    `${PROXY_BASE}/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets`,
+  );
+}
+
+export async function getConfigMaps(namespace: string): Promise<K8sKeyedResource[]> {
+  return customFetchJSON(
+    `${PROXY_BASE}/api/v1/namespaces/${encodeURIComponent(namespace)}/configmaps`,
+  );
 }
 
 export async function createFunction(data: CreateFunctionRequest): Promise<void> {

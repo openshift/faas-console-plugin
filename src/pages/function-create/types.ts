@@ -9,11 +9,6 @@ export interface ResourceEnvVar {
   resourceKey: string;
 }
 
-export interface K8sKeyedResource {
-  name: string;
-  keys: string[];
-}
-
 export interface CreateFunctionFormData {
   owner: string;
   repo: string;

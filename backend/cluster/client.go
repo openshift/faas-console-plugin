@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	projectclientset "github.com/openshift/client-go/project/clientset/versioned"
 	"github.com/openshift/faas-console-plugin/backend/kube"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -37,6 +38,10 @@ type Client interface {
 	DeleteImageBuilderBinding(ctx context.Context, namespace string) error
 	RequestToken(ctx context.Context, namespace string, saTokenExpirty int64) (*authenticationv1.TokenRequestStatus, error)
 	CheckNamespace(ctx context.Context, namespace string) error
+	ListProjects(ctx context.Context) ([]string, error)
+	CanCreateNamespaces(ctx context.Context) (bool, error)
+	ListSecrets(ctx context.Context, namespace string) ([]KeyedResource, error)
+	ListConfigMaps(ctx context.Context, namespace string) ([]KeyedResource, error)
 }
 
 // New creates a cluster client authenticated with token.
@@ -52,11 +57,16 @@ func New(host, token string, caCert []byte) (Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
-	return &k8sClient{clientset: clientset}, nil
+	projectClient, err := projectclientset.NewForConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create project client: %w", err)
+	}
+	return &k8sClient{clientset: clientset, projects: projectClient}, nil
 }
 
 type k8sClient struct {
 	clientset kubernetes.Interface
+	projects  projectclientset.Interface
 }
 
 func (c *k8sClient) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
@@ -221,6 +231,10 @@ type ClientStub struct {
 	OnDeleteRole                func(ctx context.Context, namespace string) error
 	OnDeleteRoleBinding         func(ctx context.Context, namespace string) error
 	OnDeleteImageBuilderBinding func(ctx context.Context, namespace string) error
+	OnListProjects              func(ctx context.Context) ([]string, error)
+	OnCanCreateNamespaces       func(ctx context.Context) (bool, error)
+	OnListSecrets               func(ctx context.Context, namespace string) ([]KeyedResource, error)
+	OnListConfigMaps            func(ctx context.Context, namespace string) ([]KeyedResource, error)
 }
 
 func (s *ClientStub) CreateServiceAccount(ctx context.Context, namespace string) (bool, error) {
@@ -294,6 +308,34 @@ func (s *ClientStub) DeleteImageBuilderBinding(ctx context.Context, namespace st
 		return s.OnDeleteImageBuilderBinding(ctx, namespace)
 	}
 	return nil
+}
+
+func (s *ClientStub) ListProjects(ctx context.Context) ([]string, error) {
+	if s.OnListProjects != nil {
+		return s.OnListProjects(ctx)
+	}
+	return nil, nil
+}
+
+func (s *ClientStub) CanCreateNamespaces(ctx context.Context) (bool, error) {
+	if s.OnCanCreateNamespaces != nil {
+		return s.OnCanCreateNamespaces(ctx)
+	}
+	return false, nil
+}
+
+func (s *ClientStub) ListSecrets(ctx context.Context, namespace string) ([]KeyedResource, error) {
+	if s.OnListSecrets != nil {
+		return s.OnListSecrets(ctx, namespace)
+	}
+	return []KeyedResource{}, nil
+}
+
+func (s *ClientStub) ListConfigMaps(ctx context.Context, namespace string) ([]KeyedResource, error) {
+	if s.OnListConfigMaps != nil {
+		return s.OnListConfigMaps(ctx, namespace)
+	}
+	return []KeyedResource{}, nil
 }
 
 func roleBody(namespace string) *rbacv1.Role {

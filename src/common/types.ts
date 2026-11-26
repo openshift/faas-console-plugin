@@ -63,3 +63,15 @@ export interface WorkflowRun {
   url?: string;
   error?: AppError;
 }
+
+export interface NamespaceOptions {
+  namespaces: string[];
+  systemNamespaces: string[];
+  canCreateNamespaces: boolean;
+}
+
+// A Secret or ConfigMap reduced to its name and key names. Values are never sent.
+export interface K8sKeyedResource {
+  name: string;
+  keys: string[];
+}

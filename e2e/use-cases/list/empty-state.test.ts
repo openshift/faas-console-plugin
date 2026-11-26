@@ -43,7 +43,7 @@ test.describe('Functions list empty state', () => {
 
       await expect(page.getByText('Create a serverless function to get started.')).toBeVisible();
 
-      await expect(page.getByRole('link', { name: 'Create function' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Create function' })).toBeVisible();
     });
   });
 });

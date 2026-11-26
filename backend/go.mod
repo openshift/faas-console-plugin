@@ -17,6 +17,11 @@ require (
 )
 
 require (
+	github.com/openshift/api v0.0.0-20260702202555-ef71f942ef6c
+	github.com/openshift/client-go v0.0.0-20260703082747-24d059aea27a
+)
+
+require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.0 // indirect
