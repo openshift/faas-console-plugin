@@ -1,13 +1,12 @@
 import { HttpError, isAllNamespacesKey } from '@openshift-console/dynamic-plugin-sdk';
 import { AppError } from '../errors';
-import { customFetch, customFetchJSON, resolveErrorStatus } from './httpClient';
+import { customFetch, customFetchJSON } from './httpClient';
 import { createSSEEventSource } from '../transport/sseEventSource';
 import {
   CreateFunctionRequest,
   FileEntry,
   FunctionMetadata,
   K8sKeyedResource,
-  KeyedResourceList,
   NamespaceOptions,
   PROXY_BASE,
   WorkflowRunRecord,
@@ -31,26 +30,16 @@ export async function getNamespaces(): Promise<NamespaceOptions> {
   return customFetchJSON(`${PROXY_BASE}/api/v1/namespaces`);
 }
 
-export function getSecrets(namespace: string): Promise<KeyedResourceList> {
-  return listKeyedResources(
+export async function getSecrets(namespace: string): Promise<K8sKeyedResource[]> {
+  return customFetchJSON(
     `${PROXY_BASE}/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets`,
   );
 }
 
-export function getConfigMaps(namespace: string): Promise<KeyedResourceList> {
-  return listKeyedResources(
+export async function getConfigMaps(namespace: string): Promise<K8sKeyedResource[]> {
+  return customFetchJSON(
     `${PROXY_BASE}/api/v1/namespaces/${encodeURIComponent(namespace)}/configmaps`,
   );
-}
-
-// A 403 (no read access) means there is nothing to offer, not that loading failed.
-async function listKeyedResources(url: string): Promise<KeyedResourceList> {
-  try {
-    return { items: await customFetchJSON<K8sKeyedResource[]>(url), forbidden: false };
-  } catch (err) {
-    if (resolveErrorStatus(err) === 403) return { items: [], forbidden: true };
-    throw err;
-  }
 }
 
 export async function createFunction(data: CreateFunctionRequest): Promise<void> {

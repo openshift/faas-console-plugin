@@ -151,7 +151,7 @@ describe('FunctionCreatePage', () => {
     expect(screen.queryByRole('button', { name: /Create/ })).not.toBeInTheDocument();
   });
 
-  it('explains when the user cannot read Secrets in the chosen namespace', async () => {
+  it('shows the backend message when the user cannot read Secrets in the chosen namespace', async () => {
     const user = userEvent.setup();
     asUserWhoCanCreateNamespaces('team-a');
     getSecretsStub({
@@ -161,8 +161,8 @@ describe('FunctionCreatePage', () => {
     await renderPage();
     await user.selectOptions(screen.getByRole('combobox', { name: /Namespace/ }), 'team-a');
 
-    expect(await screen.findByText(/cannot read Secrets or ConfigMaps/)).toBeInTheDocument();
-    expect(screen.queryByText('Error loading Secrets and ConfigMaps')).not.toBeInTheDocument();
+    expect(await screen.findByText('Error loading Secrets and ConfigMaps')).toBeInTheDocument();
+    expect(screen.getByText('not allowed to list secrets in namespace team-a')).toBeInTheDocument();
   });
 
   it('shows the backend message when Secrets fail to load, separately from create errors', async () => {

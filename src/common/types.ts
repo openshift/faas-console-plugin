@@ -75,10 +75,3 @@ export interface K8sKeyedResource {
   name: string;
   keys: string[];
 }
-
-// The keyed resources of one kind in a namespace. forbidden is true when the server
-// answered 403: the caller may not read that kind there, so there is nothing to offer.
-export interface KeyedResourceList {
-  items: K8sKeyedResource[];
-  forbidden: boolean;
-}

@@ -84,6 +84,5 @@
   "Value": "Value",
   "View setup guide.": "View setup guide.",
   "Workflow run in progress": "Workflow run in progress",
-  "You cannot read Secrets or ConfigMaps in namespace \"{{namespace}}\", so they cannot be used as environment variable sources.": "You cannot read Secrets or ConfigMaps in namespace \"{{namespace}}\", so they cannot be used as environment variable sources.",
   "You have unsaved changes. Leave anyway?": "You have unsaved changes. Leave anyway?"
 }

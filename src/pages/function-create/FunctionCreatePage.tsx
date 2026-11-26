@@ -35,7 +35,6 @@ function FunctionCreatePageContent() {
     submitError,
     namespacesError,
     resourcesError,
-    resourcesForbidden,
     handleSubmit,
     handleCancel,
     isAuthenticated,
@@ -49,6 +48,33 @@ function FunctionCreatePageContent() {
     onPickNamespace,
     namespacesLoaded,
   } = useFunctionCreatePage();
+
+  const renderContent = () => {
+    if (!isAuthenticated || namespacesError) return null;
+
+    if (!namespacesLoaded) {
+      return (
+        <Bullseye>
+          <Spinner aria-label={t('Loading')} size="lg" />
+        </Bullseye>
+      );
+    }
+    return (
+      <CreateFunctionForm
+        secrets={secrets}
+        configMaps={configMaps}
+        resourcesNamespace={resourcesNamespace}
+        onSubmit={handleSubmit}
+        onCancel={handleCancel}
+        onPickNamespace={onPickNamespace}
+        isSubmitting={isSubmitting}
+        canCreateNamespaces={canCreateNamespaces}
+        namespaces={namespaces}
+        systemNamespaces={systemNamespaces}
+        initialNamespace={initialNamespace}
+      />
+    );
+  };
 
   return (
     <>
@@ -72,37 +98,7 @@ function FunctionCreatePageContent() {
             {resourcesError}
           </Alert>
         )}
-        {resourcesForbidden && (
-          <Alert
-            variant="info"
-            title={t(
-              'You cannot read Secrets or ConfigMaps in namespace "{{namespace}}", so they cannot be used as environment variable sources.',
-              { namespace: resourcesNamespace },
-            )}
-            isInline
-          />
-        )}
-        {isAuthenticated &&
-          !namespacesError &&
-          (!namespacesLoaded ? (
-            <Bullseye>
-              <Spinner aria-label={t('Loading')} size="lg" />
-            </Bullseye>
-          ) : (
-            <CreateFunctionForm
-              secrets={secrets}
-              configMaps={configMaps}
-              resourcesNamespace={resourcesNamespace}
-              onSubmit={handleSubmit}
-              onCancel={handleCancel}
-              onPickNamespace={onPickNamespace}
-              isSubmitting={isSubmitting}
-              canCreateNamespaces={canCreateNamespaces}
-              namespaces={namespaces}
-              systemNamespaces={systemNamespaces}
-              initialNamespace={initialNamespace}
-            />
-          ))}
+        {renderContent()}
       </PageSection>
     </>
   );
@@ -135,7 +131,6 @@ function useFunctionCreatePage() {
     namespace: resourcesNamespace,
     secrets,
     configMaps,
-    forbidden: resourcesForbidden,
     error: resourcesError,
   } = useSecretsAndConfigMaps(pickedNamespace ?? initialNamespace);
 
@@ -175,7 +170,6 @@ function useFunctionCreatePage() {
     submitError,
     namespacesError,
     resourcesError,
-    resourcesForbidden,
     handleSubmit,
     handleCancel,
     onPickNamespace: setPickedNamespace,
@@ -247,7 +241,7 @@ function toEnvVars(
 }
 
 // The namespace choices a user is allowed to deploy into, as decided by the backend.
-function useNamespaceOptions(): NamespaceOptions & { loaded: boolean; error?: string } {
+function useNamespaceOptions() {
   const [options, setOptions] = useState<NamespaceOptions>({
     namespaces: [],
     systemNamespaces: [],
@@ -275,13 +269,12 @@ interface NamespaceResources {
   namespace: string;
   secrets: K8sKeyedResource[];
   configMaps: K8sKeyedResource[];
-  forbidden: boolean;
   error?: string;
 }
 
 // The Secrets and ConfigMaps of namespace. The returned namespace says which namespace the
 // lists belong to; it is empty until the current namespace has answered.
-function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
+function useSecretsAndConfigMaps(namespace: string) {
   const [result, setResult] = useState<NamespaceResources>();
 
   useEffect(() => {
@@ -296,22 +289,9 @@ function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
           getSecrets(namespace),
           getConfigMaps(namespace),
         ]);
-        if (!stale)
-          setResult({
-            namespace,
-            secrets: secrets.items,
-            configMaps: configMaps.items,
-            forbidden: secrets.forbidden || configMaps.forbidden,
-          });
+        if (!stale) setResult({ namespace, secrets, configMaps });
       } catch (err) {
-        if (!stale)
-          setResult({
-            namespace,
-            secrets: [],
-            configMaps: [],
-            forbidden: false,
-            error: errorMessage(err),
-          });
+        if (!stale) setResult({ namespace, secrets: [], configMaps: [], error: errorMessage(err) });
       }
     })();
 
@@ -320,7 +300,6 @@ function useSecretsAndConfigMaps(namespace: string): NamespaceResources {
     };
   }, [namespace]);
 
-  if (result?.namespace !== namespace)
-    return { namespace: '', secrets: [], configMaps: [], forbidden: false };
+  if (result?.namespace !== namespace) return { namespace: '', secrets: [], configMaps: [] };
   return result;
 }

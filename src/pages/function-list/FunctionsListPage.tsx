@@ -94,15 +94,13 @@ function FunctionsListPageContent() {
             <Toolbar>
               <ToolbarContent>
                 <ToolbarItem>
-                  {!isAuthenticated ? (
-                    <Button variant="primary" isDisabled>
-                      {t('Create new function')}
-                    </Button>
-                  ) : (
-                    <Button variant="primary" onClick={() => navigate('/faas/create')}>
-                      {t('Create new function')}
-                    </Button>
-                  )}
+                  <Button
+                    variant="primary"
+                    onClick={() => navigate('/faas/create')}
+                    isDisabled={!isAuthenticated}
+                  >
+                    {t('Create new function')}
+                  </Button>
                 </ToolbarItem>
                 <ToolbarItem variant="separator" />
                 <ToolbarItem>
